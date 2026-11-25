@@ -1,0 +1,219 @@
+import * as T from './three.module.js';
+
+function brushedSurface(fabric = false) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const pixels = ctx.createImageData(128, 128);
+  let seed = 2207;
+  for (let y = 0; y < 128; y++) {
+    for (let x = 0; x < 128; x++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const base = fabric ? 215 + (x % 3 === 0 ? 18 : 0) - (y % 3 === 0 ? 22 : 0) : 232 + Math.sin(y * 2.9) * 5;
+      const shade = base + (seed / 4294967296 - .5) * 19;
+      const i = 4 * (y * 128 + x);
+      pixels.data.set([shade, shade, shade, 255], i);
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+  const texture = new T.CanvasTexture(canvas);
+  texture.colorSpace = T.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = T.RepeatWrapping;
+  texture.repeat.set(fabric ? 2 : 1, fabric ? 2 : 1);
+  return texture;
+}
+
+// Bake fixed pieces by finish so fine surface details cost few draw calls.
+function bake(group) {
+  const batches = new Map();
+  for (const part of [...group.children]) {
+    if (!part.isMesh) continue;
+    part.updateMatrix();
+    const g = part.geometry.index ? part.geometry.toNonIndexed() : part.geometry.clone();
+    g.applyMatrix4(part.matrix);
+    const material = part.material;
+    if (!batches.has(material)) batches.set(material, {position: [], normal: [], uv: []});
+    const batch = batches.get(material);
+    for (const key of Object.keys(batch)) batch[key].push(...g.attributes[key].array);
+    g.dispose();
+    part.geometry.dispose();
+    group.remove(part);
+  }
+  for (const [material, data] of batches) {
+    const g = new T.BufferGeometry();
+    for (const key of Object.keys(data)) g.setAttribute(key, new T.Float32BufferAttribute(data[key], key === 'uv' ? 2 : 3));
+    group.add(new T.Mesh(g, material));
+  }
+}
+
+export function createViewModel() {
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(48, 1, .015, 5);
+  const rig = new T.Group();
+  const fixed = new T.Group(), magazine = new T.Group(), support = new T.Group();
+  scene.add(rig);
+  rig.add(fixed, magazine, support);
+  scene.add(new T.HemisphereLight(0xe8f3ff, 0x8e7861, 2.1));
+  const key = new T.DirectionalLight(0xffdfb1, 3.4);
+  key.position.set(-2, 3, -2);
+  scene.add(key);
+  const rim = new T.DirectionalLight(0xa4d6f6, 1.5);
+  rim.position.set(3, 2, 1);
+  scene.add(rim);
+  const steelGrain = brushedSurface(), twill = brushedSurface(true);
+  const paint = (color, roughness, metalness, map) => new T.MeshStandardMaterial({color, roughness, metalness, map: map || null});
+  const alloy = paint(0x465057, .43, .42, steelGrain), graphite = paint(0x2e3438, .49, .38, steelGrain);
+  const parker = paint(0x171e22,.65,.26), edges = paint(0x748087,.42,.50), rubber = paint(0x202526,.90,.02,twill);
+  const earth = paint(0x625e4d,.71,.12,steelGrain), inlay = paint(0x171c1c,.96,.01);
+  const cloth = paint(0x55605b,.94,.01,twill), clothFold = paint(0x3c4741,.92,.01,twill);
+  const glove = paint(0x373b35,.89,.015,twill), knuckle = paint(0x4e5046,.77,.025,twill);
+  const amber = paint(0xd8a44c,.6,.13), bone = paint(0xb7c2ba,.62,.13);
+  function mesh(parent, g, mat, x,y,z) {
+    const obj = new T.Mesh(g, mat);
+    obj.position.set(x,y,z);
+    parent.add(obj);
+    return obj;
+  }
+  function box(parent, mat, x,y,z, w,h,d) {
+    return mesh(parent,new T.BoxGeometry(w,h,d),mat,x,y,z);
+  }
+  function profile(parent, mat, width, coords, x=0) {
+    const shape = new T.Shape();
+    coords.forEach(([z,y], i) => i ? shape.lineTo(-z,y) : shape.moveTo(-z,y));
+    shape.closePath();
+    const bevel = Math.min(.005, width * .09);
+    const geo = new T.ExtrudeGeometry(shape,{depth:width,bevelEnabled:true,bevelThickness:bevel,bevelSize:bevel,bevelSegments:1});
+    geo.translate(0,0,-width/2);
+    geo.rotateY(Math.PI/2);
+    return mesh(parent,geo,mat,x,0,0);
+  }
+  function tube(parent, mat, a,b, ra,rb, segments=12){
+    const v = new T.Vector3(...a), end = new T.Vector3(...b), dir = end.clone().sub(v);
+    const obj = mesh(parent,new T.CylinderGeometry(rb,ra,dir.length(),segments),mat,...v.clone().lerp(end,.5).toArray());
+    obj.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),dir.normalize());
+    return obj;
+  }
+  function pad(parent, mat,x,y,z,a,b,c) {
+    const obj = mesh(parent,new T.SphereGeometry(1,12,9),mat,x,y,z);
+    obj.scale.set(a,b,c);
+    return obj;
+  }
+  // Faceted receiver, overmoulded stock and a recessed side panel.
+  profile(fixed,graphite,.109,[[.22,.057],[-.19,.057],[-.24,.035],[-.215,-.044],[-.145,-.069],[.17,-.069],[.22,-.035]]);
+  profile(fixed,earth,.097,[[.19,-.036],[-.16,-.036],[-.153,-.097],[-.099,-.119],[-.024,-.115],[.002,-.077],[.124,-.080],[.164,-.10]]);
+  profile(fixed,graphite,.09,[[.39,.012],[.24,.038],[.20,.028],[.20,-.032],[.30,-.056],[.392,-.169]]);
+  profile(fixed,rubber,.096,[[.386,.013],[.410,.006],[.415,-.167],[.389,-.172]]);
+  profile(fixed,earth,.099,[[.368,.025],[.24,.045],[.23,.013],[.342,-.005],[.38,-.006]]);
+  for(const side of [-1,1]){
+    box(fixed,alloy,side*.055,.004,.022,.004,.056,.274);
+    box(fixed,parker,side*.057,.010,-.002,.004,.018,.184);
+    box(fixed,edges,side*.059,.018,.041,.003,.003,.085);
+    for (const z of [-.118,.138]) tube(fixed,edges,[side*.054,-.027,z],[side*.06,-.027,z],.007,.007,8);
+    for(let i=0;i<3;i++)box(fixed,i===0?amber:bone,side*.054,-.055,.09-i*.012,.003,.006,.006);
+  }
+  profile(fixed,rubber,.065,[[.111,-.066],[.056,-.078],[.086,-.211],[.147,-.205]]);
+  profile(magazine,graphite,.067,[[-.124,-.086],[-.047,-.09],[-.05,-.183],[-.066,-.259],[-.148,-.251],[-.125,-.175]]);
+  profile(magazine,rubber,.073,[[-.143,-.236],[-.064,-.243],[-.062,-.261],[-.151,-.256]]);
+  for (let i=0;i<5;i++) box(magazine,alloy,-.035,-.119-i*.022,-.089-i*.002,.005,.008,.058);
+  // Slotted fore-end and top rail ribs.
+  profile(fixed,earth,.092,[[-.16,.049],[-.475,.046],[-.502,.022],[-.493,-.037],[-.465,-.054],[-.17,-.053]]);
+  for(const side of [-1,1]) {
+    for(let i=0;i<6;i++) {
+      const z=-.206-i*.047;
+      box(fixed,inlay,side*.048,.009,z,.003,.020,.030);
+      box(fixed,alloy,side*.049,-.022,z,.003,.007,.032);
+    }
+  }
+  box(fixed,parker,0,.059,-.132,.043,.014,.646);
+  for(let i=0;i<35;i++) box(fixed,alloy,0,.069,.181-i*.018,.053,.009,.010);
+  tube(fixed,graphite,[0,.002,-.483],[0,.002,-.62],.023,.019,16);
+  tube(fixed,alloy,[0,.002,-.584],[0,.002,-.637],.030,.029,12);
+  tube(fixed,parker,[0,.002,-.635],[0,.002,-.642],.017,.017,12);
+  // Sight hood is open through the middle to preserve the sight picture.
+  box(fixed,parker,0,.081,.086,.061,.019,.091);
+  const sightY=.139;
+  const arch = [[-.042,.092],[-.045,.147],[-.031,.170],[.031,.170],[.045,.147],[.042,.092]];
+  for(let i=1;i<arch.length;i++){
+    const [a,b]=[arch[i-1],arch[i]];
+    const block = box(fixed,graphite,(a[0]+b[0])/2,(a[1]+b[1])/2,.082,Math.hypot(b[0]-a[0],b[1]-a[1])+.003,.009,.043);
+    block.rotation.z = Math.atan2(b[1]-a[1],b[0]-a[0]);
+  }
+  box(fixed,alloy,-.053,.116,.080,.018,.023,.026);
+  const reflex = mesh(fixed,new T.CircleGeometry(.0018,12),new T.MeshBasicMaterial({color:0xff744e,toneMapped:false}),0,sightY,.079);
+  const markCanvas=document.createElement('canvas');
+  markCanvas.width=512; markCanvas.height=128;
+  const pen=markCanvas.getContext('2d');
+  pen.fillStyle='#c5c9ba'; pen.font='bold 39px monospace'; pen.fillText('F R T  /  7',14,44);
+  pen.font='20px monospace';pen.fillText('MARITIME   04-27',14,82);
+  for(let i=0;i<34;i++)pen.fillRect(300+i*5,23, i%4===0?4:2,57);
+  const print=new T.CanvasTexture(markCanvas);print.colorSpace=T.SRGBColorSpace;
+  const label=mesh(fixed,new T.PlaneGeometry(.111,.028),new T.MeshBasicMaterial({map:print,transparent:true,depthWrite:false}),-.0585,-.017,.02);
+  label.rotation.y=-Math.PI/2;
+  function arm(parent, shoulder, wrist, palm, isSupport) {
+    const a=new T.Vector3(...shoulder), b=new T.Vector3(...wrist);
+    const p=t=>a.clone().lerp(b,t).toArray();
+    tube(parent,cloth,shoulder,wrist,.109,.057,11);
+    for (const t of [.4,.68,.80]) tube(parent,clothFold,p(t-.025),p(t+.015),.11-.052*t,.108-.052*t,11);
+    tube(parent,rubber,p(.9),p(1.01),.064,.058);
+    pad(parent,glove,...palm,.050,.051,.072);
+    const [x,y,z]=palm;
+    for (let i=0;i<4;i++) {
+      if(isSupport) {
+        const zz=z-.043+i*.023;
+        pad(parent,knuckle,x-.014,y+.022,zz,.026,.030,.012);
+        pad(parent,glove,x+.011,y+.044,zz-.003,.029,.015,.010);
+      } else pad(parent,knuckle,x-.025,y+.042-i*.022,z-.022,.028,.012,.034);
+    }
+    pad(parent,knuckle,x+.024,y+.025,z+.023,.024,.023,.041);
+  }
+  arm(fixed,[.153,-.317,.44],[.108,-.152,.167],[.060,-.134,.117],false);
+  arm(support,[-.19,-.294,.17],[-.086,-.109,-.209],[-.056,-.065,-.275],true);
+  // Keep transparent markings after opaque batches in the render queue.
+  fixed.remove(reflex,label);
+  bake(fixed);bake(magazine);bake(support);
+  fixed.add(reflex,label);
+  const flash=new T.Group();
+  rig.add(flash);
+  flash.position.set(0,.002,-.650);
+  const flare = new T.MeshBasicMaterial({color:0xffd27a,transparent:true,opacity:.9,depthWrite:false,blending:T.AdditiveBlending,toneMapped:false});
+  const core = new T.MeshBasicMaterial({color:0xfff2c6,toneMapped:false});
+  tube(flash,core,[0,0,0],[0,0,-.095],.024,.001,8);
+  for(let i=0;i<5;i++) {
+    const a=i*2*Math.PI/5;
+    tube(flash,flare,[0,0,0],[Math.cos(a)*.067,Math.sin(a)*.067,-.100-(i%2)*.075],.022,.001,5);
+  }
+  bake(flash);
+  flash.visible=false;
+  let phase=0,recoil=0,spark=0,aim=0,walk=0,loading=-1,reloadSignal=false;
+  let aspect=1.7;
+  const ease=(x,y,dt,rate)=>T.MathUtils.lerp(x,y,1-Math.exp(-rate*dt));
+  function reload(){if (loading<0) loading=0;}
+  function update(dt, values={}) {
+    dt=Math.max(0,Math.min(dt,.1));
+    if(values.reloading && !reloadSignal)reload();
+    reloadSignal=!!values.reloading;
+    if(loading>=0){loading+=dt/1.45;if(loading>=1)loading=-1;}
+    const t=Math.max(0,loading);
+    const lower=Math.sin(Math.PI*t);
+    const drop=Math.max(0,Math.sin(Math.PI*T.MathUtils.clamp((t-.12)/.68,0,1)));
+    magazine.position.set(-drop*.06,-drop*.17,drop*.05);
+    support.position.set(drop*.035,-drop*.054,drop*.12);
+    support.rotation.x=drop*.19;
+    aim=ease(aim,values.aiming && loading<0?1:0,dt,15);
+    walk=ease(walk,values.moving?1:0,dt,10);
+    phase+=dt*(values.moving?10:1.8);
+    recoil*=Math.exp(-dt*20);
+    spark-=dt;
+    flash.visible=spark>0;
+    const offset = Math.min(.247,.160*aspect);
+    const idle=1-aim;
+    rig.position.set(idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034,
+      T.MathUtils.lerp(-.191,-sightY,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003,
+      T.MathUtils.lerp(-.546,-.48,aim)+recoil*.036+lower*.038);
+    rig.rotation.set(.045*idle+recoil*.066+lower*.09,.190*idle-lower*.19,-.056*idle+lower*.57);
+  }
+  update(0);
+  return {scene,camera,update,reload,shoot(){recoil=Math.min(1.35,recoil+.94);spark=.045;flash.visible=true;flash.rotation.z=Math.random()*Math.PI;},
+    resize(value){aspect=value;camera.aspect=value;camera.updateProjectionMatrix();update(0);}};
+}
+
