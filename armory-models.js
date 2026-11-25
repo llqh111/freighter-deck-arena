@@ -34,8 +34,7 @@ export function buildArmory(parts) {
     box(w.body,parker,0,y-r-.010,z,.029,.024,.028);
   }
   function dot(w,z) {
-    const point=new T.Mesh(new T.CircleGeometry(.0017,10),opticInk);
-    point.position.set(0,w.sight,z);w.body.add(point);
+    // Reticle dot is rendered crisply by the HUD ADS overlay to avoid 3D double-dot overlap.
   }
   function muzzle(w,z,r=.021) {
     tube(w.body,graphite,[0,.010,z+.07],[0,.010,z],r,r*1.08);
