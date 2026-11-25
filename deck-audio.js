@@ -1,7 +1,7 @@
 // Short, cached Web Audio samples. No audio nodes are created on page load.
 export function createDeckAudio() {
   let context;
-  let samples;
+  let samples,master;let volume=.8,beat=0,waterIn=0,gullIn=8;
   let enabled = false;
   let countdown = .10;
   let foot = 0;
@@ -54,14 +54,16 @@ export function createDeckAudio() {
       (headshot ? note(t - .103, 1245, .14) : 0));
   }
 
-  function play(buffer) {
+  function play(buffer,level=1,pan=0) {
     if (!enabled || context?.state !== 'running') return;
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(context.destination);
+    const gain=context.createGain();gain.gain.value=Math.max(0,Math.min(1,level));
+    const stereo=context.createStereoPanner?.();source.connect(gain);
+    if(stereo){stereo.pan.value=pan;gain.connect(stereo);stereo.connect(master);}else gain.connect(master);
     playing.add(source);
     source.onended = () => {
-      source.disconnect();
+      source.disconnect();gain.disconnect();stereo?.disconnect();
       playing.delete(source);
     };
     source.start();
@@ -90,7 +92,7 @@ export function createDeckAudio() {
       const Audio = globalThis.AudioContext || globalThis.webkitAudioContext;
       if (!Audio) return;
       try {
-        context = new Audio();
+        context = new Audio();master=context.createGain();master.gain.value=volume;master.connect(context.destination);
         samples = {
           walk: [shoe(0,false), shoe(1,false)],
           run: [shoe(0,true), shoe(1,true)],
@@ -104,7 +106,13 @@ export function createDeckAudio() {
     if (context.state !== 'closed') context.resume().catch(() => {});
   }
 
-  function step(dt, {walking, sprint, grounded, alive}) {
+  function step(dt, {walking,sprint,grounded,alive,hp=100,quiet=false}) {
+    if(enabled&&samples){
+      waterIn-=dt;gullIn-=dt;if(waterIn<=0){sfx({kind:'sea',volume:.28,pan:Math.sin(gullIn)*.5});waterIn=2.6;}
+      if(gullIn<=0){sfx({kind:'gull',volume:.20,pan:.6});gullIn=11+Math.random()*11;}
+    }
+    if(alive&&hp<=30&&samples&&enabled){beat-=dt;if(beat<=0){sfx({kind:'pulse'});beat=.85;}}
+    if(quiet){countdown=.1;return;}
     if (!samples || !enabled || !walking || !grounded || !alive) {
       countdown = .10;
       return;
@@ -119,6 +127,29 @@ export function createDeckAudio() {
   function cue(kind) {
     if (samples && (kind === 'kill' || kind === 'headshot')) play(samples[kind]);
   }
-  return {enable, cue, step, reset};
+  function sfx({kind,weapon='',volume:level=1,pan=0}){
+    if(!enabled||!samples)return;
+    const key=kind+weapon;
+    if(!samples[key]){
+      const freq={ak47:94,m4a1:118,mp5:155,awm:61,deagle:83}[weapon]||110;
+      const duration={sea:3.2,gull:.62,step:.18,land:.23,jump:.14,death:.22,hurt:.12,scope:.1,timber:.15,clang:.19,dry:.06,shot:.24,explode:.75,bolt:.22,reload:.42,bounce:.11,pulse:.21,hit:.09}[kind]||.14;
+      let seed=3492,lp=0;
+      samples[key]=makeSample(duration,t=>{
+        seed=(Math.imul(seed,1664525)+1013904223)>>>0;const white=seed/2147483648-1;lp+=.15*(white-lp);
+        if(kind==='shot'||kind==='explode'){const boom=kind==='explode';return (.64*lp+.28*Math.sin(6.28*(boom?49:freq)*t*Math.exp(-1.9*t))+.12*white*Math.exp(-40*t))*Math.exp(-t*(boom?6:23));}
+        if(kind==='sea')return .22*lp*(Math.sin(Math.PI*t/duration)**2);
+        if(kind==='gull')return .08*Math.sin(6.28*(960*t+65*Math.sin(t*5)))*Math.sin(Math.PI*t/duration)**2;
+        if(['step','land','jump','death','hurt','timber'].includes(kind))return (.32*lp+.15*Math.sin(6.28*84*t))*Math.exp(-20*t);
+        if(kind==='scope')return .08*Math.sin(6.28*630*t)*Math.exp(-46*t);
+        if(kind==='pulse')return .18*Math.sin(6.28*56*t)*Math.exp(-18*t);
+        if(kind==='hit')return .09*Math.sin(6.28*1240*t)*Math.exp(-40*t);
+        if(kind==='light'||kind==='heavy'||kind==='throw')return lp*Math.sin(Math.PI*t/duration)*.47;
+        const click=Math.exp(-68*t)+(kind==='reload'?Math.exp(-76*Math.abs(t-.26)):0);
+        return click*(.3*white+.15*Math.sin(6.28*(kind==='bounce'?560:970)*t));
+      });
+    }
+    play(samples[key],level,Math.max(-1,Math.min(1,pan)));
+  }
+  function setVolume(v){volume=Math.max(0,Math.min(1,v));if(master)master.gain.value=volume;}
+  return {enable,step,cue,reset,sfx,setVolume};
 }
-

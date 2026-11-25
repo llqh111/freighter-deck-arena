@@ -1,3 +1,4 @@
+import {buildArmory} from './armory-models.js';
 import * as T from './three.module.js';
 
 function brushedSurface(fabric = false) {
@@ -149,11 +150,13 @@ export function createViewModel() {
   const print=new T.CanvasTexture(markCanvas);print.colorSpace=T.SRGBColorSpace;
   const label=mesh(fixed,new T.PlaneGeometry(.111,.028),new T.MeshBasicMaterial({map:print,transparent:true,depthWrite:false}),-.0585,-.017,.02);
   label.rotation.y=-Math.PI/2;
+  const sleeveBand=paint(0x47788b,.86,.02,twill);
   function arm(parent, shoulder, wrist, palm, isSupport) {
     const a=new T.Vector3(...shoulder), b=new T.Vector3(...wrist);
     const p=t=>a.clone().lerp(b,t).toArray();
     tube(parent,cloth,shoulder,wrist,.109,.057,11);
     for (const t of [.4,.68,.80]) tube(parent,clothFold,p(t-.025),p(t+.015),.11-.052*t,.108-.052*t,11);
+    tube(parent,sleeveBand,p(.82),p(.875),.068,.065,11);
     tube(parent,rubber,p(.9),p(1.01),.064,.058);
     pad(parent,glove,...palm,.050,.051,.072);
     const [x,y,z]=palm;
@@ -184,36 +187,78 @@ export function createViewModel() {
   }
   bake(flash);
   flash.visible=false;
+  const arsenal=buildArmory({box,tube,pad,profile,arm,bake,paint,graphite,alloy,edges,parker,rubber,amber,bone});
+  const original=new T.Group();
+  original.name='m4a1';original.add(fixed,magazine,support);
+  arsenal.m4a1={root:original,mag:magazine,hand:support,sight:sightY,hipX:.222,hipY:-.191,hipZ:-.546,muzzle:-.65,kick:.94};
+  for (const entry of Object.values(arsenal)){rig.add(entry.root);entry.root.visible=false;}
+  let id='m4a1', current=arsenal[id];current.root.visible=true;
   let phase=0,recoil=0,spark=0,aim=0,walk=0,loading=-1,reloadSignal=false;
-  let aspect=1.7;
+  let aspect=1.7,draw=0,gesture=1,gestureDuration=.5,kind='',inspectT=1,loadDuration=1.45;
   const ease=(x,y,dt,rate)=>T.MathUtils.lerp(x,y,1-Math.exp(-rate*dt));
-  function reload(){if (loading<0) loading=0;}
+  function equip(value) {
+    const raw=String(value?.id || value || '').toLowerCase().replace(/[-_ ]/g,'');
+    const next=({grenade:'he',deserteagle:'deagle',ak:'ak47',m4:'m4a1'})[raw]||raw;
+    if(!arsenal[next])return;
+    current.root.visible=false;id=next;current=arsenal[id];current.root.visible=true;
+    current.root.position.set(0,0,0);draw=1;gesture=inspectT=1;loading=-1;reloadSignal=false;aim=0;recoil=spark=0;
+    flash.visible=false;flash.position.set(0,id==='deagle'?.029:.010,current.muzzle??-.5);
+  }
+  function reload(duration) {
+    if(id==='he'||id==='knife'||loading>=0)return;
+    loadDuration=Number.isFinite(duration)?Math.max(.30,duration):({awm:3.0,deagle:1.8,mp5:2.0,ak47:2.35,m4a1:2.15})[id];
+    loading=0;inspectT=1;
+  }
+  function shoot(action='primary'){
+    inspectT=1;gesture=0;kind=action;
+    if(id==='knife'){gestureDuration=action==='heavy'?.74:.37;return;}
+    if(id==='he'){gestureDuration=.65;return;}
+    gestureDuration=id==='awm'?.95:.15;
+    recoil=Math.min(1.85,recoil+current.kick);spark=.045;flash.visible=true;
+    flash.rotation.z=Math.random()*Math.PI;flash.scale.setScalar(id==='mp5'?.70:id==='awm'?1.4:1);
+  }
   function update(dt, values={}) {
     dt=Math.max(0,Math.min(dt,.1));
-    if(values.reloading && !reloadSignal)reload();
-    reloadSignal=!!values.reloading;
-    if(loading>=0){loading+=dt/1.45;if(loading>=1)loading=-1;}
-    const t=Math.max(0,loading);
-    const lower=Math.sin(Math.PI*t);
-    const drop=Math.max(0,Math.sin(Math.PI*T.MathUtils.clamp((t-.12)/.68,0,1)));
-    magazine.position.set(-drop*.06,-drop*.17,drop*.05);
-    support.position.set(drop*.035,-drop*.054,drop*.12);
-    support.rotation.x=drop*.19;
-    aim=ease(aim,values.aiming && loading<0?1:0,dt,15);
+    if(values.reloading&&!reloadSignal)reload();reloadSignal=!!values.reloading;
+    if(loading>=0){loading+=dt/loadDuration;if(loading>=1)loading=-1;}
+    const t=Math.max(0,loading), lower=Math.sin(Math.PI*t);
+    const drop=Math.sin(Math.PI*T.MathUtils.clamp((t-.12)/.68,0,1));
+    current.mag.position.set(-drop*(id==='deagle'?.013:.06),-drop*(id==='mp5'?.20:.17),drop*.05);
+    current.mag.rotation.x=id==='ak47'?drop*.42:0;
+    current.hand.position.set(drop*.035,-drop*.054,drop*(id==='deagle'?.045:.12));
+    current.hand.rotation.x=drop*.19;
+    draw=Math.max(0,draw-dt*(id==='awm'?2.8:id==='knife'?5.4:3.6));
+    inspectT=Math.min(1,inspectT+dt*.68);
+    gesture=Math.min(1,gesture+dt/gestureDuration);
+    if(values.aiming||values.reloading)inspectT=1;
+    const inspection=Math.sin(Math.PI*inspectT)**2, movement=Math.sin(Math.PI*gesture)**2;
+    const item=id==='knife'||id==='he';
+    aim=ease(aim,values.aiming&&!item&&loading<0?1:0,dt,15);
     walk=ease(walk,values.moving?1:0,dt,10);
-    phase+=dt*(values.moving?10:1.8);
-    recoil*=Math.exp(-dt*20);
-    spark-=dt;
-    flash.visible=spark>0;
-    const offset = Math.min(.247,.160*aspect);
-    const idle=1-aim;
-    rig.position.set(idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034,
-      T.MathUtils.lerp(-.191,-sightY,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003,
-      T.MathUtils.lerp(-.546,-.48,aim)+recoil*.036+lower*.038);
-    rig.rotation.set(.045*idle+recoil*.066+lower*.09,.190*idle-lower*.19,-.056*idle+lower*.57);
+    phase+=dt*(values.moving?10:1.8);recoil*=Math.exp(-dt*20);spark-=dt;
+    flash.visible=spark>0&&!item;
+    if(current.action){
+      const bolt=id==='awm'?Math.sin(Math.PI*T.MathUtils.clamp((gesture-.22)/.62,0,1)):0;
+      current.action.position.z=bolt*.083+(id==='deagle'?recoil*.042:0);
+      current.action.rotation.z=bolt*.34;
+      current.action.visible=id!=='he'||!(gesture>.34&&gesture<.97);
+    }
+    const offset=Math.min(current.hipX,.160*aspect),idle=1-aim;
+    const slash=id==='knife'?movement:0,throwing=id==='he'?movement:0;
+    const heavy=kind==='heavy';
+    rig.position.set(idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034-slash*(heavy?.09:.18)-inspection*.10,
+      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003-draw*.24+inspection*.027+throwing*.14,
+      T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*.036+lower*.038+draw*.07-slash*(heavy?.23:.079)-throwing*.12);
+    rig.rotation.set(.045*idle+recoil*(id==='deagle'?.14:.066)+lower*.09-draw*.52+throwing*.85,
+      .190*idle-lower*.19-slash*(heavy?.16:.97)-inspection*.57,
+      -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+slash*(heavy?.73:-.69)-inspection*.84);
+    // Once magnified, the HUD supplies the full-field AWM reticle.
+    current.root.visible=!(id==='awm'&&aim>.94);
   }
   update(0);
-  return {scene,camera,update,reload,shoot(){recoil=Math.min(1.35,recoil+.94);spark=.045;flash.visible=true;flash.rotation.z=Math.random()*Math.PI;},
+  return {scene,camera,update,equip,reload,shoot,
+    inspect(){if(loading<0&&gesture>=.98)inspectT=0;},
+    setTeam(team){sleeveBand.color.set(team===1?0xae4c3b:0x47788b);},
     resize(value){aspect=value;camera.aspect=value;camera.updateProjectionMatrix();update(0);}};
 }
 

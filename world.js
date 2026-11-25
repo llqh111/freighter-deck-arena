@@ -1,4 +1,5 @@
 import * as T from './three.module.js';
+import {makeEffects} from './deck-effects.js';
 
 // Panoramic sky photography: Kloofendal 48d Partly Cloudy, Poly Haven (CC0).
 // https://polyhaven.com/a/kloofendal_48d_partly_cloudy
@@ -149,7 +150,7 @@ export function buildWorld(scene) {
     }
   }
   const timber=new T.MeshStandardMaterial({map:crateSkin(),roughness:.98});
-  function crate(x,z,s,base=0,h=s){wall(x,z,s,s,base,base+h,timber)}
+  function crate(x,z,s,base=0,h=s){wall(x,z,s,s,base,base+h,timber,{material:'wood'})}
   // Two staggered freight containers form the V in the central crossing.
   container(-5,12,6.2,2.85,0,1);container(5,8,2.85,7.2,0,0);
   container(-5,-8,2.85,7.2,0,2);container(5,-12,6.2,2.85,0,5);
@@ -206,7 +207,26 @@ export function buildWorld(scene) {
     for(let i=-11;i<=11;i+=1.85)put(i,4.55,sign*20.65,.07,.96,.07,rail);
     put(0,4.99,sign*20.65,23,.08,.08,rail);
     put(0,4.61,sign*20.65,23,.05,.05,rail);
-    for(const x of [-6,5.8,3,-3])spawns[sign===1?0:1].push({x,z:sign*23});
+    // A stair and lookout outside each bulkhead leave both original spawn doors open.
+    const lookoutZ=sign*18.7;
+    wall(0,lookoutZ,4.4,1.97,0,1.80,'#7b877b',{walkSurface:true});
+    for(let i=0;i<10;i++){
+      const x=sign*(-5.82+i*.38),height=(i+1)*.18;
+      wall(x,lookoutZ,.38,1.84,0,height,'#65756f',{walkSurface:true});
+      put(x-sign*.145,height+.009,lookoutZ,.06,.018,1.8,'#d6ad58');
+    }
+    const back=lookoutZ+sign*.91;
+    beam([sign*-6.01,.89,back],[sign*-2.21,2.69,back],.065,'#ccaa5e');
+    for(const x of [-2,0,2])put(x,2.27,back,.07,.94,.07,rail);
+    put(0,2.72,back,4.18,.07,.07,rail);
+    wall(sign*1.31,lookoutZ-sign*.85,1.57,.24,1.80,2.56,'#859180');
+    // Fire cabinets, hose and life ring hung on the spawn bulkhead.
+    put(sign*8.1,1.43,sign*20.50,.76,.97,.20,'#994331');put(sign*8.1,1.46,sign*20.38,.47,.64,.05,'#ad6548');
+    for(const xx of [-.18,.18])put(sign*8.1+xx,1.45,sign*20.34,.035,.4,.05,'#b4afa0');
+    const ring=new T.Mesh(new T.TorusGeometry(.31,.082,7,28),mat('#d9773c'));
+    ring.position.set(-sign*8.4,1.69,sign*20.43);scene.add(ring);
+    for(const a of [.78,2.36,3.93,5.50])put(ring.position.x+Math.cos(a)*.31,1.69+Math.sin(a)*.31,sign*20.41,.10,.11,.11,'#cdc6af');
+    for(const depth of [23,24.7])for(const x of [-6,5.8,3,-3])spawns[sign===1?0:1].push({x,z:sign*depth});
   }
   // Hull, bulwarks, timber fenders and handrails.
   put(0,-1.7,0,25,3.3,53,'#343d3b');put(0,-3.5,0,24.85,.8,52.9,'#874a37');
@@ -222,17 +242,18 @@ export function buildWorld(scene) {
   sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
   Object.assign(sun.shadow.camera,{left:-37,right:37,top:32,bottom:-32,near:12,far:117});sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias=-.00024;sun.shadow.normalBias=.035;scene.add(sun);
-  scene.add(new T.HemisphereLight(0xe2edff,0x809187,1.15));
-  const skydome=new T.Mesh(new T.SphereGeometry(390,36,22),new T.ShaderMaterial({side:T.BackSide,depthWrite:false,
+  const hemi=new T.HemisphereLight(0xe2edff,0x809187,1.15);scene.add(hemi);
+  const dusk={value:0};
+  const skydome=new T.Mesh(new T.SphereGeometry(390,36,22),new T.ShaderMaterial({side:T.BackSide,depthWrite:false,uniforms:{dusk},
     vertexShader:'varying vec3 v;void main(){v=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader:`varying vec3 v;
+    fragmentShader:`varying vec3 v; uniform float dusk;
     float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.54);}
     float noise2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.),f.x),f.y);}
     void main(){vec3 n=normalize(v),s=normalize(vec3(-.72,.36,-.54));float h=max(n.y,0.),d=max(dot(n,s),0.);
     vec3 col=mix(vec3(.69,.71,.69),vec3(.18,.37,.50),pow(h,.57));col+=vec3(.32,.17,.056)*pow(d,7.);
     vec2 p=n.xz/(h+.12)*1.95;float f=noise2(p)*.53+noise2(p*2.1)*.26+noise2(p*4.4)*.14+noise2(p*9.)*.07;
     col=mix(col,vec3(.92,.86,.75),smoothstep(.49,.78,f)*smoothstep(.015,.21,h)*.69);col+=vec3(.77,.66,.39)*smoothstep(.9985,.99965,d);
-    gl_FragColor=vec4(col,1.);
+    col=mix(col,col*vec3(.78,.45,.42)+vec3(.12,.04,.09),dusk);gl_FragColor=vec4(col,1.);
     #include <colorspace_fragment>
     }`}));
   scene.add(skydome);
@@ -241,12 +262,15 @@ export function buildWorld(scene) {
     photo.colorSpace=T.SRGBColorSpace;photo.wrapS=T.RepeatWrapping;
     const original=skydome.material;
     skydome.material=new T.ShaderMaterial({side:T.BackSide,depthWrite:false,
-      uniforms:{pano:{value:photo}},vertexShader:original.vertexShader,fragmentShader:`varying vec3 v; uniform sampler2D pano;
+      uniforms:{pano:{value:photo},dusk},vertexShader:original.vertexShader,fragmentShader:`varying vec3 v; uniform sampler2D pano; uniform float dusk;
       void main(){vec3 n=normalize(v);
       vec2 uv=vec2(fract(atan(n.z,n.x)*.15915494+.958),.5+asin(clamp(n.y,-1.,1.))*.3183099);
       vec3 c=texture2D(pano,uv).rgb*vec3(.96,.94,.90);
       vec3 haze=mix(vec3(.50,.58,.59),vec3(.72,.68,.56),max(0.,dot(n,normalize(vec3(-.72,.1,-.64)))));
-      c=mix(haze,c,smoothstep(.010,.16,n.y));gl_FragColor=vec4(c,1.);
+      c=mix(haze,c,smoothstep(.010,.16,n.y));
+      vec3 sunset=c*mix(vec3(1.10,.47,.26),vec3(.44,.37,.64),smoothstep(.02,.76,n.y));
+      float glow=pow(max(dot(n,normalize(vec3(-.68,.115,-.72))),0.),18.);
+      sunset+=vec3(.50,.16,.034)*glow;gl_FragColor=vec4(mix(c,sunset,dusk),1.);
       #include <colorspace_fragment>
       }`});
     original.dispose();
@@ -312,24 +336,78 @@ export function buildWorld(scene) {
     put(x+6,12,z-2,.72,18,.72,'#8c928b');put(x+6,17,z-2,.75,1.6,.75,'#a77561');
   }
   const water=new T.Mesh(new T.PlaneGeometry(590,590),new T.ShaderMaterial({
-    uniforms:{time:{value:0}},vertexShader:'varying vec3 wp; void main(){wp=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(wp,1.);}',
-    fragmentShader:`varying vec3 wp; uniform float time;
+    uniforms:{time:{value:0},dusk},vertexShader:'varying vec3 wp; void main(){wp=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(wp,1.);}',
+    fragmentShader:`varying vec3 wp; uniform float time,dusk;
     float waves(vec2 p){return sin(p.x*1.33+p.y*.74+time*1.2)+.5*sin(p.x*.56-p.y*2.+time*1.52)+.18*sin(5.3*p.y+p.x*1.6+time*2.1);}
     void main(){vec2 p=wp.xz;float w=waves(p*.53);vec3 norm=normalize(vec3(-.055*(waves((p+vec2(.16,0))*.53)-w)/.16,1.,-.09*(waves((p+vec2(0,.16))*.53)-w)/.16));
     vec3 eye=normalize(cameraPosition-wp),l=normalize(vec3(-.72,.36,-.54));float d=length(wp.xz-cameraPosition.xz);
     float spec=pow(max(dot(reflect(-l,norm),eye),0.),42.);
     vec3 col=mix(vec3(.064,.19,.20),vec3(.24,.37,.35),.45+.28*w);
-    col+=spec*vec3(1.15,.71,.35);col=mix(col,vec3(.62,.70,.68),smoothstep(30.,235.,d)*.82);
+    col+=spec*vec3(1.15,.71,.35);col=mix(col,vec3(.62,.70,.68),smoothstep(30.,235.,d)*.82);col=mix(col,col*vec3(.82,.56,.61),dusk);
     gl_FragColor=vec4(col,1.);
     #include <colorspace_fragment>
     }`}));
   water.position.y=-3.62;water.rotation.x=-Math.PI/2;scene.add(water);
+  // Davits suspend the rescue boat outside the starboard play boundary.
+  for(const z of [18.0,21.8]){
+    beam([11.82,.25,z],[12.48,3.75,z],.19,bone);beam([12.48,3.75,z],[14.13,3.32,z],.16,bone);
+    beam([13.94,3.36,z],[13.94,.57,z],.045,dark);
+  }
+  const rescueBoat=new T.Mesh(new T.SphereGeometry(1,24,12),mat('#cf733b'));rescueBoat.position.set(13.94,.37,19.9);
+  rescueBoat.scale.set(1.0,.72,2.98);scene.add(rescueBoat);
+  put(13.94,.77,19.98,1.39,.41,2.8,'#b96334');
+  for(const side of [-1,1])for(let i=0;i<4;i++)put(13.94+side*.704,.79,19.00+i*.59,.032,.25,.46,'#40585a');
+  put(13.94,1.02,19.98,1.52,.07,2.83,'#ded3af');
+  // Crane trolley carries a pendulum load well outside the playable deck.
+  const hook=new T.Group();hook.position.set(-43+6.4*1.48,8.4*1.48-3.7,-44);
+  const load=new T.Mesh(cube,[skins[5].door,skins[5].door,skins[5].top,skins[5].top,skins[5].side,skins[5].side]);
+  load.scale.set(7.45,2.65,2.68);load.position.y=-4.1;hook.add(load);
+  for(const dx of [-3.5,3.5])for(const dz of [-1.2,1.2]){
+    const a=new T.Vector3(dx*.20,0,dz),b=new T.Vector3(dx,-2.78,dz),sling=new T.Mesh(cube,mat(iron));
+    sling.position.copy(a).lerp(b,.5);sling.scale.set(.035,a.distanceTo(b),.035);sling.quaternion.setFromUnitVectors(axis,b.sub(a).normalize());hook.add(sling);
+  }
+  scene.add(hook);
+  const wingGeo=new T.BufferGeometry();wingGeo.setAttribute('position',new T.Float32BufferAttribute(
+    [-.08,.01,.18,.77,.17,-.07,.45,.08,-.15,.45,.08,-.15,.77,.17,-.07,1.07,.05,-.16],3));wingGeo.computeVertexNormals();
+  const birds=[],wingMat=new T.MeshBasicMaterial({color:'#c6c9c0',side:T.DoubleSide});
+  for(let i=0;i<7;i++){
+    const body=new T.Group(),wings=[];
+    for(const sign of [-1,1]){const wing=new T.Mesh(wingGeo,wingMat);wing.scale.x=sign;body.add(wing);wings.push(wing);}
+    body.scale.setScalar(.62+i%3*.14);scene.add(body);birds.push({body,wings});
+  }
   for(const [material,matrices] of batches) {
     const mesh=new T.InstancedMesh(cube,material,matrices.length);
     matrices.forEach((matrix,i)=>mesh.setMatrixAt(i,matrix));
     mesh.computeBoundingSphere();mesh.castShadow=true;mesh.receiveShadow=true;scene.add(mesh);
   }
-  return {solids,vents,bounds:{minX:-11.96,maxX:11.96,minZ:-25.65,maxZ:25.65},spawns,
-    update(timeSeconds){water.material.uniforms.time.value=timeSeconds;},
+  const fx=makeEffects(scene);
+  function setTime(mode){
+    const late=mode==='dusk';dusk.value=late?1:0;
+    sun.color.set(late?'#ff9d64':'#fff0d0');sun.intensity=late?1.75:2.1;
+    sun.position.set(-40,late?22:41,-48);sun.shadow.needsUpdate=true;
+    hemi.color.set(late?'#b6bad9':'#e2edff');hemi.groundColor.set(late?'#786b67':'#809187');hemi.intensity=late?1.1:1.25;
+    sky.set(late?'#c7a395':'#a7bab8');scene.fog.color.copy(sky);scene.fog.density=late?.008:.0063;
+  }
+  function setQuality(level){
+    const px={low:512,medium:1024,high:2048}[level]||1024;
+    sun.castShadow=level!=='low';sun.shadow.mapSize.set(px,px);
+    if(sun.shadow.map&&sun.shadow.map.width!==px){sun.shadow.map.dispose();sun.shadow.map=null;}
+    sun.shadow.needsUpdate=true;fx.setQuality(level);
+    birds.forEach(({body},i)=>{body.visible=i<(level==='low'?2:level==='medium'?4:7);});
+  }
+  setTime('day');
+  let lastTime=0;
+  return {solids,vents,bounds:{minX:-11.96,maxX:11.96,minZ:-25.65,maxZ:25.65},spawns,fx,setTime,setQuality,
+    update(timeSeconds,dt){
+      dt=Number.isFinite(dt)?dt:Math.max(0,Math.min(.06,timeSeconds-lastTime));lastTime=timeSeconds;
+      water.material.uniforms.time.value=timeSeconds;fx.update(dt);
+      hook.rotation.z=Math.sin(timeSeconds*.64)*.044;hook.rotation.x=Math.sin(timeSeconds*.39)*.022;
+      birds.forEach(({body,wings},i)=>{
+        if(!body.visible)return;const t=timeSeconds*.067+i*1.5;
+        body.position.set(-7+Math.cos(t)*(19+i*1.25),12+i*.65+Math.sin(t*2)*.7,-8+Math.sin(t)*(26+i*.64));
+        body.rotation.y=-t;const flap=.17+Math.sin(timeSeconds*4.2+i)*.36;
+        wings[0].rotation.z=-flap;wings[1].rotation.z=flap;
+      });
+    },
   };
 }
