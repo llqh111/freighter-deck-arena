@@ -1,4 +1,4 @@
-import {buildArmory} from './armory-models.js';
+import {buildArmory} from './armory-models.js?v=7';
 import * as T from './three.module.js';
 
 function brushedSurface(fabric = false) {
@@ -257,8 +257,8 @@ export function createViewModel() {
     rig.rotation.set(.045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*.52+throwing*.85+swayY*1.4,
       .190*idle-lower*.19-slash*(heavy?.16:.97)-inspection*.57-swayX*1.5,
       -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+slash*(heavy?.73:-.69)-inspection*.84-tilt);
-    // Once magnified, the HUD supplies the full-field AWM reticle.
-    current.root.visible=!(id==='awm'&&aim>.94);
+    // Once magnified, the HUD supplies the full-field AWM reticle immediately like CS AWP.
+    current.root.visible=!(id==='awm'&&values.aiming&&loading<0);
   }
   update(0);
   return {scene,camera,update,equip,reload,shoot,

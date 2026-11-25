@@ -25,6 +25,36 @@
 #hit.head{background:linear-gradient(#ffd466,#ffd466) center top/2.5px 7px,linear-gradient(#ffd466,#ffd466) center bottom/2.5px 7px,linear-gradient(#ffd466,#ffd466) left center/7px 2.5px,linear-gradient(#ffd466,#ffd466) right center/7px 2.5px;background-repeat:no-repeat;filter:drop-shadow(0 0 5px #ffc566)}
 #hit.kill{width:32px;height:32px;background:linear-gradient(#ff5738,#ff5738) center top/3px 8px,linear-gradient(#ff5738,#ff5738) center bottom/3px 8px,linear-gradient(#ff5738,#ff5738) left center/8px 3px,linear-gradient(#ff5738,#ff5738) right center/8px 3px;background-repeat:no-repeat;filter:drop-shadow(0 0 6px #ff5738)}
 #hit.kill.head{background:linear-gradient(#ffe066,#ff5738) center top/3px 9px,linear-gradient(#ff5738,#ffe066) center bottom/3px 9px,linear-gradient(#ffe066,#ff5738) left center/9px 3px,linear-gradient(#ff5738,#ffe066) right center/9px 3px;background-repeat:no-repeat;filter:drop-shadow(0 0 8px #ff8a3d)}
-#callout.head{border-top-color:#ffd466;box-shadow:0 8px 24px #00000070,0 0 14px #ffd46638}
-#callout.multi{border-top-color:#ff6342;box-shadow:0 8px 26px #00000080,0 0 18px #ff573848}
+#callout.head{border-top-color:#ffd466;background:linear-gradient(180deg,#2a2112e6,#12181ee6);box-shadow:0 8px 26px #00000080,0 0 18px #ffd46652}
+#callout.head #killTitle{color:#ffe066;text-shadow:0 0 12px #ffc84499}
+#callout.multi{border-top-color:#ff4c32;background:linear-gradient(180deg,#2e1414e6,#12181ee6);box-shadow:0 8px 28px #00000088,0 0 22px #ff4c3266}
+#callout.multi #killTitle{color:#ff6b4a;text-shadow:0 0 14px #ff4c32aa}
+#callout.first{border-top-color:#66e0ff;background:linear-gradient(180deg,#112634e6,#101a22e6);box-shadow:0 8px 26px #00000080,0 0 18px #66e0ff55}
+#callout.first #killTitle{color:#7ee6ff;text-shadow:0 0 12px #52d4ff99}
+#callout.knife{border-top-color:#98ffd9;box-shadow:0 8px 24px #00000080,0 0 16px #58ffbe4d}
+#killTitle{font:900 italic 19px/1.1 "Arial Black","Barlow","Microsoft YaHei",sans-serif;letter-spacing:.11em}
 .ammoBox.lowammo #ammo,.ammoBox.lowammo #gunstatus{color:#ff7252}
+#friendTags small{left:0;top:0;will-change:transform}
+/* Valorant / CS AWP hybrid tactical scope & holographic ADS */
+#scopeOverlay{background:radial-gradient(circle,transparent 38%,rgba(4,9,12,.38) 54%,rgba(3,6,8,.92) 72%)}
+.scopeRing{border:3px solid #0e1417;box-shadow:0 0 0 200vmax #05080a,inset 0 0 3.2vmin #000c,inset 0 0 0 1px #5ad8ff24}
+.scopeRing::after{display:none}
+.scopeRing i{height:1px;background:linear-gradient(90deg,#080c0d 0,#080c0d 46%,transparent 48.5%,transparent 51.5%,#080c0d 54%,#080c0d 100%);transition:filter .06s}
+.scopeRing b{width:1px;background:linear-gradient(180deg,#080c0d 0,#080c0d 46%,transparent 48.5%,transparent 51.5%,#080c0d 54%,#080c0d 100%);transition:filter .06s}
+.scopeRing::before{content:"";position:absolute;inset:0;border-radius:50%;background:repeating-linear-gradient(90deg,transparent 0 18px,#0a0e10aa 18px 19px) center/42% 7px no-repeat,repeating-linear-gradient(180deg,transparent 0 18px,#0a0e10aa 18px 19px) center/7px 42% no-repeat;opacity:.75}
+#scopeOverlay:not(.steady) .scopeRing i,#scopeOverlay:not(.steady) .scopeRing b{filter:blur(1.4px);opacity:.72}
+.scopeDot{position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;transform:translate(-50%,-50%) scale(1.7);background:rgba(255,64,78,.28);box-shadow:0 0 10px rgba(255,64,78,.25);transition:transform .07s,background .07s,box-shadow .07s}
+#scopeOverlay.steady .scopeDot{transform:translate(-50%,-50%) scale(1);background:#ff3246;box-shadow:0 0 6px #ff2e44,0 0 14px #ff2e44aa}
+#scopeZoom{position:absolute;right:19%;bottom:21%;font:700 12px/1 Consolas,monospace;letter-spacing:.12em;color:#8ee8ffcc;text-shadow:0 0 8px #3dc8ff66;padding:3px 6px;border:1px solid #8ee8ff3a;background:#07131a88}
+#adsOverlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;background:radial-gradient(circle,transparent 48%,rgba(5,12,18,.28) 100%);--kick:0px}
+.adsFrame{position:relative;width:74px;height:74px;display:grid;place-items:center;transform:translateY(var(--kick))}
+.adsFrame i{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(118,242,255,.34);clip-path:polygon(0 18%,24% 18%,24% 82%,0 82%,0 100%,100% 100%,100% 82%,76% 82%,76% 18%,100% 18%,100% 0,0 0);box-shadow:0 0 12px rgba(96,232,255,.22)}
+.adsFrame b{width:5px;height:5px;border-radius:50%;background:#ff3b4e;box-shadow:0 0 5px #ff3b4e,0 0 12px #ff3b4eaa}
+#adsOverlay[data-weapon=m4a1] .adsFrame i{border-color:rgba(134,255,222,.38);box-shadow:0 0 12px rgba(102,255,214,.24)}
+#adsOverlay[data-weapon=m4a1] .adsFrame b{background:#7affdf;box-shadow:0 0 6px #6effdb,0 0 14px #52ffd2aa}
+#adsOverlay[data-weapon=mp5] .adsFrame{width:56px;height:56px}
+#adsOverlay[data-weapon=mp5] .adsFrame i{border-radius:8px;transform:rotate(45deg);border-color:rgba(130,248,255,.36);clip-path:none}
+#adsOverlay[data-weapon=mp5] .adsFrame b{width:4.5px;height:4.5px;background:#78ffe2;box-shadow:0 0 6px #64ffd8,0 0 12px #48ffd0aa}
+#adsOverlay[data-weapon=deagle] .adsFrame{width:40px;height:40px}
+#adsOverlay[data-weapon=deagle] .adsFrame i{border-color:rgba(255,210,118,.28);box-shadow:none}
+#adsOverlay[data-weapon=deagle] .adsFrame b{width:4px;height:4px;background:#ffd466;box-shadow:0 0 6px #ffc94a}

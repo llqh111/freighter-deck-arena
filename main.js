@@ -1,15 +1,19 @@
-import {names,teams,groups,choices,selectors,board,weaponIcon} from './lobby.js';
+import {names,teams,groups,choices,selectors,board,weaponIcon} from './lobby.js?v=7';
 import * as T from './three.module.js';
-import {buildWorld} from './world.js?v=6';
-import {createMatch} from './match.js?v=6';
-import {createViewModel} from './viewmodel.js?v=6';
+import {buildWorld} from './world.js?v=7';
+import {createMatch} from './match.js?v=7';
+import {createViewModel} from './viewmodel.js?v=7';
 
-import {createDeckAudio} from './deck-audio.js?v=6';
+import {createDeckAudio} from './deck-audio.js?v=7';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
+const hpBarFill=document.querySelector('.hpbar i'), ammoBox=document.querySelector('.ammoBox');
+function put(id,val){const e=$(id),s=String(val);if(e.textContent!==s)e.textContent=s;}
+addEventListener('pointerdown',()=>deckAudio.prime(),{once:true});
+addEventListener('keydown',()=>deckAudio.prime(),{once:true});
 const canvas=$('viewport'), panel=$('panel'), coarse=matchMedia('(pointer:coarse)').matches;
-let renderer,world,match,view, elapsed=0, mode='menu', dialogKind='',lockPending=false;
+let renderer,world,match,view, elapsed=0, mode='menu', dialogKind='',lockPending=false, frameDirty=true, lastIdleRender=0;
 let sensitivity=1, sound=true, draggingMouse=false, touchLook=null, locker=0;
 try {sensitivity=Number(localStorage.getItem('df-sensitivity'))||1;sound=localStorage.getItem('df-sound')!=='off';}catch{}
 const scene=new T.Scene(), camera=new T.PerspectiveCamera(72,1,.06,550);
@@ -22,7 +26,7 @@ function icon(key){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentC
 function setSound(){deckAudio.enable(sound && mode==='playing');match?.input('sound',sound);if(!sound)globalThis.speechSynthesis?.cancel();$('sound').innerHTML=icon(sound?'sound':'mute');$('sound').setAttribute('aria-label',sound?'关闭声音':'开启声音');$('sound').setAttribute('aria-pressed',String(sound));try{localStorage.setItem('df-sound',sound?'on':'off');}catch{}}
 $('options').innerHTML=icon('options');setSound();
 $('sound').onclick=()=>{sound=!sound;setSound();};
-function setMode(next){fireFingers.clear();mobileCrouch=false;document.querySelector('[data-touch=crouch]').setAttribute('aria-pressed','false');if(next!=='playing')globalThis.speechSynthesis?.cancel();$('roster').hidden=true;mode=next;draggingMouse=false;touchLook=null;deckAudio.enable(sound && next==='playing');document.body.dataset.mode=mode;$('hud').hidden=mode==='menu';$('touch').hidden=!(coarse&&mode==='playing');}
+function setMode(next){fireFingers.clear();mobileCrouch=false;document.querySelector('[data-touch=crouch]').setAttribute('aria-pressed','false');if(next!=='playing')globalThis.speechSynthesis?.cancel();$('roster').hidden=true;mode=next;frameDirty=true;draggingMouse=false;touchLook=null;deckAudio.enable(sound && next==='playing');document.body.dataset.mode=mode;$('hud').hidden=mode==='menu';$('touch').hidden=!(coarse&&mode==='playing');}
 function showDialog(kind,sub,title,html){
   dialogKind=kind;panel.dataset.dialog=kind;$('panelSub').textContent=sub;$('panelTitle').textContent=title;$('panelContent').innerHTML=html;
   if(!panel.open)panel.showModal();
@@ -41,7 +45,7 @@ function applyPref(key){
   if(renderer&&(key==='tod'||key==='quality'))renderer.shadowMap.needsUpdate=true;
   if(key==='fov')match?.input('fov',prefs.fov);
   if(key==='vol')deckAudio.setVolume(prefs.vol);
-  save();summary();
+  frameDirty=true;save();summary();
 }
 function bindPrefs(){
   for(const btn of panel.querySelectorAll('[data-pref]'))btn.onclick=()=>{
@@ -73,12 +77,14 @@ function settings(){
 }
 $('battleSetup').onclick=setup;$('armory').onclick=()=>armory(false);summary();
 $('controls').onclick=$('options').onclick=settings;
-function drawMap(target,state=null,horizontal=false){
-  if(!world||!target)return;
-  const ctx=target.getContext('2d'),w=target.width,h=target.height;
-  const b=world.bounds,m=8,dx=b.maxX-b.minX,dz=b.maxZ-b.minZ;
+const mapCache=new WeakMap();
+function staticMapLayer(target,horizontal){
+  const w=target.width,h=target.height,cached=mapCache.get(target);
+  if(cached&&cached.w===w&&cached.h===h&&cached.horizontal===horizontal)return cached;
+  const off=document.createElement('canvas');off.width=w;off.height=h;
+  const ctx=off.getContext('2d'),b=world.bounds,m=8,dx=b.maxX-b.minX,dz=b.maxZ-b.minZ;
   const sc=Math.min((w-2*m)/(horizontal?dz:dx),(h-2*m)/(horizontal?dx:dz));
-  ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(w/2,h/2);if(horizontal)ctx.rotate(-Math.PI/2);ctx.scale(sc,sc);
+  ctx.save();ctx.translate(w/2,h/2);if(horizontal)ctx.rotate(-Math.PI/2);ctx.scale(sc,sc);
   ctx.fillStyle='#203138';ctx.strokeStyle='#8a9c95';ctx.lineWidth=1/sc;
   ctx.fillRect(-dx/2,-dz/2,dx,dz);ctx.strokeRect(-dx/2,-dz/2,dx,dz);
   for(const s of world.solids){
@@ -97,9 +103,17 @@ function drawMap(target,state=null,horizontal=false){
     ctx.setLineDash([.8,.65]);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(length-.8,0);ctx.stroke();
     ctx.beginPath();ctx.moveTo(length,0);ctx.lineTo(length-1.5,-.82);ctx.lineTo(length-1.5,.82);ctx.closePath();ctx.fill();ctx.restore();
   }
-  if(state){for(const a of state.actors){if(!a.alive||a.team!==state.team&&!(a.radarT>0))continue;ctx.beginPath();ctx.fillStyle=a.team===state.team?'#8ed1ee':'#ff8170';ctx.arc(a.x,a.z,.75,0,7);ctx.fill();}
-    if(state.alive){const p=state.player;ctx.translate(p.x,p.z);ctx.rotate(-p.yaw);ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,9.5,-Math.PI/2-.52,-Math.PI/2+.52);ctx.closePath();ctx.fillStyle='rgba(255,206,100,.14)';ctx.fill();ctx.beginPath();ctx.moveTo(0,-1.55);ctx.lineTo(.95,.90);ctx.lineTo(0,.55);ctx.lineTo(-.95,.90);ctx.closePath();ctx.fillStyle='#ffce64';ctx.fill();}
-  }
+  ctx.restore();
+  const entry={w,h,horizontal,sc,layer:off};mapCache.set(target,entry);return entry;
+}
+function drawMap(target,state=null,horizontal=false){
+  if(!world||!target)return;
+  const ctx=target.getContext('2d'),{w,h,sc,layer}=staticMapLayer(target,horizontal);
+  ctx.clearRect(0,0,w,h);ctx.drawImage(layer,0,0);
+  if(!state)return;
+  ctx.save();ctx.translate(w/2,h/2);if(horizontal)ctx.rotate(-Math.PI/2);ctx.scale(sc,sc);
+  for(const a of state.actors){if(!a.alive||a.team!==state.team&&!(a.radarT>0))continue;ctx.beginPath();ctx.fillStyle=a.team===state.team?'#8ed1ee':'#ff8170';ctx.arc(a.x,a.z,.75,0,7);ctx.fill();}
+  if(state.alive){const p=state.player;ctx.translate(p.x,p.z);ctx.rotate(-p.yaw);ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,9.5,-Math.PI/2-.52,-Math.PI/2+.52);ctx.closePath();ctx.fillStyle='rgba(255,206,100,.14)';ctx.fill();ctx.beginPath();ctx.moveTo(0,-1.55);ctx.lineTo(.95,.90);ctx.lineTo(0,.55);ctx.lineTo(-.95,.90);ctx.closePath();ctx.fillStyle='#ffce64';ctx.fill();}
   ctx.restore();
 }
 $('openMap').onclick=()=>{if(!world)return;showDialog('map','DECK PLAN','甲板平面图','<canvas width="760" height="390" class="fullchart" id="fullChart"></canvas><div class="legend"><span><b style="color:var(--ice)">■</b>保卫者舱室</span><span><b style="color:var(--red)">■</b>潜伏者舱室</span><span><b style="color:var(--gold)">➤</b>管道出口方向</span></div>');drawMap($('fullChart'),null,true);};
@@ -136,71 +150,122 @@ function clearAnnouncement(){
   calloutAnimation?.cancel();
   $('callout').hidden=true;
 }
+let cfVoice=null;
+function pickCfVoice(){
+  if(cfVoice||!window.speechSynthesis?.getVoices)return cfVoice;
+  const voices=speechSynthesis.getVoices();
+  cfVoice=voices.find(v=>/^en[-_]US/i.test(v.lang))||voices.find(v=>/^en/i.test(v.lang))||null;
+  return cfVoice;
+}
+window.speechSynthesis?.addEventListener?.('voiceschanged',()=>{cfVoice=null;pickCfVoice();});
 function announceHit(data){
   if(!data.kill)return;
   const banner=$('callout');
-  const multiNames=['','','双杀','三连杀','四连杀','五连杀'];
-  const title=data.multi>1?(multiNames[data.multi]||data.multi+' 连杀'):data.head?'爆头击杀':data.wall?'穿箱击杀':data.weapon==='knife'?'近身击杀':data.weapon==='he'?'手雷击杀':'确认击杀';
+  const cfMultiEn=['','','DOUBLE KILL','MULTI KILL','ULTRA KILL','UNBREAKABLE','UNBELIEVABLE','YOU WANNA PIECE OF ME?','COME GET SOME!'];
+  const cfMultiZh=['','','双杀','三连杀','四连杀','五连杀','六连杀','七连杀','超神连杀'];
+  const cfVoiceEn=['','','Double Kill','Multi Kill','Ultra Kill','Unbreakable','Unbelievable','You wanna piece of me','Come get some'];
+  let title='KILL', voiceLine='';
   const tags=[];
-  if(data.head&&data.multi>1)tags.push('爆头');
-  if(data.wall&&data.multi>1)tags.push('穿箱');
-  if(data.weapon==='knife'&&data.multi>1)tags.push('近战');
+  if(data.multi>1){
+    const idx=Math.min(data.multi,cfMultiEn.length-1);
+    title=cfMultiEn[idx];
+    voiceLine=cfVoiceEn[idx];
+    tags.push(data.multi>=cfMultiZh.length?data.multi+' 连杀':cfMultiZh[idx]);
+    if(data.first)tags.push('首杀');
+    if(data.head)tags.push('黄金爆头');
+    if(data.wall)tags.push('穿箱');
+    if(data.weapon==='knife')tags.push('军刀');
+    else if(data.weapon==='he')tags.push('手雷');
+  }else if(data.first){
+    title='FIRST KILL';voiceLine='First Kill';
+    tags.push('首杀');
+    if(data.head)tags.push('黄金爆头');
+    if(data.weapon==='knife')tags.push('军刀');
+    else if(data.weapon==='he')tags.push('手雷');
+  }else if(data.head){
+    title='HEADSHOT';voiceLine='Headshot';
+    tags.push(data.wall?'穿箱爆头':'黄金爆头');
+  }else if(data.weapon==='knife'){
+    title='KNIFE KILL';voiceLine='Knife Kill';
+    tags.push('军刀击杀');
+  }else if(data.weapon==='he'){
+    title='GRENADE KILL';voiceLine='Grenade Kill';
+    tags.push('手雷击杀');
+  }else if(data.wall){
+    title='WALL SHOT';voiceLine='Wall Shot';
+    tags.push('穿箱击杀');
+  }else{
+    title='KILL';
+    tags.push('击杀');
+  }
   if(data.victim)tags.push(data.victim);
-  $('killTitle').textContent=title;
-  $('killDetail').textContent=tags.join(' · ');
+  put('killTitle',title);
+  put('killDetail',tags.join(' · '));
   banner.classList.toggle('head',!!data.head);
   banner.classList.toggle('multi',data.multi>1);
+  banner.classList.toggle('first',!!data.first&&data.multi<=1);
+  banner.classList.toggle('knife',data.weapon==='knife'&&data.multi<=1&&!data.head);
   banner.hidden=false;
   calloutAnimation?.cancel();
   calloutAnimation=banner.animate([
-    {opacity:0,transform:'translate(-50%,10px) scale(.86)'},
-    {opacity:1,transform:'translate(-50%,-2px) scale(1.05)',offset:.11},
+    {opacity:0,transform:'translate(-50%,12px) scale(.82)'},
+    {opacity:1,transform:'translate(-50%,-3px) scale(1.08)',offset:.10},
     {opacity:1,transform:'translate(-50%,0) scale(1)',offset:.22},
     {opacity:1,transform:'translate(-50%,0) scale(1)',offset:.76},
     {opacity:0,transform:'translate(-50%,-6px) scale(.97)'}
-  ],{duration:data.multi>1?2100:1850,fill:'forwards'});
-  deckAudio.cue(data.head?'headshot':'kill',{multi:data.multi,head:data.head,weapon:data.weapon});
-  if(sound&&prefs.vol>0&&(data.head||data.multi>1)&&window.speechSynthesis&&typeof SpeechSynthesisUtterance==='function'){
-    const line=new SpeechSynthesisUtterance(data.multi>1?(multiNames[data.multi]||data.multi+' 连杀'):'爆头');line.lang='zh-CN';line.volume=prefs.vol*.55;line.rate=1.18;
+  ],{duration:data.multi>1||data.first?2200:1850,fill:'forwards'});
+  deckAudio.cue(data.head?'headshot':'kill',{multi:data.multi,head:data.head,weapon:data.weapon,first:data.first});
+  if(sound&&prefs.vol>0&&voiceLine&&window.speechSynthesis&&typeof SpeechSynthesisUtterance==='function'){
+    const line=new SpeechSynthesisUtterance(voiceLine);
+    const v=pickCfVoice();if(v)line.voice=v;
+    line.lang=v?.lang||'en-US';line.volume=prefs.vol*.72;line.rate=data.multi>=4?1.08:1.02;line.pitch=.88;
     speechSynthesis.cancel();speechSynthesis.speak(line);
   }
 }
-let rackKey='',boardKey='',lastBearing=null;
+let rackKey='',boardKey='',lastBearing=null,lastHpPct=-1;
 const labelPosition=new T.Vector3();
 function friendTags(state){
-  const group=$('friendTags');const mates=state.actors.filter(a=>a.alive&&a.team===state.team);
-  while(group.children.length<mates.length)group.append(document.createElement('small'));
-  for(let i=0;i<group.children.length;i++){
-    const tag=group.children[i],a=mates[i];if(!a){tag.hidden=true;continue;}
+  const group=$('friendTags'),w=innerWidth,h=innerHeight;
+  let idx=0;
+  for(const a of state.actors){
+    if(!a.alive||a.team!==state.team)continue;
+    while(group.children.length<=idx)group.append(document.createElement('small'));
+    const tag=group.children[idx++];
     labelPosition.set(a.x,a.y+1.98,a.z).project(camera);
-    tag.hidden=labelPosition.z<0||labelPosition.z>1||Math.abs(labelPosition.x)>1||Math.abs(labelPosition.y)>1;
-    if(!tag.hidden){tag.textContent=a.name;tag.style.left=(50+50*labelPosition.x)+'%';tag.style.top=(50-50*labelPosition.y)+'%';}
+    const hide=labelPosition.z<0||labelPosition.z>1||Math.abs(labelPosition.x)>1||Math.abs(labelPosition.y)>1;
+    if(tag.hidden!==hide)tag.hidden=hide;
+    if(!hide){
+      if(tag.textContent!==a.name)tag.textContent=a.name;
+      const px=((.5+.5*labelPosition.x)*w).toFixed(1),py=((.5-.5*labelPosition.y)*h).toFixed(1);
+      tag.style.transform='translate3d('+px+'px,'+py+'px,0) translate(-50%,-100%)';
+    }
   }
+  for(let i=idx;i<group.children.length;i++)if(!group.children[i].hidden)group.children[i].hidden=true;
 }
 function hudEvent(type,data){
   if(type==='sfx'){deckAudio.sfx(data);return;}
 
   if(type==='hud'){
-    for(const [id,val] of [['blue',String(data.score[0]).padStart(2,'0')],['red',String(data.score[1]).padStart(2,'0')],['hp',data.hp],['ammo',data.ammo],['reserve',data.reserve]]) $(id).textContent=val;
-    $('goalText').textContent='目标 '+data.target;$('weaponName').textContent=names[data.weapon];$('armor').textContent=data.armor;
-    if(data.weapon==='knife')$('ammo').textContent='∞';
+    put('blue',String(data.score[0]).padStart(2,'0'));put('red',String(data.score[1]).padStart(2,'0'));
+    put('hp',data.hp);put('ammo',data.weapon==='knife'?'∞':data.ammo);put('reserve',data.reserve);
+    put('goalText','目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
     $('scopeOverlay').hidden=!data.zoom||!data.alive;
-    $('aimName').textContent=data.aimName||'';$('aimName').style.color=data.aimTeam===data.team?'var(--ice)':'var(--red)';
-    $('protection').textContent=data.protect>0&&data.alive?'出生保护 '+data.protect.toFixed(1)+' s':'';
+    $('adsOverlay').hidden=!data.aiming||!!data.zoom||!data.alive;
+    put('aimName',data.aimName||'');$('aimName').style.color=data.aimTeam===data.team?'var(--ice)':'var(--red)';
+    put('protection',data.protect>0&&data.alive?'出生保护 '+data.protect.toFixed(1)+' s':'');
     $('hud').classList.toggle('lowhp',data.hp<30&&data.alive);$('viewport').classList.toggle('spectate',!data.alive);
     const key=data.inventory.map(w=>w.id).join('/')+data.slot;
     if(key!==rackKey){rackKey=key;$('slotRack').innerHTML=data.inventory.map((w,i)=>'<button data-slot="'+i+'" class="'+(data.slot===i?'selected':'')+'" aria-label="'+names[w.id]+'"><b>'+(i+1)+'</b>'+weaponIcon(w.id)+'</button>').join('');}
     if(!$('roster').hidden){const html=board(data);if(html!==boardKey){boardKey=html;$('roster').innerHTML=html;}}
     if(lastBearing!==null)$('bearing').style.transform='translate(-50%,-50%) rotate('+(data.player.yaw-lastBearing)+'rad)';
-    friendTags(data);
-    const s=Math.ceil(data.remaining);$('clock').textContent=[Math.floor(s/60),s%60].map(v=>String(v).padStart(2,'0')).join(':');
-    document.querySelector('.hpbar i').style.width=data.hp+'%';
+    const s=Math.ceil(data.remaining);put('clock',[Math.floor(s/60),s%60].map(v=>String(v).padStart(2,'0')).join(':'));
+    if(data.hp!==lastHpPct){lastHpPct=data.hp;hpBarFill.style.width=data.hp+'%';}
     const lowAmmo=data.alive&&data.maxAmmo>1&&data.ammo<=Math.max(1,Math.ceil(data.maxAmmo*.25));
-    document.querySelector('.ammoBox')?.classList.toggle('lowammo',lowAmmo);
-    $('gunstatus').textContent=data.reloading?'正在换弹 '+Math.round((data.reloadProgress||0)*100)+'%':data.aiming?'瞄准':data.weapon==='knife'?'右键重击':data.weapon==='he'?'投掷':!data.ammo?'弹匣已空':lowAmmo?'弹药不足':'就绪';
+    ammoBox?.classList.toggle('lowammo',lowAmmo);
+    put('gunstatus',data.reloading?'正在换弹 '+Math.round((data.reloadProgress||0)*100)+'%':data.aiming?'瞄准':data.weapon==='knife'?'右键重击':data.weapon==='he'?'投掷':!data.ammo?'弹匣已空':lowAmmo?'弹药不足':'就绪');
     $('cross').hidden=data.aiming||!data.alive;$('respawn').hidden=data.alive||data.phase==='ended';
     $('slotRack').hidden=!data.alive;
-    if(!data.alive)$('respawn').textContent='被 '+data.killedBy+' 击倒 · '+Math.ceil(data.respawnIn)+' 秒后复活';drawMap($('radar'),data);
+    if(!data.alive)put('respawn','被 '+data.killedBy+' 击倒 · '+Math.ceil(data.respawnIn)+' 秒后复活');drawMap($('radar'),data);
   }else if(type==='hit'||type==='hurt'){
     if(type==='hit'){
       announceHit(data);
@@ -318,10 +383,12 @@ for(const btn of document.querySelectorAll('[data-touch]')){
 function resize(){
   const w=innerWidth,h=innerHeight,aspect=w/h;
   renderer.setPixelRatio(Math.min(devicePixelRatio,prefs.quality==='low'?1:prefs.quality==='medium'?1.3:1.8));renderer.setSize(w,h,false);
-  for(const c of [camera,fly]){c.aspect=aspect;c.updateProjectionMatrix();}view.resize(aspect);
+  for(const c of [camera,fly]){c.aspect=aspect;c.updateProjectionMatrix();}view.resize(aspect);frameDirty=true;
 }
 function render(time){
   const t=time*.001,dt=Math.min(.08,Math.max(0,t-elapsed));elapsed=t;
+  if((mode==='paused'||mode==='ended')&&!frameDirty&&time-lastIdleRender<66)return;
+  if(mode==='paused'||mode==='ended'){lastIdleRender=time;frameDirty=false;}
   world.update(t,dt);
   if(mode==='menu'){
     const drift=Math.sin(t*.07)*.6;
@@ -333,10 +400,46 @@ function render(time){
       const s=match.state;
       const focalPixels=innerHeight/(2*Math.tan(camera.fov*Math.PI/360));
       $('cross').style.setProperty('--gap',Math.min(38,s.spread*focalPixels).toFixed(1)+'px');
+      const scoped=s.alive&&s.zoom>0;
+      const scopeEl=$('scopeOverlay');
+      if(scopeEl.hidden===scoped)scopeEl.hidden=!scoped;
+      if(scoped){
+        scopeEl.classList.toggle('steady',s.spread<.012);
+        put('scopeZoom',s.zoom===2?'5.0x':'2.5x');
+      }
+      const adsActive=s.alive&&s.aiming&&!s.zoom;
+      const adsEl=$('adsOverlay');
+      if(adsEl.hidden===adsActive)adsEl.hidden=!adsActive;
+      if(adsActive){
+        if(adsEl.dataset.weapon!==s.weapon)adsEl.dataset.weapon=s.weapon;
+        const kick=Math.min(10,(s.player.burst?.pitch||0)*140);
+        adsEl.style.setProperty('--kick',(-kick).toFixed(1)+'px');
+      }
+      friendTags(s);
       deckAudio.step(dt,{walking:s.player.walking,sprint:s.sprinting,grounded:s.grounded,alive:s.alive,hp:s.hp,quiet:s.crouching||s.player.quiet});
     }
     renderer.clear();renderer.render(scene,camera);
     if(match.state.alive&&!match.state.zoom){renderer.clearDepth();renderer.render(view.scene,view.camera);}
+  }
+}
+async function prewarm(){
+  const cleanup=match.warmup?.();
+  const savedVis=[];
+  view.scene.traverse(o=>{savedVis.push([o,o.visible]);o.visible=true;});
+  try{
+    if(renderer.compileAsync&&renderer.extensions.has('KHR_parallel_shader_compile')){
+      await Promise.race([
+        (async()=>{await renderer.compileAsync(scene,camera);await renderer.compileAsync(view.scene,view.camera);})(),
+        new Promise(r=>setTimeout(r,2500))
+      ]);
+    }else{
+      renderer.compile(scene,camera);
+      renderer.compile(view.scene,view.camera);
+    }
+  }catch{}
+  finally{
+    for(const [o,v] of savedVis)o.visible=v;
+    cleanup?.();
   }
 }
 async function init(){
@@ -344,6 +447,7 @@ async function init(){
     renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});renderer.autoClear=false;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     world=buildWorld(scene);view=createViewModel();match=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov'])applyPref(key);setSound();resize();
+    await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);
     $('deploy').disabled=false;$('deployLabel').textContent='开始对局';$('readyText').textContent='甲板就绪';addEventListener('resize',resize);
   }catch(e){console.error(e);$('deployLabel').textContent='无法载入';$('readyText').textContent='3D 场景未能启动';notify('无法启动 3D 画面。请在开启硬件加速的 Chrome 或 Edge 中打开。');}

@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {makeEffects} from './deck-effects.js';
+import {makeEffects} from './deck-effects.js?v=7';
 
 // Panoramic sky photography: Kloofendal 48d Partly Cloudy, Poly Haven (CC0).
 // https://polyhaven.com/a/kloofendal_48d_partly_cloudy
