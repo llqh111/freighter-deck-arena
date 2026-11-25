@@ -194,6 +194,7 @@ export function createViewModel() {
   for (const entry of Object.values(arsenal)){rig.add(entry.root);entry.root.visible=false;}
   let id='m4a1', current=arsenal[id];current.root.visible=true;
   let phase=0,recoil=0,spark=0,aim=0,walk=0,loading=-1,reloadSignal=false;
+  let swayX=0,swayY=0,tilt=0;
   let aspect=1.7,draw=0,gesture=1,gestureDuration=.5,kind='',inspectT=1,loadDuration=1.45;
   const ease=(x,y,dt,rate)=>T.MathUtils.lerp(x,y,1-Math.exp(-rate*dt));
   function equip(value) {
@@ -235,6 +236,10 @@ export function createViewModel() {
     const item=id==='knife'||id==='he';
     aim=ease(aim,values.aiming&&!item&&loading<0?1:0,dt,15);
     walk=ease(walk,values.moving?1:0,dt,10);
+    const swayScale=1-.76*aim;
+    swayX=ease(swayX,T.MathUtils.clamp((values.swayX||0)*swayScale,-.032,.032),dt,14);
+    swayY=ease(swayY,T.MathUtils.clamp((values.swayY||0)*swayScale,-.026,.026),dt,14);
+    tilt=ease(tilt,T.MathUtils.clamp((values.strafe||0)*swayScale,-1,1)*.048,dt,11);
     phase+=dt*(values.moving?10:1.8);recoil*=Math.exp(-dt*24);spark-=dt;
     flash.visible=spark>0&&!item;
     if(current.action){
@@ -246,12 +251,12 @@ export function createViewModel() {
     const offset=Math.min(current.hipX,.160*aspect),idle=1-aim;
     const slash=id==='knife'?movement:0,throwing=id==='he'?movement:0;
     const heavy=kind==='heavy';
-    rig.position.set(idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034-slash*(heavy?.09:.18)-inspection*.10,
-      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003-draw*.24+inspection*.027+throwing*.14,
+    rig.position.set(idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034-slash*(heavy?.09:.18)-inspection*.10-swayX,
+      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003-draw*.24+inspection*.027+throwing*.14+swayY,
       T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*(aim>.6?.021:.043)+lower*.038+draw*.07-slash*(heavy?.23:.079)-throwing*.12);
-    rig.rotation.set(.045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*.52+throwing*.85,
-      .190*idle-lower*.19-slash*(heavy?.16:.97)-inspection*.57,
-      -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+slash*(heavy?.73:-.69)-inspection*.84);
+    rig.rotation.set(.045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*.52+throwing*.85+swayY*1.4,
+      .190*idle-lower*.19-slash*(heavy?.16:.97)-inspection*.57-swayX*1.5,
+      -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+slash*(heavy?.73:-.69)-inspection*.84-tilt);
     // Once magnified, the HUD supplies the full-field AWM reticle.
     current.root.visible=!(id==='awm'&&aim>.94);
   }

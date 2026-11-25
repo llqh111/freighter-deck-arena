@@ -1,10 +1,10 @@
 import {names,teams,groups,choices,selectors,board,weaponIcon} from './lobby.js';
 import * as T from './three.module.js';
-import {buildWorld} from './world.js?v=5';
-import {createMatch} from './match.js?v=5';
-import {createViewModel} from './viewmodel.js?v=5';
+import {buildWorld} from './world.js?v=6';
+import {createMatch} from './match.js?v=6';
+import {createViewModel} from './viewmodel.js?v=6';
 
-import {createDeckAudio} from './deck-audio.js?v=5';
+import {createDeckAudio} from './deck-audio.js?v=6';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -98,7 +98,7 @@ function drawMap(target,state=null,horizontal=false){
     ctx.beginPath();ctx.moveTo(length,0);ctx.lineTo(length-1.5,-.82);ctx.lineTo(length-1.5,.82);ctx.closePath();ctx.fill();ctx.restore();
   }
   if(state){for(const a of state.actors){if(!a.alive||a.team!==state.team&&!(a.radarT>0))continue;ctx.beginPath();ctx.fillStyle=a.team===state.team?'#8ed1ee':'#ff8170';ctx.arc(a.x,a.z,.75,0,7);ctx.fill();}
-    if(state.alive){const p=state.player;ctx.translate(p.x,p.z);ctx.rotate(-p.yaw);ctx.beginPath();ctx.moveTo(0,-1.55);ctx.lineTo(.95,.90);ctx.lineTo(0,.55);ctx.lineTo(-.95,.90);ctx.closePath();ctx.fillStyle='#ffce64';ctx.fill();}
+    if(state.alive){const p=state.player;ctx.translate(p.x,p.z);ctx.rotate(-p.yaw);ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,9.5,-Math.PI/2-.52,-Math.PI/2+.52);ctx.closePath();ctx.fillStyle='rgba(255,206,100,.14)';ctx.fill();ctx.beginPath();ctx.moveTo(0,-1.55);ctx.lineTo(.95,.90);ctx.lineTo(0,.55);ctx.lineTo(-.95,.90);ctx.closePath();ctx.fillStyle='#ffce64';ctx.fill();}
   }
   ctx.restore();
 }
@@ -194,7 +194,10 @@ function hudEvent(type,data){
     if(lastBearing!==null)$('bearing').style.transform='translate(-50%,-50%) rotate('+(data.player.yaw-lastBearing)+'rad)';
     friendTags(data);
     const s=Math.ceil(data.remaining);$('clock').textContent=[Math.floor(s/60),s%60].map(v=>String(v).padStart(2,'0')).join(':');
-    document.querySelector('.hpbar i').style.width=data.hp+'%';$('gunstatus').textContent=data.reloading?'正在换弹':data.aiming?'瞄准':data.weapon==='knife'?'右键重击':data.weapon==='he'?'投掷':!data.ammo?'弹匣已空':'就绪';
+    document.querySelector('.hpbar i').style.width=data.hp+'%';
+    const lowAmmo=data.alive&&data.maxAmmo>1&&data.ammo<=Math.max(1,Math.ceil(data.maxAmmo*.25));
+    document.querySelector('.ammoBox')?.classList.toggle('lowammo',lowAmmo);
+    $('gunstatus').textContent=data.reloading?'正在换弹 '+Math.round((data.reloadProgress||0)*100)+'%':data.aiming?'瞄准':data.weapon==='knife'?'右键重击':data.weapon==='he'?'投掷':!data.ammo?'弹匣已空':lowAmmo?'弹药不足':'就绪';
     $('cross').hidden=data.aiming||!data.alive;$('respawn').hidden=data.alive||data.phase==='ended';
     $('slotRack').hidden=!data.alive;
     if(!data.alive)$('respawn').textContent='被 '+data.killedBy+' 击倒 · '+Math.ceil(data.respawnIn)+' 秒后复活';drawMap($('radar'),data);

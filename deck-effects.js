@@ -74,11 +74,18 @@ export function makeEffects(scene) {
       for(const sign of [-1,1])puff({x:-sign*2,y:9.05,z:sign*24.4},{x:.55,y:.62,z:.18},.80,3.5,[.27,.3,.30],true);
     }
     let live=0;
-    for(const p of particles){
+    for(let i=0;i<particles.length;i++){
+      const p=particles[i];
       p.life-=dt;if(p.life<=0)continue;
       particles[live]=p;p.vy-=p.gravity*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
-      positions.set([p.x,p.y,p.z],live*3);colors.set(p.color,live*3);
-      const t=1-p.life/p.max;data.set([p.size*(p.smoke?1+1.6*t:1),p.smoke?.42*(1-t):Math.min(1,(1-t)*2),p.smoke?1:0],live*3);live++;
+      const k=live*3;
+      positions[k]=p.x;positions[k+1]=p.y;positions[k+2]=p.z;
+      colors[k]=p.color[0];colors[k+1]=p.color[1];colors[k+2]=p.color[2];
+      const t=1-p.life/p.max;
+      data[k]=p.size*(p.smoke?1+1.6*t:1);
+      data[k+1]=p.smoke?.42*(1-t):Math.min(1,(1-t)*2);
+      data[k+2]=p.smoke?1:0;
+      live++;
     }
     particles.length=live;geo.setDrawRange(0,live);
     for(const attr of Object.values(geo.attributes)){attr.clearUpdateRanges();attr.addUpdateRange(0,live*3);attr.needsUpdate=true;}
@@ -91,5 +98,12 @@ export function makeEffects(scene) {
     casings.length=live;brass.count=live;brass.instanceMatrix.needsUpdate=true;
   }
   function reset(){particles.length=casings.length=stamp=stamps.count=brass.count=0;geo.setDrawRange(0,0);}
-  return {impact,muzzle,eject,explode,update,reset,wound(p){drift(p,[.58,.085,.055],5,.20,.22);},setQuality(level){amount={low:.36,medium:.68,high:1}[level]||.68;}};
+  function headshot(p){
+    drift(p,[.72,.10,.06],6,.24,.26);
+    for(let i=0;i<Math.ceil(10*amount);i++){
+      const a=Math.random()*6.28,sp=rand(1.6,4.2);
+      puff(p,{x:Math.cos(a)*sp,y:rand(.8,3.2),z:Math.sin(a)*sp},.075,rand(.14,.32),[1,.82,.26],false,9.5);
+    }
+  }
+  return {impact,muzzle,eject,explode,update,reset,wound(p){drift(p,[.58,.085,.055],5,.20,.22);},headshot,setQuality(level){amount={low:.36,medium:.68,high:1}[level]||.68;}};
 }

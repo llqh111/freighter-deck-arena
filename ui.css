@@ -27,3 +27,4 @@
 #hit.kill.head{background:linear-gradient(#ffe066,#ff5738) center top/3px 9px,linear-gradient(#ff5738,#ffe066) center bottom/3px 9px,linear-gradient(#ffe066,#ff5738) left center/9px 3px,linear-gradient(#ff5738,#ffe066) right center/9px 3px;background-repeat:no-repeat;filter:drop-shadow(0 0 8px #ff8a3d)}
 #callout.head{border-top-color:#ffd466;box-shadow:0 8px 24px #00000070,0 0 14px #ffd46638}
 #callout.multi{border-top-color:#ff6342;box-shadow:0 8px 26px #00000080,0 0 18px #ff573848}
+.ammoBox.lowammo #ammo,.ammoBox.lowammo #gunstatus{color:#ff7252}
