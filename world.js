@@ -100,15 +100,19 @@ function deckSkin(blocks) {
   for(const x of [95,920]){c.fillStyle='#c7ae59';c.fillRect(x,0,5,h);for(let y=0;y<h;y+=64)c.fillRect(x-11,y,2,34)}
   const sx=w/25, sz=h/53;
   for(const b of blocks.filter(b=>b.bottom===0)) {
-    const x=(b.x-b.w/2+12.5)*sx,y=(b.z-b.d/2+26.5)*sz;
-    c.fillStyle='rgba(40,36,26,.09)';
-    c.beginPath(); c.moveTo(x,y); c.lineTo(x+b.w*sx,y); c.lineTo(x+b.w*sx+b.top*13,y+b.top*18);c.lineTo(x+b.w*sx+b.top*13,y+b.d*sz+b.top*18);c.lineTo(x+b.top*13,y+b.d*sz+b.top*18);c.lineTo(x,y+b.d*sz);c.fill();
-    c.shadowColor='rgba(13,18,18,.6)';c.shadowBlur=12;c.fillStyle='rgba(36,35,28,.48)';c.fillRect(x,y,b.w*sx,b.d*sz);c.shadowBlur=0;
+    const yaw=b.yaw||0, cos=Math.cos(yaw),sin=Math.sin(yaw);
+    const pts=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([a,e])=>{
+      const dx=a*b.w*.5,dz=e*b.d*.5;
+      return [(b.x+dx*cos+dz*sin+12.5)*sx,(b.z+dz*cos-dx*sin+26.5)*sz];
+    });
+    c.shadowColor='rgba(13,18,18,.58)';c.shadowBlur=11;c.shadowOffsetX=3;c.shadowOffsetY=4;
+    c.fillStyle='rgba(36,35,28,.35)';c.beginPath();pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fill();
+    c.shadowOffsetX=c.shadowOffsetY=c.shadowBlur=0;
   }
   return canvasMap(c);
 }
 export function buildWorld(scene) {
-  const solids=[], batches=new Map(), materials=new Map(), cube=new T.BoxGeometry(1,1,1);
+  const solids=[], vents=[], batches=new Map(), materials=new Map(), cube=new T.BoxGeometry(1,1,1);
   const unit=new T.Object3D(), axis=new T.Vector3(0,1,0), steelMap=paintedSteel();
   function mat(col) {
     if(typeof col!=='string')return col;
@@ -125,36 +129,66 @@ export function buildWorld(scene) {
     const v=new T.Vector3(...b).sub(new T.Vector3(...a)),len=v.length();
     put((a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2,r,len,depth,color,new T.Quaternion().setFromUnitVectors(axis,v.normalize()));
   }
-  function solid(x,z,w,d,bottom,top){solids.push({x,z,w,d,bottom,top})}
-  function wall(x,z,w,d,bot,top,col){put(x,(bot+top)/2,z,w,top-bot,d,col);solid(x,z,w,d,bot,top)}
+  function solid(x,z,w,d,bottom,top,extra={}){solids.push({x,z,w,d,bottom,top,...extra})}
+  function wall(x,z,w,d,bot,top,col,extra){put(x,(bot+top)/2,z,w,top-bot,d,col);solid(x,z,w,d,bot,top,extra)}
   const colors=['#904d3e','#38626e','#557576','#b98549','#59736a','#8e5141'];
   const skins=colors.map((color,i)=>{
     const side=new T.MeshStandardMaterial({map:boxSkin(color,i),roughness:.79,metalness:.12});
     const door=new T.MeshStandardMaterial({map:boxSkin(color,i,true),roughness:.76,metalness:.12});
     return {side,door,top:mat(color)};
   });
-  function container(x,z,w,d,base,id){
+  function container(x,z,w,d,base,id,yaw=0){
     const {side,door,top}=skins[id%skins.length];
     const m=w>d?[door,door,top,top,side,side]:[side,side,top,top,door,door];
-    put(x,base+1.33,z,w,2.66,d,m);solid(x,z,w,d,base,base+2.66);
-    const count=Math.round(Math.max(w,d)*3);
-    for(let i=1;i<count;i++){const t=i/count-.5;put(x+(w>d?t*w:0),base+2.67,z+(w>d?0:t*d),w>d?.075:w-.08,.027,w>d?d-.08:.075,top)}
+    const rotation=new T.Quaternion().setFromAxisAngle(axis,yaw);
+    put(x,base+1.33,z,w,2.66,d,m,rotation);solid(x,z,w,d,base,base+2.66,{yaw});
+    const count=Math.round(Math.max(w,d)*3),cos=Math.cos(yaw),sin=Math.sin(yaw);
+    for(let i=1;i<count;i++){
+      const t=i/count-.5,dx=w>d?t*w:0,dz=w>d?0:t*d;
+      put(x+dx*cos+dz*sin,base+2.67,z+dz*cos-dx*sin,w>d?.075:w-.08,.027,w>d?d-.08:.075,top,rotation);
+    }
   }
   const timber=new T.MeshStandardMaterial({map:crateSkin(),roughness:.98});
   function crate(x,z,s,base=0,h=s){wall(x,z,s,s,base,base+h,timber)}
-  // The center lanes open between offset rows of freight. Both side galleries have two open ends.
+  // Two staggered freight containers form the V in the central crossing.
   container(-5,12,6.2,2.85,0,1);container(5,8,2.85,7.2,0,0);
   container(-5,-8,2.85,7.2,0,2);container(5,-12,6.2,2.85,0,5);
-  container(-1.8,3.9,6.1,2.85,0,3);container(1.8,-3.9,6.1,2.85,0,1);
+  container(-3.05,.7,2.25,5.7,0,3,.61);container(3.05,-.7,2.25,5.7,0,1,-.56);
   container(-7,.1,2.8,5.95,0,0);container(7,-.1,2.8,5.95,0,4);
   container(-7,.1,2.8,5.95,2.66,2);container(7,-.1,2.8,5.95,2.66,5);
   for(const sign of [-1,1]){
     crate(sign*2.3,sign*11,1.8);crate(sign*7,sign*16.3,1.7);crate(sign*5.6,sign*16.4,1.0);
     crate(sign*1.45,sign*6.45,1.25);crate(sign*7.1,sign*4.55,1.1);
-    const x=sign*10.35,z=sign*6.5;
-    wall(x-sign*1.2,z,.15,14,0,2.4,'#818d85');wall(x+sign*1.2,z,.15,14,0,2.4,'#76857e');
-    wall(x,z,2.55,14,2.36,2.54,'#9aa69b');
-    for(let i=-7;i<=7;i+=2){put(x,2.56,z+i,2.62,.08,.10,'#535f59');put(x-sign*1.28,1.23,z+i,.11,2.48,.09,'#535f59')}
+    const x=sign*10.35,entry=17.6, rise=.18, run=.48, steps=12, platform=steps*rise;
+    const stairEnd=entry-steps*run, exit=-6.4, length=stairEnd-exit, center=sign*(stairEnd+exit)/2;
+    vents.push({entry:{x,z:sign*entry}, exit:{x,z:sign*exit}});
+    const tread='#69736c', arch='#56655f', sill='#dfb358';
+    for(let i=1;i<=steps;i++){
+      const z=sign*(entry-(i-.5)*run), high=i*rise;
+      wall(x,z,2.38,run,0,high,tread,{walkSurface:true});
+      put(x,high+.008,z+sign*(run/2-.035),2.27,.015,.058,sill);
+      if(i%3===1)for(const dx of [-1.15,1.15])put(x+dx,high+.52,z,.065,1.04,.065,arch);
+    }
+    for(const dx of [-1.16,1.16])beam([x+dx,1.12,sign*entry],[x+dx,platform+1.12,sign*stairEnd],.07,sill);
+    wall(x,center,2.54,length,0,platform,tread,{walkSurface:true});
+    const ceiling=platform+2.17;
+    for(const dx of [-1.20,1.20])wall(x+dx,center,.15,length,platform,ceiling,'#78877c');
+    wall(x,center,2.55,length,ceiling,ceiling+.17,'#97a398');
+    for(let at=exit+.12;at<stairEnd;at+=2.5){
+      const z=sign*at;
+      put(x,ceiling+.18,z,2.63,.09,.13,arch);
+      for(const dx of [-1.28,1.28])put(x+dx,ceiling*.5,z,.09,ceiling,.12,arch);
+      put(x,ceiling-.055,z,.12,.07,.62,'#e1cb9c');
+    }
+    // Square steel coaming and amber nosing identify the drop at the enemy end.
+    for(const end of [exit,stairEnd]){
+      const z=sign*end;
+      for(const dx of [-1.2,1.2])put(x+dx,platform+1.1,z,.18,2.22,.11,sill);
+      put(x,ceiling-.02,z,2.55,.13,.12,sill);
+    }
+    put(x,platform+.012,sign*(exit+.09),2.32,.023,.18,sill);
+    for(let i=-4;i<=4;i++)put(x+i*.24,platform+.026,sign*(exit+.09),.11,.008,.17,arch);
+
   }
   const bone='#b9c1b5',dark='#354646',rail='#62716a',flame='#b66c43';
   const spawns=[[],[]];
@@ -218,14 +252,18 @@ export function buildWorld(scene) {
     original.dispose();
   });
 
-  function stencil(words,x,y,z,w,h,invert=false){
-    const c=sheet(512,128); c.fillStyle='#394641';c.fillRect(0,0,512,128);c.fillStyle='#d7cfc0';c.fillRect(7,7,498,114);c.fillStyle='#475149';c.fillRect(10,10,492,108);
+  function stencil(words,x,y,z,w,h,invert=false,paint='#475149'){
+    const c=sheet(512,128); c.fillStyle='#394641';c.fillRect(0,0,512,128);c.fillStyle='#d7cfc0';c.fillRect(7,7,498,114);c.fillStyle=paint;c.fillRect(10,10,492,108);
     c.fillStyle='#eadab9';c.font='bold 71px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(words,256,68,472);
     const o=new T.Mesh(new T.PlaneGeometry(w,h),new T.MeshStandardMaterial({map:canvasMap(c),roughness:.94}));
     o.position.set(x,y,z);if(invert)o.rotation.y=Math.PI;scene.add(o);
   }
-  stencil('A  /  01',0,2.15,20.54,3.25,.87,true);
-  stencil('B  /  02',0,2.15,-20.54,3.25,.87);
+  stencil('01   /   BLUE',0,2.13,20.54,4.05,.91,true,'#284c62');
+  stencil('02   /   RED',0,2.13,-20.54,4.05,.91,false,'#804336');
+  for(const sign of [-1,1]){
+    stencil('VENT   /   IN',sign*10.35,4.40,sign*11.89,2.41,.30,sign<0);
+    stencil('DROP   /   2.2 M',sign*10.35,1.16,-sign*6.42,1.93,.42,sign>0);
+  }
   for(const sign of [-1,1]){
     const z=sign*24.4;
     put(-sign*2,7.58,z,2.1,1.92,1.56,'#ac664c');put(-sign*2,8.57,z,2.16,.32,1.61,'#414a46');
@@ -291,8 +329,7 @@ export function buildWorld(scene) {
     matrices.forEach((matrix,i)=>mesh.setMatrixAt(i,matrix));
     mesh.computeBoundingSphere();mesh.castShadow=true;mesh.receiveShadow=true;scene.add(mesh);
   }
-  return {solids,bounds:{minX:-11.96,maxX:11.96,minZ:-25.65,maxZ:25.65},spawns,
+  return {solids,vents,bounds:{minX:-11.96,maxX:11.96,minZ:-25.65,maxZ:25.65},spawns,
     update(timeSeconds){water.material.uniforms.time.value=timeSeconds;},
   };
 }
-
