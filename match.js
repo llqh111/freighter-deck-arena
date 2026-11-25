@@ -41,7 +41,7 @@ function audioMixer(){
       const bass=ctx.createOscillator(); bass.frequency.setValueAtTime(128,now); bass.frequency.exponentialRampToValueAtTime(40,now+.12); bass.connect(gain); bass.start(now); bass.stop(now+.14);
     }
   }
-  return {unlock,play,set(v){enabled=v;if(v)unlock();}};
+  return {unlock,play,set(v){enabled=v;if(v && navigator.userActivation?.hasBeenActive)unlock();}};
 }
 
 function createSquad(scene,bots){
