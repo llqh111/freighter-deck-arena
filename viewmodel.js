@@ -257,6 +257,8 @@ export function createViewModel() {
     rig.rotation.set(.045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*.52+throwing*.85+swayY*1.4,
       .190*idle-lower*.19-slash*(heavy?.16:.97)-inspection*.57-swayX*1.5,
       -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+slash*(heavy?.73:-.69)-inspection*.84-tilt);
+    // Hide built-in 3D reflex dot while ADS is active so HUD holographic dot is single and crisp.
+    reflex.visible=!(id==='m4a1'&&aim>.25);
     // Once magnified, the HUD supplies the full-field AWM reticle immediately like CS AWP.
     current.root.visible=!(id==='awm'&&values.aiming&&loading<0);
   }

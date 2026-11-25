@@ -2,7 +2,7 @@ import {names,teams,groups,choices,selectors,board,weaponIcon} from './lobby.js?
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=7';
 import {createMatch} from './match.js?v=7';
-import {createViewModel} from './viewmodel.js?v=7';
+import {createViewModel} from './viewmodel.js?v=10';
 
 import {createDeckAudio} from './deck-audio.js?v=7';
 
