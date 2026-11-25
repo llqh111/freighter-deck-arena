@@ -127,22 +127,29 @@ export function createDeckAudio() {
   function cue(kind) {
     if (samples && (kind === 'kill' || kind === 'headshot')) play(samples[kind]);
   }
-  function sfx({kind,weapon='',volume:level=1,pan=0}){
+  function sfx({kind,weapon='',volume:level=1,pan=0,head=false}){
     if(!enabled||!samples)return;
-    const key=kind+weapon;
+    const key=kind+weapon+(head?'Head':'');
     if(!samples[key]){
       const freq={ak47:94,m4a1:118,mp5:155,awm:61,deagle:83}[weapon]||110;
       const duration={sea:3.2,gull:.62,step:.18,land:.23,jump:.14,death:.22,hurt:.12,scope:.1,timber:.15,clang:.19,dry:.06,shot:.24,explode:.75,bolt:.22,reload:.42,bounce:.11,pulse:.21,hit:.09}[kind]||.14;
       let seed=3492,lp=0;
       samples[key]=makeSample(duration,t=>{
         seed=(Math.imul(seed,1664525)+1013904223)>>>0;const white=seed/2147483648-1;lp+=.15*(white-lp);
-        if(kind==='shot'||kind==='explode'){const boom=kind==='explode';return (.64*lp+.28*Math.sin(6.28*(boom?49:freq)*t*Math.exp(-1.9*t))+.12*white*Math.exp(-40*t))*Math.exp(-t*(boom?6:23));}
+        if(kind==='shot'){
+          const soft=weapon==='m4a1'||weapon==='mp5',sniper=weapon==='awm';
+          const attack=(white-lp)*(soft?.17:.36)*Math.exp(-t*(sniper?105:160));
+          const body=.42*Math.sin(2*Math.PI*(freq*t+.85*(1-Math.exp(-37*t))))*Math.exp(-t*(sniper?15:soft?36:24));
+          const tail=lp*(sniper?.85:soft?.38:.64)*Math.exp(-t*(sniper?11:23));
+          return attack+body+tail;
+        }
+        if(kind==='explode')return (.64*lp+.28*Math.sin(6.28*49*t*Math.exp(-1.9*t))+.12*white*Math.exp(-40*t))*Math.exp(-6*t);
         if(kind==='sea')return .22*lp*(Math.sin(Math.PI*t/duration)**2);
         if(kind==='gull')return .08*Math.sin(6.28*(960*t+65*Math.sin(t*5)))*Math.sin(Math.PI*t/duration)**2;
         if(['step','land','jump','death','hurt','timber'].includes(kind))return (.32*lp+.15*Math.sin(6.28*84*t))*Math.exp(-20*t);
         if(kind==='scope')return .08*Math.sin(6.28*630*t)*Math.exp(-46*t);
         if(kind==='pulse')return .18*Math.sin(6.28*56*t)*Math.exp(-18*t);
-        if(kind==='hit')return .09*Math.sin(6.28*1240*t)*Math.exp(-40*t);
+        if(kind==='hit')return (head?.14:.10)*Math.sin(6.28*(head?1720:880)*t)*Math.exp(-t*(head?32:58))+.10*white*Math.exp(-170*t);
         if(kind==='light'||kind==='heavy'||kind==='throw')return lp*Math.sin(Math.PI*t/duration)*.47;
         const click=Math.exp(-68*t)+(kind==='reload'?Math.exp(-76*Math.abs(t-.26)):0);
         return click*(.3*white+.15*Math.sin(6.28*(kind==='bounce'?560:970)*t));

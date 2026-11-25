@@ -235,7 +235,7 @@ export function createViewModel() {
     const item=id==='knife'||id==='he';
     aim=ease(aim,values.aiming&&!item&&loading<0?1:0,dt,15);
     walk=ease(walk,values.moving?1:0,dt,10);
-    phase+=dt*(values.moving?10:1.8);recoil*=Math.exp(-dt*20);spark-=dt;
+    phase+=dt*(values.moving?10:1.8);recoil*=Math.exp(-dt*24);spark-=dt;
     flash.visible=spark>0&&!item;
     if(current.action){
       const bolt=id==='awm'?Math.sin(Math.PI*T.MathUtils.clamp((gesture-.22)/.62,0,1)):0;
@@ -248,8 +248,8 @@ export function createViewModel() {
     const heavy=kind==='heavy';
     rig.position.set(idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034-slash*(heavy?.09:.18)-inspection*.10,
       T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003-draw*.24+inspection*.027+throwing*.14,
-      T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*.036+lower*.038+draw*.07-slash*(heavy?.23:.079)-throwing*.12);
-    rig.rotation.set(.045*idle+recoil*(id==='deagle'?.14:.066)+lower*.09-draw*.52+throwing*.85,
+      T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*(aim>.6?.021:.043)+lower*.038+draw*.07-slash*(heavy?.23:.079)-throwing*.12);
+    rig.rotation.set(.045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*.52+throwing*.85,
       .190*idle-lower*.19-slash*(heavy?.16:.97)-inspection*.57,
       -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+slash*(heavy?.73:-.69)-inspection*.84);
     // Once magnified, the HUD supplies the full-field AWM reticle.

@@ -1,10 +1,10 @@
 import {names,teams,groups,choices,selectors,board,weaponIcon} from './lobby.js';
 import * as T from './three.module.js';
-import {buildWorld} from './world.js?v=3';
-import {createMatch} from './match.js?v=3';
-import {createViewModel} from './viewmodel.js?v=3';
+import {buildWorld} from './world.js?v=4';
+import {createMatch} from './match.js?v=4';
+import {createViewModel} from './viewmodel.js?v=4';
 
-import {createDeckAudio} from './deck-audio.js?v=3';
+import {createDeckAudio} from './deck-audio.js?v=4';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -166,7 +166,6 @@ function hudEvent(type,data){
     $('aimName').textContent=data.aimName||'';$('aimName').style.color=data.aimTeam===data.team?'var(--ice)':'var(--red)';
     $('protection').textContent=data.protect>0&&data.alive?'出生保护 '+data.protect.toFixed(1)+' s':'';
     $('hud').classList.toggle('lowhp',data.hp<30&&data.alive);$('viewport').classList.toggle('spectate',!data.alive);
-    $('cross').style.scale=String(1+Math.min(1.7,(data.spread||0)*12));
     const key=data.inventory.map(w=>w.id).join('/')+data.slot;
     if(key!==rackKey){rackKey=key;$('slotRack').innerHTML=data.inventory.map((w,i)=>'<button data-slot="'+i+'" class="'+(data.slot===i?'selected':'')+'" aria-label="'+names[w.id]+'"><b>'+(i+1)+'</b>'+weaponIcon(w.id)+'</button>').join('');}
     if(!$('roster').hidden){const html=board(data);if(html!==boardKey){boardKey=html;$('roster').innerHTML=html;}}
@@ -180,7 +179,7 @@ function hudEvent(type,data){
   }else if(type==='hit'||type==='hurt'){
     if(type==='hit')announceHit(data);
     else if(Number.isFinite(data.bearing)){lastBearing=data.bearing;$('bearing').hidden=false;$('bearing').animate([{opacity:1},{opacity:0}],{duration:850,fill:'forwards'});}
-    const e=$(type==='hit'?'hit':'damage');e.classList.toggle('kill',!!data.kill);e.animate([{opacity:1},{opacity:0}],{duration:type==='hit'?160:300});
+    const e=$(type==='hit'?'hit':'damage');e.classList.toggle('head',!!data.head);e.classList.toggle('kill',!!data.kill);e.animate([{opacity:1},{opacity:0}],{duration:type==='hit'?160:300});
   }else if(type==='feed'){
     const line=document.createElement('div');const who=document.createElement('b');who.style.color=data.team?'var(--red)':'var(--ice)';who.textContent=data.killer;
     line.append(who,'　'+(names[data.weapon]||'')+(data.head?' · 爆头':'')+(data.wall?' · 穿箱':'')+'　'+data.victim);$('feed').prepend(line);while($('feed').children.length>3)$('feed').lastChild.remove();setTimeout(()=>line.remove(),4000);
@@ -276,6 +275,8 @@ function render(time){
     if(mode==='playing'){
       match.update(dt,t);
       const s=match.state;
+      const focalPixels=innerHeight/(2*Math.tan(camera.fov*Math.PI/360));
+      $('cross').style.setProperty('--gap',Math.min(38,s.spread*focalPixels).toFixed(1)+'px');
       deckAudio.step(dt,{walking:s.player.walking,sprint:s.sprinting,grounded:s.grounded,alive:s.alive,hp:s.hp,quiet:s.crouching||s.player.quiet});
     }
     renderer.clear();renderer.render(scene,camera);

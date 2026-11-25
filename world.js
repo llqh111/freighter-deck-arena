@@ -41,7 +41,7 @@ function boxSkin(base,id,door=false) {
   }
   c.fillStyle='rgba(233,224,195,.83)';
   if(!door) {
-    c.font='bold 49px Arial'; c.fillText(['KLINE','MARITIME','NORTH SEA','PACIFIC'][id%4],48,102);
+    c.font='bold 49px Arial'; c.fillText(['FREIGHT','SEALINE','NORTH SEA','PACIFIC'][id%4],48,102);
     c.font='bold 14px monospace';c.fillText('INTERMODAL  /  '+(56271+id*557),52,127);
     c.font='bold 13px monospace'; c.fillText('MAX. GR.  30 480 KG',w-168,h-53);
     c.fillText('CU. CAP.  33.2 CU.M',w-168,h-35);
@@ -72,7 +72,22 @@ function crateSkin() {
   c.strokeStyle='#564633';c.lineWidth=26;c.strokeRect(8,8,240,240);
   c.strokeStyle='#9d805a';c.lineWidth=16;c.strokeRect(8,8,240,240);c.beginPath();c.moveTo(16,232);c.lineTo(234,16);c.stroke();
   for(const x of [8,247])for(const y of [8,75,181,247]){c.fillStyle='#3e3c34';c.fillRect(x-2,y-2,4,4)}
-  c.fillStyle='#363931';c.font='bold 18px monospace';c.fillText('↑↑',35,56);c.font='bold 12px monospace';c.fillText('FRT / 045',28,212);scuff(c,256,256,3,1500);return canvasMap(c);
+  c.fillStyle='#363931';c.font='bold 18px monospace';c.fillText('\u2191\u2191',35,56);c.font='bold 12px monospace';c.fillText('FRT / 045',28,212);scuff(c,256,256,3,1500);return canvasMap(c);
+}
+function canvasCargo() {
+  const c=sheet(512,256), r=randomSource(804);
+  c.fillStyle='#394535';c.fillRect(0,0,512,256);
+  for(let i=0;i<5500;i++){
+    c.fillStyle=r()>.55?'rgba(186,190,151,.09)':'rgba(11,19,13,.14)';
+    c.fillRect(r()*512,r()*256,1+r()*6,1+r()*3);
+  }
+  for(let x=8;x<512;x+=42){
+    c.strokeStyle='rgba(14,25,17,.20)';c.lineWidth=2;c.beginPath();
+    c.moveTo(x,0);c.quadraticCurveTo(x+12,39,x-2,80+r()*76);c.stroke();
+  }
+  for(const x of [7,127,255,383,500]) {c.fillStyle='#262e27';c.fillRect(x,0,6,248);c.fillStyle='#60634c';c.fillRect(x+1,0,1,248);}
+  c.fillStyle='#202821';c.fillRect(0,239,512,17);
+  return canvasMap(c);
 }
 function paintedSteel() {
   const c=sheet(384,256),r=randomSource(498);
@@ -90,7 +105,7 @@ function paintedSteel() {
 }
 function deckSkin(blocks) {
   const c=sheet(1024,2048),w=1024,h=2048,r=randomSource(241);
-  c.fillStyle='#72736a';c.fillRect(0,0,w,h);
+  c.fillStyle='#545459';c.fillRect(0,0,w,h);
   for(let j=0;j<20;j++)for(let i=-1;i<5;i++) {
     let x=i*256+(j%2)*128,y=j*106;
     c.fillStyle='rgba('+(r()>.5?'190,174,147':'44,46,42')+','+(r()*.12)+')';c.fillRect(x,y,256,106);
@@ -98,7 +113,7 @@ function deckSkin(blocks) {
     for(let v=10;v<250;v+=31){c.fillStyle='#55564e';c.fillRect(x+v,y+5,2,2)}
   }
   for(let i=0;i<11000;i++){c.fillStyle='rgba(38,39,36,.07)';c.fillRect(r()*w,r()*h,r()*17+1,r()*2+1)}
-  for(const x of [95,920]){c.fillStyle='#c7ae59';c.fillRect(x,0,5,h);for(let y=0;y<h;y+=64)c.fillRect(x-11,y,2,34)}
+  for(const x of [21,1003]){c.fillStyle='#c7ae59';c.fillRect(x,0,5,h);for(let y=0;y<h;y+=64)c.fillRect(x-11,y,2,34)}
   const sx=w/25, sz=h/53;
   for(const b of blocks.filter(b=>b.bottom===0)) {
     const yaw=b.yaw||0, cos=Math.cos(yaw),sin=Math.sin(yaw);
@@ -132,7 +147,7 @@ export function buildWorld(scene) {
   }
   function solid(x,z,w,d,bottom,top,extra={}){solids.push({x,z,w,d,bottom,top,...extra})}
   function wall(x,z,w,d,bot,top,col,extra){put(x,(bot+top)/2,z,w,top-bot,d,col);solid(x,z,w,d,bot,top,extra)}
-  const colors=['#904d3e','#38626e','#557576','#b98549','#59736a','#8e5141'];
+  const colors=['#746f58','#465d70','#586650','#8d8572','#66705c','#596b75'];
   const skins=colors.map((color,i)=>{
     const side=new T.MeshStandardMaterial({map:boxSkin(color,i),roughness:.79,metalness:.12});
     const door=new T.MeshStandardMaterial({map:boxSkin(color,i,true),roughness:.76,metalness:.12});
@@ -151,15 +166,31 @@ export function buildWorld(scene) {
   }
   const timber=new T.MeshStandardMaterial({map:crateSkin(),roughness:.98});
   function crate(x,z,s,base=0,h=s){wall(x,z,s,s,base,base+h,timber,{material:'wood'})}
-  // Two staggered freight containers form the V in the central crossing.
-  container(-5,12,6.2,2.85,0,1);container(5,8,2.85,7.2,0,0);
-  container(-5,-8,2.85,7.2,0,2);container(5,-12,6.2,2.85,0,5);
-  container(-3.05,.7,2.25,5.7,0,3,.61);container(3.05,-.7,2.25,5.7,0,1,-.56);
-  container(-7,.1,2.8,5.95,0,0);container(7,-.1,2.8,5.95,0,4);
-  container(-7,.1,2.8,5.95,2.66,2);container(7,-.1,2.8,5.95,2.66,5);
+  const tarp=new T.MeshStandardMaterial({map:canvasCargo(),roughness:1});
+  const greenTimber=new T.MeshStandardMaterial({map:timber.map,color:'#a7ad8c',roughness:.98});
+  function coveredFreight(x,z,w,d,yaw=0){
+    const rot=new T.Quaternion().setFromAxisAngle(axis,yaw);
+    put(x,.18,z,w,.36,d,greenTimber,rot);
+    put(x,1.27,z,w+.04,1.83,d+.04,tarp,rot);
+    solid(x,z,w+.04,d+.04,0,2.185,{yaw,material:'wood'});
+  }
+  // The two offset diagonals part the center crossing. Each approach has a
+  // transverse freight box, a low stack and a long canvas-covered load.
+  coveredFreight(-4.6,-.38,2.32,5.35,.78);
+  coveredFreight(4.2,.94,2.40,5.48,-1.00);
+  container(.9,-9.4,7.0,2.48,0,3);
+  coveredFreight(5.95,-10.65,2.45,5.9);
+  coveredFreight(-4.05,8.08,6.6,2.42);
+  container(3.2,14.75,6.55,2.44,0,1);
+  coveredFreight(-2.9,-15.55,6.55,2.56);
+  for(const ax of [-4.65,-2.88,-1.1])crate(ax,-15.55,1.73,2.185,1.38);
+  for(const ax of [1.5,3.22,4.96])crate(ax,14.75,1.68,2.66,1.45);
+  crate(.98,-4.15,1.55);crate(.98,-6.0,1.2);crate(.98,-4.15,1.0,1.55,.85);
+  crate(-.06,9.60,1.48);crate(-.06,11.08,1.42);
+  crate(5.8,-7.46,1.2);crate(-1.34,14.8,1.18);
   for(const sign of [-1,1]){
-    crate(sign*2.3,sign*11,1.8);crate(sign*7,sign*16.3,1.7);crate(sign*5.6,sign*16.4,1.0);
-    crate(sign*1.45,sign*6.45,1.25);crate(sign*7.1,sign*4.55,1.1);
+    crate(sign*7.28,sign*16.05,1.78);
+    crate(sign*6.83,sign*17.55,1.05);
     const x=sign*10.35,entry=17.6, rise=.18, run=.48, steps=12, platform=steps*rise;
     const stairEnd=entry-steps*run, exit=-6.4, length=stairEnd-exit, center=sign*(stairEnd+exit)/2;
     vents.push({entry:{x,z:sign*entry}, exit:{x,z:sign*exit}});
@@ -181,6 +212,18 @@ export function buildWorld(scene) {
       for(const dx of [-1.28,1.28])put(x+dx,ceiling*.5,z,.09,ceiling,.12,arch);
       put(x,ceiling-.055,z,.12,.07,.62,'#e1cb9c');
     }
+    // Corrugated cargo siding shares the passage walls. Crates at its drop
+    // form a second, jumpable path along the top of the side stacks.
+    const bayCount=3,bay=length/bayCount;
+    for(let j=0;j<bayCount;j++){
+      const z=sign*(exit+(j+.5)*bay), panelX=x-sign*1.275;
+      put(panelX,platform*.50,z,.035,platform-.08,bay-.10,skins[1].side);
+      put(panelX,platform+1.08,z,.035,2.08,bay-.10,skins[j%2?0:3].side);
+    }
+    const lip=sign*exit;
+    crate(x+sign*.65,lip-sign*3.45,1.12,0,1.02);
+    wall(x+sign*.67,lip-sign*2.15,1.27,1.46,0,2.04,greenTimber,{material:'wood'});
+    wall(x+sign*.67,lip-sign*.71,1.27,1.38,0,3.22,timber,{material:'wood'});
     // Square steel coaming and amber nosing identify the drop at the enemy end.
     for(const end of [exit,stairEnd]){
       const z=sign*end;
@@ -202,8 +245,10 @@ export function buildWorld(scene) {
     put(0,5.32,z,16,2.54,3.5,bone);put(0,6.63,z,16.65,.22,4.12,'#78877d');
     for(const face of [-1,1])for(let i=-7;i<=7;i+=1.55)put(i,5.62,z+face*1.76,1.28,.76,.05,'#344f55');
     for(const x of [-10,10])for(let i=-1;i<=1;i++)put(x+i*.5,2.63,sign*20.53,.22,.57,.08,dark);
+    if(sign>0){
     put(sign*5,8.14,z,.18,3.15,.18,dark);put(sign*5,8.92,z,2.75,.11,.12,rail);
     put(sign*5,9.7,z,.16,.18,.16,flame);
+    }
     for(let i=-11;i<=11;i+=1.85)put(i,4.55,sign*20.65,.07,.96,.07,rail);
     put(0,4.99,sign*20.65,23,.08,.08,rail);
     put(0,4.61,sign*20.65,23,.05,.05,rail);
@@ -228,11 +273,37 @@ export function buildWorld(scene) {
     for(const a of [.78,2.36,3.93,5.50])put(ring.position.x+Math.cos(a)*.31,1.69+Math.sin(a)*.31,sign*20.41,.10,.11,.11,'#cdc6af');
     for(const depth of [23,24.7])for(const x of [-6,5.8,3,-3])spawns[sign===1?0:1].push({x,z:sign*depth});
   }
+  // A tandem-rotor airframe parked on the far deck gives that spawn its skyline.
+  const heliPaint='#424940',heliGlass='#27383c', padZ=-24.0;
+  function ellipsoid(x,y,z,sx,sy,sz,color){
+    const shell=new T.Mesh(new T.SphereGeometry(1,16,10),mat(color));
+    shell.position.set(x,y,z);shell.scale.set(sx,sy,sz);shell.castShadow=true;scene.add(shell);
+  }
+  put(-.8,6.85,padZ,17.6,.20,4.65,'#59615c');
+  ellipsoid(-.6,8.10,padZ,5.0,1.02,1.04,heliPaint);
+  ellipsoid(-4.10,8.13,padZ,.95,.83,.99,heliGlass);
+  for(const side of [-1,1]){
+    for(let j=0;j<6;j++)ellipsoid(-2.92+j*.97,8.27,padZ+side*.95,.20,.23,.043,heliGlass);
+    for(const x of [-3.6,2.65]){put(x,7.23,padZ+side*.68,.13,.63,.12,dark);ellipsoid(x,7.02,padZ+side*.80,.29,.27,.15,'#272c29');}
+  }
+  for(const [x,h] of [[-4.0,9.32],[3.35,9.82]]){
+    ellipsoid(x,8.86,padZ,.68,h-8.74,.64,heliPaint);
+    put(x,h+.18,padZ,.14,.47,.14,dark);
+    for(let j=0;j<3;j++){
+      const a=j*Math.PI*2/3+(x>0?.52:0);
+      beam([x,h+.39,padZ],[x+3.72*Math.cos(a),h+.36,padZ+3.72*Math.sin(a)],.085,'#353c39',.18);
+    }
+  }
   // Hull, bulwarks, timber fenders and handrails.
   put(0,-1.7,0,25,3.3,53,'#343d3b');put(0,-3.5,0,24.85,.8,52.9,'#874a37');
   for(const x of [-12.15,12.15]){
     wall(x,0,.24,52.8,0,.64,'#75827a');put(x,.66,0,.39,.09,52.8,bone);
     for(let z=-25;z<=25;z+=2.5){put(x,1.15,z,.075,1.02,.075,rail);put(x*1.035,-1.3,z,.11,1.92,.18,dark)}
+    for(let z=-20;z<20;z+=.85){
+      beam([x,.72,z],[x,2.66,z+.85],.018,rail);
+      beam([x,2.66,z],[x,.72,z+.85],.018,rail);
+    }
+    put(x,2.68,0,.065,.07,40.8,'#ba9a55');
     for(const y of [1.23,1.64])put(x,y,0,.065,.07,51.9,rail);
   }
   const dk=new T.Mesh(new T.PlaneGeometry(25,53),new T.MeshStandardMaterial({map:deckSkin(solids),roughness:.92}));
@@ -290,10 +361,29 @@ export function buildWorld(scene) {
   }
   for(const sign of [-1,1]){
     const z=sign*24.4;
+    if(sign>0){
     put(-sign*2,7.58,z,2.1,1.92,1.56,'#ac664c');put(-sign*2,8.57,z,2.16,.32,1.61,'#414a46');
     for(const x of [-.66,0,.66])put(-sign*2+x,8.83,z,.34,.39,.44,'#343e3d');
+    }
     for(const x of [-9.9,9.9]){put(x,1.25,sign*20.53,.88,2.24,.08,'#616e65');put(x,1.81,sign*20.47,.47,.47,.05,'#2c4144');put(x+.28,1.10,sign*20.44,.17,.08,.06,'#bebcac')}
     for(const x of [-8,8]){put(x,3.17,sign*20.51,.53,.18,.12,'#e4c480');put(x,3.29,sign*20.47,.68,.05,.26,'#46514c')}
+  }
+  // The two long yellow derricks run outside the rails at opposite ends.
+  for(const sign of [-1,1]){
+    const x=sign*12.95,z=sign*21.8,end=-sign*3.2,gold='#b59a51';
+    put(x,.55,z,1.54,1.7,1.73,dark);
+    for(const side of [-.48,.48]){
+      beam([x+side,.8,z],[x+side,7,z],.14,gold);
+      beam([x+side,6.33,z],[x+side,4.83,end],.13,gold);
+      beam([x+side,7.02,z],[x+side,5.52,end],.11,gold);
+      for(let j=0;j<18;j++){
+        const f=j/18,g=(j+1)/18;
+        beam([x+side,6.33-1.5*f+(j%2)*.69,z+(end-z)*f],
+             [x+side,6.33-1.5*g+((j+1)%2)*.69,z+(end-z)*g],.067,gold);
+      }
+    }
+    for(let i=0;i<=6;i++){const f=i/6;put(x,7.02-1.5*f,z+(end-z)*f,1.07,.10,.10,gold);}
+    beam([x,5.42,end],[x,3.42,end],.029,dark);
   }
   // Quayside gantries and their latticed booms establish a readable port silhouette.
   const steel='#747f78',yellow='#bb8b53', iron='#69746f';

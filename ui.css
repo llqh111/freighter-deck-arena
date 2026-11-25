@@ -13,3 +13,13 @@
 .offline{display:inline-block;margin-top:12px;color:var(--gold);font-size:14px}
 
 .leftTrigger{position:absolute;left:38px;bottom:185px;width:48px;height:48px;border-radius:50%;background:#17262e99;border:1px solid #fff8;pointer-events:auto;touch-action:none}.touchActions [aria-pressed=true]{border-color:var(--gold);color:var(--gold)}
+
+#cross{--gap:0px;width:15px;height:15px}
+#cross i{background:#a9ffe4}
+#cross i:nth-child(1),#cross i:nth-child(2){left:7px;width:1.5px;height:5px}
+#cross i:nth-child(3),#cross i:nth-child(4){top:7px;width:5px;height:1.5px}
+#cross i:nth-child(1){transform:translateY(calc(-1 * var(--gap)))}
+#cross i:nth-child(2){transform:translateY(var(--gap))}
+#cross i:nth-child(3){transform:translateX(calc(-1 * var(--gap)))}
+#cross i:nth-child(4){transform:translateX(var(--gap))}
+#hit.head{filter:drop-shadow(0 0 3px #ffc566)}#hit.kill{width:30px;height:30px;filter:drop-shadow(0 0 3px #ff7649)}

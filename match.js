@@ -1,5 +1,6 @@
+import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js';
 import * as T from './three.module.js';
-import {arsenal,primaries,loadout,skills} from './arsenal.js';
+import {arsenal,primaries,loadout,skills} from './arsenal.js?v=4';
 
 const clamp = T.MathUtils.clamp;
 const EYE=1.60,RADIUS=.32,ROUND=600,GOAL=50;
@@ -171,9 +172,9 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   const tracerGeo=new T.CylinderGeometry(.010,.015,1,4),tracerMaterial=new T.MeshBasicMaterial({color:0xffce73,transparent:true,opacity:.86,depthWrite:false});
   const nadeGeo=new T.IcosahedronGeometry(.12,1),nadeMat=new T.MeshStandardMaterial({color:0x536043,metalness:.4,roughness:.6});
   const axis=new T.Vector3(0,1,0);
-  let pitch=0,jumpVel=0,grounded=true,loadTimer=0,shotTimer=0,hudTimer=0,clock=0,kick=0,bob=0,bloom=0,sideKick=0;
+  let pitch=0,jumpVel=0,grounded=true,loadTimer=0,shotTimer=0,hudTimer=0,clock=0,bob=0;
   let fireTap=false,altTap=false,restoreZoom=0;
-  let baseFov=camera.fov,lastSlot=0,semiLatch=false,shots=0,hits=0,shotCount=0,scopeTime=0;
+  let baseFov=camera.fov,lastSlot=0,semiLatch=false,shots=0,hits=0,scopeTime=0;
   const eyeHeight=a=>a.crouch?1.07:EYE;
   const active=a=>a.inventory[a.slot];
   function sfx(kind,weapon,a=p,extra={}){
@@ -194,15 +195,16 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   }
   function respawn(a,initial=false){
     const list=world.spawns[a.team], spot=list[initial?a.id%list.length:Math.floor(Math.random()*list.length)];
-    Object.assign(a,{x:spot.x,y:0,z:spot.z,yaw:a.team?Math.PI:0,hp:100,armor:100,alive:true,respawn:0,shield:initial?.55:1.5,path:[],think:0,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,slot:0,inventory:loadout(a===p?primary:a.primary),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,seen:null,nadeReady:clock+12+Math.random()*16});
+    Object.assign(a,{x:spot.x,y:0,z:spot.z,yaw:a.team?Math.PI:0,hp:100,armor:100,alive:true,respawn:0,shield:initial?.55:1.5,path:[],think:0,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,seen:null,nadeReady:clock+12+Math.random()*16});
     if(a===p){
-      pitch=jumpVel=kick=bob=bloom=sideKick=loadTimer=0;grounded=true;shotTimer=.12;lastSlot=0;semiLatch=false;
+      pitch=jumpVel=bob=loadTimer=0;grounded=true;shotTimer=.12;lastSlot=0;semiLatch=false;
       restoreZoom=0;state.zoom=0;state.aiming=false;state.killedBy='';view.equip?.(active(p).id);cameraAt(0);
     }
   }
   function cameraAt(dt){
     camera.position.set(p.x,p.y+(p.alive?eyeHeight(p):.65)+.025*Math.sin(bob)*Number(p.walking),p.z);
-    camera.rotation.set(pitch+kick,p.yaw+sideKick,0,'YXZ');
+    const follow=state.aiming?.78:.43;
+    camera.rotation.set(pitch+p.burst.pitch*follow,p.yaw+p.burst.yaw*follow,0,'YXZ');
     const desired=state.zoom===2?11:state.zoom===1?30:baseFov*(state.aiming?.75:1);
     if(Math.abs(camera.fov-desired)>.05){camera.fov=T.MathUtils.damp(camera.fov,desired,18,dt);camera.updateProjectionMatrix();}
     camera.updateMatrixWorld();
@@ -285,6 +287,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   function damage(a,b,amount,id,head=false,wall=false){
     if(!b.alive||b.shield>0||state.phase!=='playing'||(a!==b&&a.team===b.team))return;
     const absorb=Math.min(b.armor,amount*(1-arsenal[id].armor));b.armor-=absorb;b.hp=Math.max(0,b.hp-amount+absorb);
+    if(arsenal[id].interval)b.tag=.24;
     if(b!==p&&b!==a){b.lastHeard={x:a.x,z:a.z};b.yaw=angleTo(b,a);}
     if(b===p)sfx('hurt',id);
     if(b===p)emit('hurt',{bearing:angleTo(p,a),damage:amount-absorb});
@@ -357,7 +360,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   }
   function useSlot(slot){
     if(!p.alive||!p.inventory[slot]||p.slot===slot||(!p.inventory[slot].ammo&&slot===3))return;
-    lastSlot=p.slot;p.slot=slot;restoreZoom=0;state.zoom=0;state.aiming=false;bloom=loadTimer=0;semiLatch=!!keys.fire;
+    lastSlot=p.slot;p.slot=slot;restoreZoom=0;state.zoom=0;state.aiming=false;p.burst=newBurst();loadTimer=0;semiLatch=!!keys.fire;
     shotTimer=.26;view.equip(active(p).id);sfx('equip',active(p).id);hud();
   }
   function reload(){
@@ -366,12 +369,19 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   }
   function advancePlayer(dt){
     const w=active(p),d=arsenal[w.id];
-    kick*=Math.exp(-dt*11);sideKick*=Math.exp(-dt*8);bloom*=Math.exp(-dt*5);p.crouch=!!keys.crouch;
+    recoverBurst(p.burst,d,clock,dt);p.crouch=!!keys.crouch;
     state.aiming=!loadTimer&&(w.id==='awm'?!!state.zoom:p.slot<2&&!!keys.aim);
     const sideways=Number(!!keys.right)-Number(!!keys.left),forward=Number(!!keys.forward)-Number(!!keys.back),mag=Math.hypot(sideways,forward);
     const speed=(p.crouch?2.15:keys.walk?2.65:state.aiming?3:keys.sprint?6.8:5.0)*d.speed;
     const oldX=p.x,oldZ=p.z;
-    if(mag){const c=Math.cos(p.yaw),s=Math.sin(p.yaw);move(p,(c*sideways-s*forward)*dt*speed/mag,(-s*sideways-c*forward)*dt*speed/mag);}
+    const c=Math.cos(p.yaw),s=Math.sin(p.yaw),stride=speed*(1-.45*Math.min(1,p.tag/.15))/Math.max(1,mag);
+    const goalX=(c*sideways-s*forward)*stride,goalZ=(-s*sideways-c*forward)*stride;
+    const dx=goalX-p.vx,dz=goalZ-p.vz,dv=Math.hypot(dx,dz);
+    const acceleration=grounded?(mag?42:52):10;
+    const ratio=dv?Math.min(1,acceleration*dt/dv):0;
+    p.vx+=dx*ratio;p.vz+=dz*ratio;
+    if(p.vx||p.vz)move(p,p.vx*dt,p.vz*dt);
+    if(dt>0){p.vx=(p.x-oldX)/dt;p.vz=(p.z-oldZ)/dt;}
     p.quiet=!!keys.walk||p.crouch;const walked=Math.hypot(p.x-oldX,p.z-oldZ);p.walking=walked>dt*.1;
     if(p.walking&&!p.quiet&&grounded&&Math.floor(bob)!==Math.floor(bob+walked*2))for(const b of bots){
       if(b.team!==p.team&&Math.hypot(b.x-p.x,b.z-p.z)<8)b.lastHeard={x:p.x,z:p.z};
@@ -380,7 +390,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     const previous=shotTimer;shotTimer-=dt;if(w.id==='awm'&&previous>.78&&shotTimer<=.78)sfx('bolt','awm');
     if(w.id==='awm'&&restoreZoom&&shotTimer<=0){state.zoom=restoreZoom;restoreZoom=0;scopeTime=clock;sfx('scope','awm');}
     if(w.id==='he'&&!w.ammo&&shotTimer<=0){useSlot(lastSlot===3?0:lastSlot);return;}
-    state.spread=((w.id==='awm'&&state.zoom&&clock-scopeTime>.16?.0006:(d.base??0))+(p.walking?(d.moving??0)*.48:0)+(!grounded?.09:0)+bloom)*(p.crouch?.62:1)*(state.aiming?.7:1);
+    state.spread=firingCone(d,p.burst,{speed:Math.hypot(p.vx,p.vz),grounded,crouch:p.crouch,ads:state.aiming,scoped:w.id==='awm'&&state.zoom&&clock-scopeTime>.16});
     const trigger=keys.fire||fireTap,secondary=keys.aim||altTap;
     if(!trigger&&!(w.id==='knife'&&secondary))return;
     if(shotTimer>0||loadTimer){if(shotTimer>.3||loadTimer)fireTap=altTap=false;return;}
@@ -398,12 +408,17 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(!w.ammo){if(!w.reserve){sfx('dry',w.id);shotTimer=.32;}else reload();return;}
     w.ammo--;semiLatch=true;view.shoot();camera.getWorldDirection(dir);
     if(w.id==='he'){toss(p,dir);shotTimer=.65;hud();return;}
-    rot.set(pitch+kick+(Math.random()-.5)*state.spread,p.yaw+sideKick+(Math.random()-.5)*state.spread,0,'YXZ');
-    dir.set(0,0,-1).applyEuler(rot);shots++;shot(p,dir,w.id);shotTimer=d.interval;
+    const deviation=spreadOffset(state.spread);
+    rot.set(pitch+p.burst.pitch+deviation.y,p.yaw+p.burst.yaw+deviation.x,0,'YXZ');
+    dir.set(0,0,-1).applyEuler(rot);shots++;shot(p,dir,w.id);
+    const adsRate=state.aiming&&['ak47','m4a1','mp5'].includes(w.id)?.90:1;
+    shotTimer=d.interval/adsRate+(previous>0?Math.max(-dt,shotTimer):0);
+    recordShot(p.burst,d,clock,state.aiming,p.crouch);
     if(w.id==='awm'&&state.zoom){restoreZoom=state.zoom;state.zoom=0;state.aiming=false;}
-    kick=Math.min(.105,kick+d.recoil);sideKick+=(Math.random()-.5)*bloom*.7;bloom=Math.min(.05,bloom+d.bloom);hud();
+    hud();
   }
   function advanceBot(b,dt){
+    recoverBurst(b.burst,arsenal[active(b).id],clock,dt);
     const support=treadHeight(b.x,b.z,treads);
     if(b.y>support){b.fall=(b.fall||0)+18*dt;b.y=Math.max(support,b.y-b.fall*dt);}else b.fall=0;
     const enemies=units.filter(a=>a.alive && a.team!==b.team);
@@ -432,14 +447,21 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
           b.inventory[3].ammo=0;toss(b,new T.Vector3(foe.x-b.x,2.6,foe.z-b.z).normalize());b.nadeReady=Infinity;
         }
         dir.set(foe.x-b.x+(Math.random()-.5)*miss*2,foe.y+(Math.random()<skill.head?1.65:1.17)-b.y-eyeHeight(b)+(Math.random()-.5)*miss*1.9,foe.z-b.z+(Math.random()-.5)*miss*2).normalize();
-        const w=active(b);if(w.ammo>0){w.ammo--;shot(b,dir,w.id);b.shot=arsenal[w.id].interval+skill.response*(.24+Math.random()*.65);}
+        const w=active(b),def=arsenal[w.id];
+        if(w.ammo>0){
+          const spread=firingCone(def,b.burst,{speed:skill.strafe,grounded:!b.fall,crouch:b.crouch,scoped:w.id==='awm',ads:false});
+          const offset=spreadOffset(spread);
+          rot.set(Math.asin(dir.y)+b.burst.pitch+offset.y,Math.atan2(-dir.x,-dir.z)+b.burst.yaw+offset.x,0,'YXZ');
+          dir.set(0,0,-1).applyEuler(rot);w.ammo--;shot(b,dir,w.id);recordShot(b.burst,def,clock,false,b.crouch);
+          b.shot=def.interval+skill.response*(.24+Math.random()*.65);
+        }
         else{b.shot=arsenal[w.id].reload;w.ammo=w.max;sfx('reload',w.id,b);}
       }
-      if(skill.strafe>.1){const step=Math.sin(clock*2+b.id)*skill.strafe*dt;move(b,Math.cos(b.yaw)*step,-Math.sin(b.yaw)*step);}
+      if(skill.strafe>.1){const step=Math.sin(clock*2+b.id)*skill.strafe*dt*(b.tag>0?.55:1);move(b,Math.cos(b.yaw)*step,-Math.sin(b.yaw)*step);}
       return;
     }
     if(!b.path.length)return;
-    let remaining=dt*(2.7+(b.id%3)*.18);
+    let remaining=dt*(b.tag>0?.55:1)*(2.7+(b.id%3)*.18);
     while(remaining>0 && b.path.length){
       const q=b.path[0], dx=q.x-b.x,dz=q.z-b.z,dist=Math.hypot(dx,dz);
       if(dist<.025){b.path.shift();continue;}
@@ -474,7 +496,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(action==='primary'&&primaries.includes(value)){
       primary=value;
       if(p.alive&&Math.abs(p.z)>20&&(p.team===0?p.z>0:p.z<0)){
-        p.inventory[0]=loadout(primary)[0];p.slot=0;state.zoom=0;loadTimer=0;shotTimer=.25;view.equip(primary);hud();return 'now';
+        p.inventory[0]=loadout(primary)[0];p.burst=newBurst();p.slot=0;state.zoom=0;loadTimer=0;shotTimer=.25;view.equip(primary);hud();return 'now';
       }return 'respawn';
     }
     if(state.phase!=='playing')return;
@@ -498,7 +520,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(state.phase!=='playing')return;
     dt=clamp(dt,0,.08);clock+=dt;state.remaining=Math.max(0,state.remaining-dt);
     for(const a of units){
-      a.shield=Math.max(0,a.shield-dt);a.radarT=Math.max(0,a.radarT-dt);
+      a.shield=Math.max(0,a.shield-dt);a.radarT=Math.max(0,a.radarT-dt);a.tag=Math.max(0,a.tag-dt);
       if(!a.alive){a.respawn-=dt;if(a.respawn<=0)respawn(a);}
     }
     if(p.alive)advancePlayer(dt);else{
