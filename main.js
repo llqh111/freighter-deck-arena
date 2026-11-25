@@ -1,10 +1,10 @@
 import {names,teams,groups,choices,selectors,board,weaponIcon} from './lobby.js';
 import * as T from './three.module.js';
-import {buildWorld} from './world.js?v=4';
-import {createMatch} from './match.js?v=4';
-import {createViewModel} from './viewmodel.js?v=4';
+import {buildWorld} from './world.js?v=5';
+import {createMatch} from './match.js?v=5';
+import {createViewModel} from './viewmodel.js?v=5';
 
-import {createDeckAudio} from './deck-audio.js?v=4';
+import {createDeckAudio} from './deck-audio.js?v=5';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -108,7 +108,14 @@ function lock(){
   if(coarse||document.pointerLockElement===canvas)return;
   if(!canvas.requestPointerLock){notify('拖动鼠标转向，按住左键开火。');return;}
   lockPending=true;clearTimeout(locker);locker=setTimeout(()=>{lockPending=false;},700);
-  try{const req=canvas.requestPointerLock();req?.catch(()=>{lockPending=false;notify('点击画面锁定鼠标，也可以拖动转向。');});}catch{lockPending=false;}
+  const fallback=()=>{
+    try{const req=canvas.requestPointerLock();req?.catch(()=>{lockPending=false;notify('点击画面锁定鼠标，也可以拖动转向。');});}
+    catch{lockPending=false;}
+  };
+  try{
+    const req=canvas.requestPointerLock({unadjustedMovement:true});
+    if(req&&typeof req.catch==='function')req.catch(fallback);
+  }catch{fallback();}
 }
 function release(){if(document.pointerLockElement)document.exitPointerLock();}
 function closePanel(){if(panel.open)panel.close();dialogKind='';}
@@ -124,7 +131,7 @@ function pauseUI(){
 function dismiss(){if(dialogKind==='loadout'){resume();return;}if(dialogKind==='end'){toMenu();return;}if(dialogKind==='pause'){resume();return;}closePanel();if(mode==='paused')pauseUI();}
 $('closePanel').onclick=dismiss;panel.oncancel=e=>{e.preventDefault();dismiss();};
 $('deploy').onclick=start;$('pauseHud').onclick=pauseUI;
-let calloutAnimation;
+let calloutAnimation,hitAnimation;
 function clearAnnouncement(){
   calloutAnimation?.cancel();
   $('callout').hidden=true;
@@ -132,14 +139,29 @@ function clearAnnouncement(){
 function announceHit(data){
   if(!data.kill)return;
   const banner=$('callout');
-  $('killTitle').textContent=data.multi>1?data.multi+' 连杀':data.head?'爆头击杀':data.wall?'穿箱击杀':data.weapon==='knife'?'近身击杀':data.weapon==='he'?'手雷击杀':'确认击杀';
-  $('killDetail').textContent=(data.head&&data.multi>1?'爆头 · ':'')+(data.victim||'');
+  const multiNames=['','','双杀','三连杀','四连杀','五连杀'];
+  const title=data.multi>1?(multiNames[data.multi]||data.multi+' 连杀'):data.head?'爆头击杀':data.wall?'穿箱击杀':data.weapon==='knife'?'近身击杀':data.weapon==='he'?'手雷击杀':'确认击杀';
+  const tags=[];
+  if(data.head&&data.multi>1)tags.push('爆头');
+  if(data.wall&&data.multi>1)tags.push('穿箱');
+  if(data.weapon==='knife'&&data.multi>1)tags.push('近战');
+  if(data.victim)tags.push(data.victim);
+  $('killTitle').textContent=title;
+  $('killDetail').textContent=tags.join(' · ');
+  banner.classList.toggle('head',!!data.head);
+  banner.classList.toggle('multi',data.multi>1);
   banner.hidden=false;
   calloutAnimation?.cancel();
-  calloutAnimation=banner.animate([{opacity:0},{opacity:1,offset:.1},{opacity:1,offset:.74},{opacity:0}],{duration:1800,fill:'forwards'});
-  deckAudio.cue(data.head?'headshot':'kill');
+  calloutAnimation=banner.animate([
+    {opacity:0,transform:'translate(-50%,10px) scale(.86)'},
+    {opacity:1,transform:'translate(-50%,-2px) scale(1.05)',offset:.11},
+    {opacity:1,transform:'translate(-50%,0) scale(1)',offset:.22},
+    {opacity:1,transform:'translate(-50%,0) scale(1)',offset:.76},
+    {opacity:0,transform:'translate(-50%,-6px) scale(.97)'}
+  ],{duration:data.multi>1?2100:1850,fill:'forwards'});
+  deckAudio.cue(data.head?'headshot':'kill',{multi:data.multi,head:data.head,weapon:data.weapon});
   if(sound&&prefs.vol>0&&(data.head||data.multi>1)&&window.speechSynthesis&&typeof SpeechSynthesisUtterance==='function'){
-    const line=new SpeechSynthesisUtterance(data.multi>1?data.multi+' 连杀':'爆头');line.lang='zh-CN';line.volume=prefs.vol*.6;line.rate=1.15;
+    const line=new SpeechSynthesisUtterance(data.multi>1?(multiNames[data.multi]||data.multi+' 连杀'):'爆头');line.lang='zh-CN';line.volume=prefs.vol*.55;line.rate=1.18;
     speechSynthesis.cancel();speechSynthesis.speak(line);
   }
 }
@@ -177,9 +199,21 @@ function hudEvent(type,data){
     $('slotRack').hidden=!data.alive;
     if(!data.alive)$('respawn').textContent='被 '+data.killedBy+' 击倒 · '+Math.ceil(data.respawnIn)+' 秒后复活';drawMap($('radar'),data);
   }else if(type==='hit'||type==='hurt'){
-    if(type==='hit')announceHit(data);
-    else if(Number.isFinite(data.bearing)){lastBearing=data.bearing;$('bearing').hidden=false;$('bearing').animate([{opacity:1},{opacity:0}],{duration:850,fill:'forwards'});}
-    const e=$(type==='hit'?'hit':'damage');e.classList.toggle('head',!!data.head);e.classList.toggle('kill',!!data.kill);e.animate([{opacity:1},{opacity:0}],{duration:type==='hit'?160:300});
+    if(type==='hit'){
+      announceHit(data);
+      const e=$('hit');
+      e.classList.toggle('head',!!data.head);e.classList.toggle('kill',!!data.kill);
+      const pop=data.kill?1.52:data.head?1.32:1.18;
+      hitAnimation?.cancel();
+      hitAnimation=e.animate([
+        {opacity:1,transform:'translate(-50%,-50%) rotate(45deg) scale('+pop+')'},
+        {opacity:1,transform:'translate(-50%,-50%) rotate(45deg) scale(1)',offset:.35},
+        {opacity:0,transform:'translate(-50%,-50%) rotate(45deg) scale(.92)'}
+      ],{duration:data.kill?280:data.head?210:165,fill:'forwards'});
+    }else{
+      if(Number.isFinite(data.bearing)){lastBearing=data.bearing;$('bearing').hidden=false;$('bearing').animate([{opacity:1},{opacity:0}],{duration:850,fill:'forwards'});}
+      $('damage').animate([{opacity:1},{opacity:0}],{duration:300});
+    }
   }else if(type==='feed'){
     const line=document.createElement('div');const who=document.createElement('b');who.style.color=data.team?'var(--red)':'var(--ice)';who.textContent=data.killer;
     line.append(who,'　'+(names[data.weapon]||'')+(data.head?' · 爆头':'')+(data.wall?' · 穿箱':'')+'　'+data.victim);$('feed').prepend(line);while($('feed').children.length>3)$('feed').lastChild.remove();setTimeout(()=>line.remove(),4000);
@@ -223,8 +257,22 @@ canvas.addEventListener('mousedown',e=>{
 window.addEventListener('mouseup',e=>{
   if(mode==='playing'&&draggingMouse&&!e.sourceCapabilities?.firesTouchEvents)syncMouse(e.buttons);
 });
+let lockGraceUntil=0,skipMoves=0,recentMoveMag=0,lastMoveTs=0;
 document.addEventListener('mousemove',e=>{
-  if(mode==='playing'&&(document.pointerLockElement===canvas||draggingMouse))match.look(e.movementX*sensitivity,e.movementY*sensitivity);
+  const locked=document.pointerLockElement===canvas;
+  if(mode!=='playing'||(!locked&&!draggingMouse))return;
+  const now=performance.now();
+  if(locked&&(skipMoves>0||now<lockGraceUntil)){if(skipMoves>0)skipMoves--;lastMoveTs=now;return;}
+  const mx=e.movementX,my=e.movementY;
+  if(!Number.isFinite(mx)||!Number.isFinite(my)||(mx===0&&my===0))return;
+  const dtMove=now-lastMoveTs;lastMoveTs=now;
+  if(dtMove>120)recentMoveMag=0;
+  const mag=Math.hypot(mx,my);
+  // Drop Chromium/Windows pointer-lock cursor-recenter warp spikes while keeping fast flicks intact.
+  if(Math.abs(mx)>220||Math.abs(my)>220||(mag>125&&recentMoveMag<24)){recentMoveMag*=.5;return;}
+  const clampedX=T.MathUtils.clamp(mx,-160,160),clampedY=T.MathUtils.clamp(my,-160,160);
+  recentMoveMag=recentMoveMag*.7+Math.min(mag,120)*.3;
+  match.look(clampedX*sensitivity,clampedY*sensitivity);
 });
 canvas.addEventListener('pointerdown',e=>{
   if(mode!=='playing'||e.pointerType!=='touch'||touchLook!==null)return;
@@ -237,7 +285,12 @@ canvas.addEventListener('pointermove',e=>{
 });
 canvas.addEventListener('lostpointercapture',e=>{if(touchLook?.id===e.pointerId)touchLook=null;});
 let hadLock=false;
-document.addEventListener('pointerlockchange',()=>{const active=document.pointerLockElement===canvas;if(hadLock&&!active&&mode==='playing')pauseUI();hadLock=active;lockPending=false;});
+document.addEventListener('pointerlockchange',()=>{
+  const active=document.pointerLockElement===canvas;
+  if(active){lockGraceUntil=performance.now()+85;skipMoves=2;recentMoveMag=0;lastMoveTs=0;}
+  if(hadLock&&!active&&mode==='playing')pauseUI();
+  hadLock=active;lockPending=false;
+});
 addEventListener('blur',()=>{if(mode==='playing')pauseUI();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&mode==='playing')pauseUI();});
 const stick=$('stick');let stickId=null;

@@ -1,11 +1,16 @@
 import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js';
 import * as T from './three.module.js';
-import {arsenal,primaries,loadout,skills} from './arsenal.js?v=4';
+import {arsenal,primaries,loadout,skills} from './arsenal.js?v=5';
 
 const clamp = T.MathUtils.clamp;
 const EYE=1.60,RADIUS=.32,ROUND=600,GOAL=50;
 const sq = n => n*n;
 const angleTo = (a,b) => Math.atan2(a.x-b.x,a.z-b.z);
+const wrapAngle = a => Math.atan2(Math.sin(a),Math.cos(a));
+const turnToward = (cur,target,maxDelta)=>{
+  const d=wrapAngle(target-cur);
+  return Math.abs(d)<=maxDelta?target:wrapAngle(cur+Math.sign(d)*maxDelta);
+};
 
 function createSquad(scene,bots){
   const geometry={box:new T.BoxGeometry(1,1,1),ell:new T.SphereGeometry(.5,10,8)};
@@ -113,17 +118,29 @@ function makeNavigator(world,colliders,treads){
   }
   // Validate the intervening segment, including individual stair risers.
   // A ledge has a downward edge but no edge in the opposite direction.
+  function canSegment(x0,z0,h0,x1,z1,samples){
+    let previous=h0;
+    for(let k=1;k<=samples;k++){
+      const t=k/samples,x=T.MathUtils.lerp(x0,x1,t),z=T.MathUtils.lerp(z0,z1,t);
+      const h=treadHeight(x,z,treads);
+      if(h>previous+STEP || !clear(x,z,h))return false;
+      previous=h;
+    }
+    return true;
+  }
+  const dirs=[[0,1],[0,-1],[-1,0],[1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
   for(let at=0;at<n;at++)if(walk[at]){
-    for(const next of [at+cols,at-cols,at-1,at+1]){
-      if(!walk[next] || Math.abs(next%cols-at%cols)>1)continue;
-      let previous=heights[at],ok=true;
-      for(let k=1;k<=6;k++){
-        const x=T.MathUtils.lerp(xOf(at),xOf(next),k/6),z=T.MathUtils.lerp(zOf(at),zOf(next),k/6);
-        const h=treadHeight(x,z,treads);
-        if(h>previous+STEP || !clear(x,z,h)){ok=false;break;}
-        previous=h;
+    const c0=at%cols,r0=Math.floor(at/cols);
+    for(const [dc,dr] of dirs){
+      const c1=c0+dc,r1=r0+dr;
+      if(c1<0||c1>=cols||r1<0||r1>=rows)continue;
+      const next=r1*cols+c1;
+      if(!walk[next])continue;
+      if(dc&&dr){
+        const s1=r0*cols+c1,s2=r1*cols+c0;
+        if(!walk[s1]||!walk[s2]||Math.abs(heights[s1]-heights[at])>STEP||Math.abs(heights[s2]-heights[at])>STEP)continue;
       }
-      if(ok)links[at].push(next);
+      if(canSegment(xOf(at),zOf(at),heights[at],xOf(next),zOf(next),dc&&dr?8:6))links[at].push(next);
     }
   }
   function nearest(x,z){
@@ -139,6 +156,15 @@ function makeNavigator(world,colliders,treads){
     }
     return -1;
   }
+  function flatClear(x0,z0,h0,x1,z1){
+    const dist=Math.hypot(x1-x0,z1-z0),samples=Math.max(3,Math.ceil(dist/.42));
+    for(let k=1;k<=samples;k++){
+      const t=k/samples,x=T.MathUtils.lerp(x0,x1,t),z=T.MathUtils.lerp(z0,z1,t);
+      const h=treadHeight(x,z,treads);
+      if(Math.abs(h-h0)>.06 || !clear(x,z,h))return false;
+    }
+    return true;
+  }
   function route(x,z,tx,tz){
     const a=nearest(x,z),b=nearest(tx,tz);
     if(a<0||b<0||a===b)return [];
@@ -153,11 +179,55 @@ function makeNavigator(world,colliders,treads){
         prev[next]=at; queue[end++]=next;
       }
     }
-    const path=[];
-    for(let at=closest;at!==a;at=prev[at])path.push({x:xOf(at),z:zOf(at)});
-    return path.reverse();
+    const raw=[];
+    for(let at=closest;at!==a;at=prev[at])raw.push({x:xOf(at),z:zOf(at),h:heights[at]});
+    raw.reverse();
+    if(raw.length<=2)return raw.map(({x:px,z:pz})=>({x:px,z:pz}));
+    const smooth=[];
+    let anchor={x,z,h:heights[a]},i=0;
+    while(i<raw.length){
+      let far=i;
+      const limit=Math.min(raw.length-1,i+8);
+      for(let j=limit;j>i;j--){
+        if(Math.abs(raw[j].h-anchor.h)<.06 && flatClear(anchor.x,anchor.z,anchor.h,raw[j].x,raw[j].z)){far=j;break;}
+      }
+      smooth.push({x:raw[far].x,z:raw[far].z});
+      anchor=raw[far];
+      i=far+1;
+    }
+    return smooth;
   }
-  return {route};
+  const coverOrigin=new T.Vector3(),coverDir=new T.Vector3();
+  function findCover(x,z,threatX,threatY,threatZ,wallDistFn,maxRadius=8.5){
+    const c0=clamp(Math.floor((x-minX)/step),0,cols-1),r0=clamp(Math.floor((z-minZ)/step),0,rows-1);
+    const rad=Math.ceil(maxRadius/step);
+    let best=null,bestScore=Infinity;
+    for(let iz=Math.max(0,r0-rad);iz<=Math.min(rows-1,r0+rad);iz++){
+      for(let ix=Math.max(0,c0-rad);ix<=Math.min(cols-1,c0+rad);ix++){
+        const id=iz*cols+ix;
+        if(!walk[id])continue;
+        const cx=xOf(id),cz=zOf(id),dSelf=Math.hypot(cx-x,cz-z);
+        if(dSelf<1.1||dSelf>maxRadius)continue;
+        const dThreat=Math.hypot(cx-threatX,cz-threatZ);
+        if(dThreat<4.5)continue;
+        const h=heights[id];
+        if(Math.abs(h-treadHeight(x,z,treads))>.6)continue;
+        coverOrigin.set(cx,h+1.22,cz);
+        coverDir.set(threatX-cx,threatY+1.35-(h+1.22),threatZ-cz);
+        const len=coverDir.length();
+        if(len<.5)continue;
+        coverDir.multiplyScalar(1/len);
+        const hitDist=wallDistFn(coverOrigin,coverDir,len);
+        if(hitDist<len-.45){
+          // Prefer close cover that is near the blocking object (tight peekable cover).
+          const score=dSelf+Math.min(hitDist,4)*.45-Math.min(dThreat,16)*.12;
+          if(score<bestScore){bestScore=score;best={x:cx,z:cz};}
+        }
+      }
+    }
+    return best;
+  }
+  return {route,findCover};
 }
 
 export function createMatch({scene,camera,world,view,emit=()=>{}}){
@@ -173,6 +243,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   const nadeGeo=new T.IcosahedronGeometry(.12,1),nadeMat=new T.MeshStandardMaterial({color:0x536043,metalness:.4,roughness:.6});
   const axis=new T.Vector3(0,1,0);
   let pitch=0,jumpVel=0,grounded=true,loadTimer=0,shotTimer=0,hudTimer=0,clock=0,bob=0;
+  let camY=EYE,bobAmp=0,recoilFollow=.43;
   let fireTap=false,altTap=false,restoreZoom=0;
   let baseFov=camera.fov,lastSlot=0,semiLatch=false,shots=0,hits=0,scopeTime=0;
   const eyeHeight=a=>a.crouch?1.07:EYE;
@@ -195,16 +266,22 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   }
   function respawn(a,initial=false){
     const list=world.spawns[a.team], spot=list[initial?a.id%list.length:Math.floor(Math.random()*list.length)];
-    Object.assign(a,{x:spot.x,y:0,z:spot.z,yaw:a.team?Math.PI:0,hp:100,armor:100,alive:true,respawn:0,shield:initial?.55:1.5,path:[],think:0,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,seen:null,nadeReady:clock+12+Math.random()*16});
+    const role=a===p?'player':a.primary==='awm'?'sniper':a.primary==='mp5'?'flanker':(a.team===p.team&&a.id===1)?'wingman':'rifle';
+    const lane=a.id%3-1;
+    Object.assign(a,{x:spot.x,y:0,z:spot.z,yaw:a.team?Math.PI:0,hp:100,armor:100,alive:true,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0});
     if(a===p){
       pitch=jumpVel=bob=loadTimer=0;grounded=true;shotTimer=.12;lastSlot=0;semiLatch=false;
-      restoreZoom=0;state.zoom=0;state.aiming=false;state.killedBy='';view.equip?.(active(p).id);cameraAt(0);
+      restoreZoom=0;state.zoom=0;state.aiming=false;state.killedBy='';camY=EYE;bobAmp=0;recoilFollow=.43;
+      view.equip?.(active(p).id);cameraAt(0);
     }
   }
   function cameraAt(dt){
-    camera.position.set(p.x,p.y+(p.alive?eyeHeight(p):.65)+.025*Math.sin(bob)*Number(p.walking),p.z);
-    const follow=state.aiming?.78:.43;
-    camera.rotation.set(pitch+p.burst.pitch*follow,p.yaw+p.burst.yaw*follow,0,'YXZ');
+    const targetY=p.y+(p.alive?eyeHeight(p):.65);
+    camY=dt>0?T.MathUtils.damp(camY,targetY,18,dt):targetY;
+    bobAmp=dt>0?T.MathUtils.damp(bobAmp,p.walking?1:0,14,dt):0;
+    recoilFollow=dt>0?T.MathUtils.damp(recoilFollow,state.aiming?.78:.43,18,dt):.43;
+    camera.position.set(p.x,camY+.022*Math.sin(bob)*bobAmp,p.z);
+    camera.rotation.set(pitch+p.burst.pitch*recoilFollow,p.yaw+p.burst.yaw*recoilFollow,0,'YXZ');
     const desired=state.zoom===2?11:state.zoom===1?30:baseFov*(state.aiming?.75:1);
     if(Math.abs(camera.fov-desired)>.05){camera.fov=T.MathUtils.damp(camera.fov,desired,18,dt);camera.updateProjectionMatrix();}
     camera.updateMatrixWorld();
@@ -288,7 +365,15 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(!b.alive||b.shield>0||state.phase!=='playing'||(a!==b&&a.team===b.team))return;
     const absorb=Math.min(b.armor,amount*(1-arsenal[id].armor));b.armor-=absorb;b.hp=Math.max(0,b.hp-amount+absorb);
     if(arsenal[id].interval)b.tag=.24;
-    if(b!==p&&b!==a){b.lastHeard={x:a.x,z:a.z};b.yaw=angleTo(b,a);}
+    if(b!==a){
+      b.lastAttacker=a;b.hurtAt=clock;
+      if(b!==p){b.lastHeard={x:a.x,z:a.z,t:clock};b.alertYaw=angleTo(b,a);b.alertUntil=clock+1.8;b.think=Math.min(b.think,.12);}
+      for(const mate of bots){
+        if(mate!==b&&mate.alive&&mate.team===b.team&&!mate.enemy&&Math.hypot(mate.x-b.x,mate.z-b.z)<16){
+          mate.lastHeard={x:a.x,z:a.z,t:clock};mate.alertYaw=angleTo(mate,a);mate.alertUntil=clock+1.4;
+        }
+      }
+    }
     if(b===p)sfx('hurt',id);
     if(b===p)emit('hurt',{bearing:angleTo(p,a),damage:amount-absorb});
     const kill=b.hp<=0;
@@ -417,58 +502,234 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(w.id==='awm'&&state.zoom){restoreZoom=state.zoom;state.zoom=0;state.aiming=false;}
     hud();
   }
+  function botWeaponRange(id){
+    if(id==='awm')return {min:15,max:38};
+    if(id==='mp5')return {min:4.5,max:13.5};
+    if(id==='deagle')return {min:5,max:16};
+    return {min:9.5,max:23};
+  }
+  function friendlyInLine(b,tx,tz,range){
+    const dx=tx-b.x,dz=tz-b.z,len=Math.hypot(dx,dz);
+    if(len<.5)return false;
+    const ux=dx/len,uz=dz/len;
+    for(const u of units){
+      if(u===b||!u.alive||u.team!==b.team)continue;
+      const rx=u.x-b.x,rz=u.z-b.z,proj=rx*ux+rz*uz;
+      if(proj>.35&&proj<Math.min(range,len)-.4){
+        const perp=Math.abs(rx*uz-rz*ux);
+        if(perp<.72)return true;
+      }
+    }
+    return false;
+  }
+  function startBotReload(b){
+    const w=active(b),def=arsenal[w.id];
+    if(!def.reload||w.ammo>=w.max||b.reloadUntil>clock)return false;
+    b.reloadUntil=clock+def.reload;b.shot=Math.max(b.shot,def.reload);
+    b.reloadingSlot=b.slot;sfx('reload',w.id,b);return true;
+  }
+  function pickBotDest(b,enemies){
+    const dirZ=b.team===0?-1:1;
+    if(b.lastSeen&&clock-b.lastSeen.t<3.8){
+      if(b.role==='sniper'){
+        const cov=navigator.findCover(b.x,b.z,b.lastSeen.x,b.lastSeen.y||0,b.lastSeen.z,wallDistance,7);
+        if(cov)return cov;
+      }
+      return {x:b.lastSeen.x,z:b.lastSeen.z};
+    }
+    if(b.lastHeard&&clock-(b.lastHeard.t||0)<4.8)return b.lastHeard;
+    if(b.role==='wingman'&&p.alive&&Math.abs(p.z)<20.5){
+      const side=p.x>0?-4.2:4.2;
+      const tx=clamp(p.x+side,-10.2,10.2),tz=clamp(p.z+dirZ*3.5,-20,20);
+      if(Math.hypot(b.x-tx,b.z-tz)>3.2)return {x:tx,z:tz};
+    }
+    if(b.role==='sniper'){
+      const spots=b.team===0?[{x:0,z:18.7},{x:-7.8,z:13.5},{x:7.8,z:12.5}]:[{x:0,z:-18.7},{x:7.8,z:-13.5},{x:-7.8,z:-12.5}];
+      if(!b.holdPos||clock>b.holdUntil){
+        b.holdPos=spots[Math.floor(Math.random()*spots.length)];
+        b.holdUntil=clock+8+Math.random()*7;
+      }
+      return b.holdPos;
+    }
+    if(b.role==='flanker'&&world.vents?.length){
+      const vent=world.vents[b.team===0?1:0];
+      const ownSide=b.team===0?b.z>8:b.z<-8;
+      if(ownSide&&Math.hypot(b.x-vent.entry.x,b.z-vent.entry.z)<14&&!b.ventUsed){
+        if(Math.hypot(b.x-vent.entry.x,b.z-vent.entry.z)<2.2){b.ventUsed=true;return vent.exit;}
+        return vent.entry;
+      }
+      if(b.ventUsed&&Math.hypot(b.x-vent.exit.x,b.z-vent.exit.z)>3.2&&(b.team===0?b.z>-5:b.z<5))return vent.exit;
+    }
+    const laneX=b.lane*7.0;
+    const laneEnemy=enemies.find(e=>Math.abs(e.x-laneX)<7.5);
+    if(laneEnemy&&Math.random()<.65)return {x:laneEnemy.x,z:laneEnemy.z};
+    if(!b.holdPos||clock>b.holdUntil||Math.hypot(b.x-b.holdPos.x,b.z-b.holdPos.z)<2.2){
+      const advanceZ=clamp(b.z+dirZ*(9+Math.random()*8),-19,19);
+      b.holdPos={x:clamp(laneX+(Math.random()-.5)*4.5,-10.2,10.2),z:advanceZ};
+      b.holdUntil=clock+5+Math.random()*4;
+    }
+    return b.holdPos;
+  }
   function advanceBot(b,dt){
-    recoverBurst(b.burst,arsenal[active(b).id],clock,dt);
+    const wNow=active(b);
+    recoverBurst(b.burst,arsenal[wNow.id],clock,dt);
     const support=treadHeight(b.x,b.z,treads);
     if(b.y>support){b.fall=(b.fall||0)+18*dt;b.y=Math.max(support,b.y-b.fall*dt);}else b.fall=0;
+    if(b.reloadUntil>0&&clock>=b.reloadUntil){
+      const rw=b.inventory[b.reloadingSlot??b.slot];
+      if(rw){rw.ammo=rw.max;}
+      b.reloadUntil=0;b.crouch=false;
+    }
     const enemies=units.filter(a=>a.alive && a.team!==b.team);
     if(b.walking){b.stepIn=(b.stepIn??0)-dt;if(b.stepIn<=0){sfx('step','',b);b.stepIn=.43;}}
     b.think-=dt;b.shot-=dt;b.walking=false;
+    const turnSpeed=5.8+(1-skill.response)*7.5;
+    // Soft separation so teammates do not clump or body-block the player.
+    let sepX=0,sepZ=0;
+    for(const u of units){
+      if(u===b||!u.alive)continue;
+      const dx=b.x-u.x,dz=b.z-u.z,d=Math.hypot(dx,dz),minD=u===p?1.35:1.05;
+      if(d>1e-4&&d<minD){const push=(minD-d)/minD;sepX+=dx/d*push;sepZ+=dz/d*push;}
+    }
+    if(sepX||sepZ){const mag=Math.hypot(sepX,sepZ);move(b,sepX/mag*Math.min(1,mag)*1.4*dt,sepZ/mag*Math.min(1,mag)*1.4*dt);}
     if(b.think<=0){
-      b.think=skill.response+Math.random()*.25;
-      enemies.sort((a,c)=>sq(b.x-a.x)+sq(b.z-a.z)-sq(b.x-c.x)-sq(b.z-c.z));
-      b.enemy=enemies.find(e=>{
+      b.think=skill.response*.75+Math.random()*.18;
+      let bestFoe=null,bestScore=-Infinity;
+      for(const e of enemies){
         const dx=e.x-b.x,dz=e.z-b.z,r=Math.hypot(dx,dz);
+        if(r>skill.sight)continue;
         const front=(-Math.sin(b.yaw)*dx-Math.cos(b.yaw)*dz)/Math.max(.01,r);
-        return r<skill.sight&&(front>Math.cos(skill.fov)||r<7||e.radarT>0)&&visible(b,e);
-      })||null;
-      if(!b.enemy){
-        const dest=b.lastHeard||enemies[b.id%Math.max(1,Math.min(enemies.length,2))] || world.spawns[1-b.team][0];
-        b.path=navigator.route(b.x,b.z,dest.x,dest.z);b.lastHeard=null;
+        const aware=front>Math.cos(skill.fov)||r<8||e.radarT>0||(e===b.lastAttacker&&clock-b.hurtAt<3.5);
+        if(!aware||!visible(b,e))continue;
+        let sc=52-r;
+        if(e.shield>0)sc-=65;
+        if(e.hp<42)sc+=14;
+        if(e===b.enemy)sc+=10;
+        if(e===b.lastAttacker&&clock-b.hurtAt<3.5)sc+=22;
+        if(b.role==='wingman'&&p.alive&&Math.hypot(e.x-p.x,e.z-p.z)<15)sc+=16;
+        if(sc>bestScore){bestScore=sc;bestFoe=e;}
+      }
+      b.enemy=bestFoe;
+      if(bestFoe){
+        b.lastSeen={x:bestFoe.x,y:bestFoe.y,z:bestFoe.z,t:clock};
+        // Share target intel with nearby teammates.
+        for(const mate of bots){
+          if(mate!==b&&mate.alive&&mate.team===b.team&&!mate.enemy&&Math.hypot(mate.x-b.x,mate.z-b.z)<14){
+            mate.lastHeard={x:bestFoe.x,z:bestFoe.z,t:clock};
+          }
+        }
+        // Seek cover if low HP or reloading under fire.
+        if((b.hp<38||b.reloadUntil>clock)&&clock>b.coverUntil){
+          const cov=navigator.findCover(b.x,b.z,bestFoe.x,bestFoe.y,bestFoe.z,wallDistance,8.5);
+          if(cov){b.path=navigator.route(b.x,b.z,cov.x,cov.z);b.coverUntil=clock+2.4;}
+        }
+      }else{
+        // Out of combat: switch back to primary and do proactive tactical reload.
+        if(b.slot===1&&b.reloadUntil<=clock){b.slot=0;b.burst=newBurst();}
+        const prim=b.inventory[0];
+        if(b.slot===0&&prim.ammo<Math.ceil(prim.max*.42)&&(!b.lastSeen||clock-b.lastSeen.t>2.2)){
+          startBotReload(b);
+        }
+        if(clock>b.coverUntil){
+          const dest=pickBotDest(b,enemies);
+          if(dest)b.path=navigator.route(b.x,b.z,dest.x,dest.z);
+          if(b.lastHeard&&clock-(b.lastHeard.t||0)>4.8)b.lastHeard=null;
+        }
       }
     }
-    if(b.enemy?.alive && visible(b,b.enemy)){
+    const reloading=b.reloadUntil>clock;
+    const hasSight=b.enemy?.alive&&visible(b,b.enemy);
+    if(hasSight){
       const foe=b.enemy;
-      b.yaw=angleTo(b,foe);
-      if(b.shot<=0){
-        const range=Math.hypot(b.x-foe.x,b.z-foe.z);
-        const miss=skill.miss+range*.006;
-        if(b.nadeReady<clock&&range>6&&range<16&&b.inventory[3].ammo){
-          b.inventory[3].ammo=0;toss(b,new T.Vector3(foe.x-b.x,2.6,foe.z-b.z).normalize());b.nadeReady=Infinity;
-        }
-        dir.set(foe.x-b.x+(Math.random()-.5)*miss*2,foe.y+(Math.random()<skill.head?1.65:1.17)-b.y-eyeHeight(b)+(Math.random()-.5)*miss*1.9,foe.z-b.z+(Math.random()-.5)*miss*2).normalize();
-        const w=active(b),def=arsenal[w.id];
-        if(w.ammo>0){
-          const spread=firingCone(def,b.burst,{speed:skill.strafe,grounded:!b.fall,crouch:b.crouch,scoped:w.id==='awm',ads:false});
-          const offset=spreadOffset(spread);
-          rot.set(Math.asin(dir.y)+b.burst.pitch+offset.y,Math.atan2(-dir.x,-dir.z)+b.burst.yaw+offset.x,0,'YXZ');
-          dir.set(0,0,-1).applyEuler(rot);w.ammo--;shot(b,dir,w.id);recordShot(b.burst,def,clock,false,b.crouch);
-          b.shot=def.interval+skill.response*(.24+Math.random()*.65);
-        }
-        else{b.shot=arsenal[w.id].reload;w.ammo=w.max;sfx('reload',w.id,b);}
+      b.lastSeen={x:foe.x,y:foe.y,z:foe.z,t:clock};
+      const range=Math.hypot(b.x-foe.x,b.z-foe.z);
+      const aimYaw=angleTo(b,foe);
+      b.yaw=turnToward(b.yaw,aimYaw,turnSpeed*dt);
+      const aligned=Math.abs(wrapAngle(b.yaw-aimYaw))<.34;
+      const w=active(b),def=arsenal[w.id];
+      const pref=botWeaponRange(w.id);
+      b.crouch=reloading||(w.id==='awm'&&range>13)||(range>16&&b.burst.count>=2&&skill.strafe<.65);
+      // If retreating to cover while low HP or reloading, follow cover path while still facing threat.
+      if((b.hp<38||reloading)&&b.path.length&&clock<b.coverUntil){
+        const q=b.path[0],dx=q.x-b.x,dz=q.z-b.z,dist=Math.hypot(dx,dz);
+        if(dist<.18)b.path.shift();
+        else{const spd=dt*(b.tag>0?.55:1)*3.1;move(b,dx/dist*Math.min(spd,dist),dz/dist*Math.min(spd,dist));b.walking=true;}
+      }else{
+        // Natural non-sinusoidal strafing + weapon-aware range control.
+        if(clock>=b.strafeAt){b.strafeDir*=-1;b.strafeAt=clock+.55+Math.random()*.95;}
+        const strafeSpd=skill.strafe*1.75*(b.crouch?.45:1)*(b.tag>0?.55:1);
+        let mx=Math.cos(b.yaw)*b.strafeDir*strafeSpd,mz=-Math.sin(b.yaw)*b.strafeDir*strafeSpd;
+        const fwdX=-Math.sin(b.yaw),fwdZ=-Math.cos(b.yaw);
+        if(range<pref.min){mx-=fwdX*1.6;mz-=fwdZ*1.6;}
+        else if(range>pref.max&&w.id!=='awm'){mx+=fwdX*1.85;mz+=fwdZ*1.85;}
+        if(friendlyInLine(b,foe.x,foe.z,range)){mx+=Math.cos(b.yaw)*b.strafeDir*2.2;mz+=-Math.sin(b.yaw)*b.strafeDir*2.2;}
+        const oldX=b.x,oldZ=b.z;
+        move(b,mx*dt,mz*dt);
+        const moved=Math.hypot(b.x-oldX,b.z-oldZ);
+        b.walking=moved>dt*.25;
+        if(moved<dt*.15&&strafeSpd>.2){b.strafeDir*=-1;b.strafeAt=clock+.5;}
       }
-      if(skill.strafe>.1){const step=Math.sin(clock*2+b.id)*skill.strafe*dt*(b.tag>0?.55:1);move(b,Math.cos(b.yaw)*step,-Math.sin(b.yaw)*step);}
+      if(!reloading&&aligned&&b.shot<=0&&foe.shield<=0&&!friendlyInLine(b,foe.x,foe.z,range)){
+        if(w.ammo>0){
+          const miss=skill.miss*(b.crouch?.78:1)+range*.0055;
+          dir.set(foe.x-b.x+(Math.random()-.5)*miss*2,foe.y+(Math.random()<skill.head?1.63:1.18)-b.y-eyeHeight(b)+(Math.random()-.5)*miss*1.75,foe.z-b.z+(Math.random()-.5)*miss*2).normalize();
+          const spread=firingCone(def,b.burst,{speed:b.walking?skill.strafe*1.6:0,grounded:!b.fall,crouch:b.crouch,scoped:w.id==='awm',ads:w.id!=='mp5'});
+          const offset=spreadOffset(spread);
+          rot.set(Math.asin(clamp(dir.y,-1,1))+b.burst.pitch+offset.y,Math.atan2(-dir.x,-dir.z)+b.burst.yaw+offset.x,0,'YXZ');
+          dir.set(0,0,-1).applyEuler(rot);w.ammo--;shot(b,dir,w.id);recordShot(b.burst,def,clock,w.id!=='mp5',b.crouch);
+          b.burstLeft=(b.burstLeft||3)-1;
+          const autoGun=['ak47','m4a1','mp5'].includes(w.id);
+          if(autoGun&&b.burstLeft<=0){
+            b.burstLeft=3+Math.floor(Math.random()*3);
+            b.shot=def.interval+.16+skill.response*.38;
+          }else{
+            b.shot=def.interval+skill.response*(autoGun?.14:.26)*(0.5+Math.random()*.7);
+          }
+        }else if(b.slot===0&&range<13.5&&b.inventory[1].ammo>0){
+          // Quick switch to Desert Eagle in close-quarters when primary runs dry!
+          b.slot=1;b.burst=newBurst();b.shot=.32;sfx('equip','deagle',b);
+        }else{
+          startBotReload(b);
+          const cov=navigator.findCover(b.x,b.z,foe.x,foe.y,foe.z,wallDistance,8);
+          if(cov){b.path=navigator.route(b.x,b.z,cov.x,cov.z);b.coverUntil=clock+def.reload;}
+        }
+      }
       return;
     }
-    if(!b.path.length)return;
-    let remaining=dt*(b.tag>0?.55:1)*(2.7+(b.id%3)*.18);
+    // Tactical grenade toward enemy last-known cover when they break line of sight.
+    if(!reloading&&b.lastSeen&&clock-b.lastSeen.t>.35&&clock-b.lastSeen.t<2.4&&b.nadeReady<clock&&b.inventory[3].ammo){
+      const range=Math.hypot(b.x-b.lastSeen.x,b.z-b.lastSeen.z);
+      const mateNear=units.some(u=>u.alive&&u.team===b.team&&Math.hypot(u.x-b.lastSeen.x,u.z-b.lastSeen.z)<5.5);
+      if(range>6.5&&range<16.5&&!mateNear){
+        b.inventory[3].ammo=0;b.nadeReady=Infinity;b.shot=Math.max(b.shot,.55);
+        toss(b,new T.Vector3(b.lastSeen.x-b.x,2.9,b.lastSeen.z-b.z).normalize());
+      }
+    }
+    b.crouch=reloading||(b.role==='sniper'&&b.holdPos&&Math.hypot(b.x-b.holdPos.x,b.z-b.holdPos.z)<1.6);
+    if(!b.path.length){
+      // Hold angle / scan toward last seen or alert direction instead of staring at a wall.
+      if(b.lastSeen&&clock-b.lastSeen.t<3.8)b.yaw=turnToward(b.yaw,angleTo(b,b.lastSeen),turnSpeed*.75*dt);
+      else if(b.alertYaw!==null&&clock<b.alertUntil)b.yaw=turnToward(b.yaw,b.alertYaw,turnSpeed*.85*dt);
+      else if(b.role==='sniper')b.yaw=turnToward(b.yaw,b.team===0?0:Math.PI,3.5*dt);
+      return;
+    }
+    // Stuck recovery check.
+    if(clock>=b.stuckAt){
+      if(Math.hypot(b.x-b.stuckPos.x,b.z-b.stuckPos.z)<.28){
+        b.lane=((b.lane+2)%3)-1;b.holdPos=null;b.path=[];b.think=0;
+      }
+      b.stuckPos={x:b.x,z:b.z};b.stuckAt=clock+.65;
+    }
+    let remaining=dt*(b.tag>0?.55:1)*(b.crouch?2.0:b.role==='flanker'?3.35:2.95+(b.id%3)*.16);
     while(remaining>0 && b.path.length){
       const q=b.path[0], dx=q.x-b.x,dz=q.z-b.z,dist=Math.hypot(dx,dz);
-      if(dist<.025){b.path.shift();continue;}
+      if(dist<.12){b.path.shift();continue;}
       const step=Math.min(remaining,dist);
-      b.yaw=angleTo(b,q);move(b,dx/dist*step,dz/dist*step);
+      const lookTarget=(b.lastSeen&&clock-b.lastSeen.t<2.8)?angleTo(b,b.lastSeen):(b.alertYaw!==null&&clock<b.alertUntil)?b.alertYaw:angleTo(b,q);
+      b.yaw=turnToward(b.yaw,lookTarget,turnSpeed*.75*dt);
+      move(b,dx/dist*step,dz/dist*step);
       b.walking=true;remaining-=step;
-      if(dist<=step+.001)b.path.shift();
+      if(dist<=step+.02)b.path.shift();
     }
   }
   function clearKeys(){fireTap=altTap=false;for(const k in keys)keys[k]=false;}
@@ -513,8 +774,9 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   }
   function look(dx,dy){
     if(state.phase!=='playing'||!p.alive)return;
+    if(!Number.isFinite(dx)||!Number.isFinite(dy))return;
     const sens=state.aiming?.00136:.00205;
-    p.yaw-=dx*sens;pitch=clamp(pitch-dy*sens,-1.38,1.38);
+    p.yaw=wrapAngle(p.yaw-dx*sens);pitch=clamp(pitch-dy*sens,-1.38,1.38);
   }
   function update(dt){
     if(state.phase!=='playing')return;

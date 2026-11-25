@@ -8,11 +8,13 @@ export function recoverBurst(burst,weapon,now,dt){
   const age=now-burst.last;
   const delay=Math.min(.15,weapon.interval*1.16);
   if(age<=delay)return;
-  const window=burst.count<=3?.19:.32;
-  if(age>=delay+window){Object.assign(burst,newBurst());return;}
-  const remaining=delay+window-age;
-  const k=remaining/(remaining+Math.min(dt,age-delay));
-  burst.pitch*=k;burst.yaw*=k;burst.width*=k;
+  const window=burst.count<=3?.22:.36;
+  const activeDt=Math.min(dt,age-delay);
+  const decay=Math.exp(-activeDt*(5.5/window));
+  burst.pitch*=decay;burst.yaw*=decay;burst.width*=decay;
+  if(age>=delay+window*1.6 || (Math.abs(burst.pitch)<1e-4&&Math.abs(burst.yaw)<1e-4&&burst.width<1e-4)){
+    Object.assign(burst,newBurst());
+  }
 }
 
 export function firingCone(weapon,burst,motion){
