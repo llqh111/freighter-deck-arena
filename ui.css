@@ -14,14 +14,13 @@
 
 .leftTrigger{position:absolute;left:38px;bottom:185px;width:48px;height:48px;border-radius:50%;background:#17262e99;border:1px solid #fff8;pointer-events:auto;touch-action:none}.touchActions [aria-pressed=true]{border-color:var(--gold);color:var(--gold)}
 
-#cross{--gap:0px;width:15px;height:15px}
-#cross i{background:#a9ffe4}
-#cross i:nth-child(1),#cross i:nth-child(2){left:7px;width:1.5px;height:5px}
-#cross i:nth-child(3),#cross i:nth-child(4){top:7px;width:5px;height:1.5px}
-#cross i:nth-child(1){transform:translateY(calc(-1 * var(--gap)))}
-#cross i:nth-child(2){transform:translateY(var(--gap))}
-#cross i:nth-child(3){transform:translateX(calc(-1 * var(--gap)))}
-#cross i:nth-child(4){transform:translateX(var(--gap))}
+/* M8 Marteen WR Valorant Crosshair (0;s;1;P;c;5;o;1;0l;3;0o;0;0a;1;0f;0;1b;0) */
+#cross{width:10px;height:10px}
+#cross i{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+#cross i:nth-child(1){width:4px;height:10px;background:#000}
+#cross i:nth-child(2){width:10px;height:4px;background:#000}
+#cross i:nth-child(3){width:2px;height:8px;background:#00ffff}
+#cross i:nth-child(4){width:8px;height:2px;background:#00ffff}
 #hit.head{background:linear-gradient(#ffd466,#ffd466) center top/2.5px 7px,linear-gradient(#ffd466,#ffd466) center bottom/2.5px 7px,linear-gradient(#ffd466,#ffd466) left center/7px 2.5px,linear-gradient(#ffd466,#ffd466) right center/7px 2.5px;background-repeat:no-repeat;filter:drop-shadow(0 0 5px #ffc566)}
 #hit.kill{width:32px;height:32px;background:linear-gradient(#ff5738,#ff5738) center top/3px 8px,linear-gradient(#ff5738,#ff5738) center bottom/3px 8px,linear-gradient(#ff5738,#ff5738) left center/8px 3px,linear-gradient(#ff5738,#ff5738) right center/8px 3px;background-repeat:no-repeat;filter:drop-shadow(0 0 6px #ff5738)}
 #hit.kill.head{background:linear-gradient(#ffe066,#ff5738) center top/3px 9px,linear-gradient(#ff5738,#ffe066) center bottom/3px 9px,linear-gradient(#ffe066,#ff5738) left center/9px 3px,linear-gradient(#ff5738,#ffe066) right center/9px 3px;background-repeat:no-repeat;filter:drop-shadow(0 0 8px #ff8a3d)}
