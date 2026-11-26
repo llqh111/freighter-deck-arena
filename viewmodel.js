@@ -1,4 +1,4 @@
-import {buildArmory} from './armory-models.js?v=11';
+import {buildArmory} from './armory-models.js?v=13';
 import * as T from './three.module.js';
 
 function brushedSurface(fabric = false) {
@@ -197,22 +197,31 @@ export function createViewModel() {
   let swayX=0,swayY=0,tilt=0;
   let aspect=1.7,draw=0,gesture=1,gestureDuration=.5,kind='',inspectT=1,loadDuration=1.45;
   const ease=(x,y,dt,rate)=>T.MathUtils.lerp(x,y,1-Math.exp(-rate*dt));
+  const isMeleeId=k=>k==='knife'||k==='nepal'||k==='malay';
   function equip(value) {
     const raw=String(value?.id || value || '').toLowerCase().replace(/[-_ ]/g,'');
-    const next=({grenade:'he',deserteagle:'deagle',ak:'ak47',m4:'m4a1'})[raw]||raw;
+    const next=({grenade:'he',deserteagle:'deagle',ak:'ak47',m4:'m4a1',kukri:'nepal',kris:'malay'})[raw]||raw;
     if(!arsenal[next])return;
     current.root.visible=false;id=next;current=arsenal[id];current.root.visible=true;
     current.root.position.set(0,0,0);draw=1;gesture=inspectT=1;loading=-1;reloadSignal=false;aim=0;recoil=spark=0;
     flash.visible=false;flash.position.set(0,id==='deagle'?.029:.010,current.muzzle??-.5);
   }
+  function flourish(){
+    if(isMeleeId(id)&&gesture>=.85){draw=.88;inspectT=1;}
+  }
   function reload(duration) {
-    if(id==='he'||id==='knife'||loading>=0)return;
+    if(id==='he'||isMeleeId(id)||loading>=0)return;
     loadDuration=Number.isFinite(duration)?Math.max(.30,duration):({awm:3.0,deagle:1.8,mp5:2.0,ak47:2.35,m4a1:2.15})[id];
     loading=0;inspectT=1;
   }
   function shoot(action='primary'){
     inspectT=1;gesture=0;kind=action;
-    if(id==='knife'){gestureDuration=action==='heavy'?.74:.37;return;}
+    if(isMeleeId(id)){
+      if(id==='malay')gestureDuration=action==='heavy'?.68:.26;
+      else if(id==='nepal')gestureDuration=action==='heavy'?.78:.38;
+      else gestureDuration=action==='heavy'?.74:.35;
+      return;
+    }
     if(id==='he'){gestureDuration=.65;return;}
     gestureDuration=id==='awm'?.95:.15;
     recoil=Math.min(1.85,recoil+current.kick);spark=.045;flash.visible=true;
@@ -220,6 +229,7 @@ export function createViewModel() {
   }
   function update(dt, values={}) {
     dt=Math.max(0,Math.min(dt,.1));
+    const melee=isMeleeId(id);
     if(values.reloading&&!reloadSignal)reload();reloadSignal=!!values.reloading;
     if(loading>=0){loading+=dt/loadDuration;if(loading>=1)loading=-1;}
     const t=Math.max(0,loading), lower=Math.sin(Math.PI*t);
@@ -228,12 +238,12 @@ export function createViewModel() {
     current.mag.rotation.x=id==='ak47'?drop*.42:0;
     current.hand.position.set(drop*.035,-drop*.054,drop*(id==='deagle'?.045:.12));
     current.hand.rotation.x=drop*.19;
-    draw=Math.max(0,draw-dt*(id==='awm'?2.8:id==='knife'?5.4:3.6));
-    inspectT=Math.min(1,inspectT+dt*.68);
+    draw=Math.max(0,draw-dt*(id==='awm'?2.8:melee?5.2:3.6));
+    inspectT=Math.min(1,inspectT+dt*(melee?.78:.68));
     gesture=Math.min(1,gesture+dt/gestureDuration);
     if(values.aiming||values.reloading)inspectT=1;
     const inspection=Math.sin(Math.PI*inspectT)**2, movement=Math.sin(Math.PI*gesture)**2;
-    const item=id==='knife'||id==='he';
+    const item=melee||id==='he';
     aim=ease(aim,values.aiming&&!item&&loading<0?1:0,dt,15);
     walk=ease(walk,values.moving?1:0,dt,10);
     const swayScale=1-.76*aim;
@@ -249,21 +259,50 @@ export function createViewModel() {
       current.action.visible=id!=='he'||!(gesture>.34&&gesture<.97);
     }
     const offset=Math.min(current.hipX,.160*aspect),idle=1-aim;
-    const slash=id==='knife'?movement:0,throwing=id==='he'?movement:0;
+    const slash=melee?movement:0,throwing=id==='he'?movement:0;
     const heavy=kind==='heavy';
-    rig.position.set(idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034-slash*(heavy?.09:.18)-inspection*.10-swayX,
-      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003-draw*.24+inspection*.027+throwing*.14+swayY,
-      T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*(aim>.6?.021:.043)+lower*.038+draw*.07-slash*(heavy?.23:.079)-throwing*.12);
-    rig.rotation.set(.045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*.52+throwing*.85+swayY*1.4,
-      .190*idle-lower*.19-slash*(heavy?.16:.97)-inspection*.57-swayX*1.5,
-      -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+slash*(heavy?.73:-.69)-inspection*.84-tilt);
+    // Signature crisp melee draw flourish + weapon-specific slash/thrust + 360 inspect spin.
+    const drawArc=melee?Math.sin(Math.PI*draw):0;
+    let mx=0,my=0,mz=0,mrx=0,mry=0,mrz=0;
+    if(melee){
+      if(id==='nepal'){
+        // Kukri wrist-flip draw + heavy sweeping cleaver arc.
+        mx=-drawArc*.055-slash*(heavy?.16:.21);
+        my=drawArc*.045+(heavy?Math.sin(Math.PI*Math.min(1,gesture*1.35))*.055-slash*.08:0);
+        mz=-slash*(heavy?.24:.10);
+        mrx=-drawArc*.65+(heavy?-slash*.45:0);
+        mry=-slash*(heavy?.58:1.05)+drawArc*.55;
+        mrz=drawArc*2.25+slash*(heavy?1.15:-.85)+inspection*Math.PI*2;
+      }else if(id==='malay'){
+        // Kris swift horizontal spin draw + long straight forward thrust.
+        mx=-drawArc*.04-slash*(heavy?.05:.11);
+        my=drawArc*.035-slash*(heavy?.02:.03);
+        mz=-slash*(heavy?.34:.18);
+        mrx=slash*(heavy?-.28:-.14);
+        mry=-drawArc*2.4-slash*(heavy?.10:.55)+inspection*Math.PI*2;
+        mrz=-drawArc*1.15+slash*(heavy?.28:-.45);
+      }else{
+        mx=-slash*(heavy?.09:.18);
+        mz=-slash*(heavy?.23:.079);
+        mry=-slash*(heavy?.16:.97)-inspection*.57;
+        mrz=drawArc*1.2+slash*(heavy?.73:-.69)-inspection*.84;
+      }
+    }
+    rig.position.set(
+      idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034+mx-(melee?0:inspection*.10)-swayX,
+      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003-draw*(melee?.17:.24)+my+inspection*.027+throwing*.14+swayY,
+      T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*(aim>.6?.021:.043)+lower*.038+draw*.07+mz-throwing*.12);
+    rig.rotation.set(
+      .045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*(melee?.35:.52)+mrx+throwing*.85+swayY*1.4,
+      .190*idle-lower*.19+mry-(melee?0:inspection*.57)-swayX*1.5,
+      -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+mrz-(melee?0:inspection*.84)-tilt);
     // Keep built-in 3D reflex dot hidden so only the crisp HUD ADS dot is shown.
     reflex.visible=false;
     // Once magnified, the HUD supplies the full-field AWM reticle immediately like CS AWP.
     current.root.visible=!(id==='awm'&&values.aiming&&loading<0);
   }
   update(0);
-  return {scene,camera,update,equip,reload,shoot,
+  return {scene,camera,update,equip,flourish,reload,shoot,
     inspect(){if(loading<0&&gesture>=.98)inspectT=0;},
     setTeam(team){sleeveBand.color.set(team===1?0xae4c3b:0x47788b);},
     resize(value){aspect=value;camera.aspect=value;camera.updateProjectionMatrix();update(0);}};

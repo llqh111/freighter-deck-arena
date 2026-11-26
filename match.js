@@ -1,6 +1,6 @@
 import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js?v=7';
 import * as T from './three.module.js';
-import {arsenal,primaries,loadout,skills} from './arsenal.js?v=7';
+import {arsenal,primaries,melees,isMelee,loadout,skills} from './arsenal.js?v=13';
 
 const clamp = T.MathUtils.clamp;
 const EYE=1.60,RADIUS=.32,ROUND=600,GOAL=50;
@@ -257,9 +257,9 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   const colliders=world.solids.map(collider),treads=colliders.filter(s=>s.walkSurface);
   const solidGrid=makeGrid(colliders,world.bounds),treadGrid=makeGrid(treads,world.bounds);
   const navigator=makeNavigator(world,solidGrid,treadGrid), keys={};
-  const p={id:0,name:'你',team:0,x:0,y:0,z:0,yaw:0,hp:100,armor:100,inventory:loadout('ak47'),slot:0};
+  const p={id:0,name:'你',team:0,x:0,y:0,z:0,yaw:0,hp:100,armor:100,inventory:loadout('ak47','nepal'),slot:0};
   const bots=[], units=[p], grenades=[], effects=[];
-  let animate=null, skill=skills.normal, primary='ak47', sound=true, firstBlood=true;
+  let animate=null, skill=skills.normal, primary='ak47', melee='nepal', sound=true, firstBlood=true;
   const state={phase:'idle',hp:100,armor:100,team:0,ammo:30,reserve:90,score:[0,0],kills:0,deaths:0,headshots:0,remaining:ROUND,target:GOAL,grounded:true,sprinting:false,alive:true,respawnIn:0,reloading:false,aiming:false,zoom:0,spread:0,weapon:'ak47',inventory:p.inventory,slot:0,scoreboard:[],rows:[],player:p,actors:bots};
   const ray=new T.Ray(), v=new T.Vector3(), dir=new T.Vector3(), eye=new T.Vector3(), aim=new T.Vector3(), tmp=new T.Vector3(), rot=new T.Euler(0,0,0,'YXZ');
   const localRay=new T.Ray(),bodyBox=new T.Box3(),headSphere=new T.Sphere(new T.Vector3(),.145);
@@ -296,7 +296,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     const list=world.spawns[a.team], spot=list[initial?a.id%list.length:Math.floor(Math.random()*list.length)];
     const role=a===p?'player':a.primary==='awm'?'sniper':a.primary==='mp5'?'flanker':(a.team===p.team&&a.id===1)?'wingman':'rifle';
     const lane=a.id%3-1;
-    Object.assign(a,{x:spot.x,y:0,z:spot.z,yaw:a.team?Math.PI:0,hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0});
+    Object.assign(a,{x:spot.x,y:0,z:spot.z,yaw:a.team?Math.PI:0,hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary,a===p?melee:'knife'),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0});
     if(a===p){
       pitch=jumpVel=bob=loadTimer=0;grounded=true;shotTimer=.12;lastSlot=0;semiLatch=false;
       restoreZoom=0;state.zoom=0;state.aiming=false;state.killedBy='';camY=EYE;bobAmp=0;recoilFollow=.43;shake=0;lookSwayX=lookSwayY=0;
@@ -487,7 +487,9 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   function useSlot(slot){
     if(!p.alive||!p.inventory[slot]||p.slot===slot||(!p.inventory[slot].ammo&&slot===3))return;
     lastSlot=p.slot;p.slot=slot;restoreZoom=0;state.zoom=0;state.aiming=false;p.burst=newBurst();loadTimer=0;semiLatch=!!keys.fire;
-    shotTimer=active(p).id==='awm'?.34:.26;view.equip(active(p).id);sfx('equip',active(p).id);hud();
+    const w=active(p),def=arsenal[w.id];
+    shotTimer=def.melee?(def.drawCd??.12):w.id==='awm'?.34:.26;
+    view.equip(w.id);sfx('equip',w.id);hud();
   }
   function reload(){
     const w=active(p),d=arsenal[w.id];if(!p.alive||loadTimer||!d.reload||w.ammo>=w.max||!w.reserve)return;
@@ -518,17 +520,18 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(w.id==='he'&&!w.ammo&&shotTimer<=0){useSlot(lastSlot===3?0:lastSlot);return;}
     state.spread=firingCone(d,p.burst,{speed:Math.hypot(p.vx,p.vz),grounded,crouch:p.crouch,ads:state.aiming,scoped:w.id==='awm'&&state.zoom&&clock-scopeTime>.035});
     const trigger=keys.fire||fireTap,secondary=keys.aim||altTap;
-    if(!trigger&&!(w.id==='knife'&&secondary))return;
+    if(!trigger&&!(d.melee&&secondary))return;
     if(shotTimer>0||loadTimer){if(shotTimer>.3||loadTimer)fireTap=altTap=false;return;}
     fireTap=altTap=false;
-    if(w.id==='knife'){
-      const heavy=!!secondary;shotTimer=heavy?.91:.39;camera.getWorldDirection(dir);
-      const reach=heavy?1.7:2.05;const hit=actorHit(p,camera.position,dir,wallDistance(camera.position,dir,reach));
+    if(d.melee){
+      const heavy=!!secondary;shotTimer=heavy?d.heavyCd:d.lightCd;camera.getWorldDirection(dir);
+      const reach=heavy?d.heavyReach:d.reach;const hit=actorHit(p,camera.position,dir,wallDistance(camera.position,dir,reach));
       if(hit){
         const rear=Math.cos(hit.unit.yaw-p.yaw)>.5;
-        damage(p,hit.unit,(heavy?105:54)*(rear?1.8:1)*(hit.head?1.3:1),'knife',hit.head);
-      }else{const d=wallDistance(camera.position,dir,reach);if(d<reach)world.fx.impact(camera.position.clone().addScaledVector(dir,d),dir.clone().negate());}
-      view.shoot(heavy?'heavy':'light');sfx(heavy?'heavy':'light','knife');p.shield=0;return;
+        const baseDmg=heavy?d.heavyDmg:d.lightDmg;
+        damage(p,hit.unit,baseDmg*(rear?1.8:1)*(hit.head?1.3:1),w.id,hit.head);
+      }else{const dist=wallDistance(camera.position,dir,reach);if(dist<reach)world.fx.impact(camera.position.clone().addScaledVector(dir,dist),dir.clone().negate());}
+      view.shoot(heavy?'heavy':'light');sfx(heavy?'heavy':'light',w.id);p.shield=0;return;
     }
     if(semiLatch&&['awm','deagle','he'].includes(w.id))return;
     if(!w.ammo){if(!w.reserve){sfx('dry',w.id);shotTimer=.32;}else reload();return;}
@@ -780,6 +783,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     for(const t of tracerPool){t.m.visible=false;t.left=0;}
     for(const e of effects)scene.remove(e.m);effects.length=0;world.fx.reset();
     p.team=opts.team===1?1:0;state.team=p.team;primary=primaries.includes(opts.primary)?opts.primary:'ak47';
+    melee=melees.includes(opts.melee)?opts.melee:'nepal';
     const size=[3,4,6,8].includes(opts.size)?opts.size:6;skill=skills[opts.diff]||skills.normal;
     state.target=[30,50,100].includes(opts.goal)?opts.goal:50;
     const names=['北辰','回声','夜航','长风','白鲸','赤隼','远山','银翼','苍鹭','天狼','灰狐','海燕','青锋','岩雀','信标'];
@@ -799,12 +803,28 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(action==='primary'&&primaries.includes(value)){
       primary=value;
       if(p.alive&&Math.abs(p.z)>20&&(p.team===0?p.z>0:p.z<0)){
-        p.inventory[0]=loadout(primary)[0];p.burst=newBurst();p.slot=0;state.zoom=0;loadTimer=0;shotTimer=.25;view.equip(primary);hud();return 'now';
+        p.inventory[0]=loadout(primary,melee)[0];p.burst=newBurst();p.slot=0;state.zoom=0;loadTimer=0;shotTimer=.25;view.equip(primary);hud();return 'now';
+      }return 'respawn';
+    }
+    if(action==='melee'&&melees.includes(value)){
+      melee=value;
+      if(p.alive&&Math.abs(p.z)>20&&(p.team===0?p.z>0:p.z<0)){
+        p.inventory[2]=loadout(primary,melee)[2];p.burst=newBurst();p.slot=2;state.zoom=0;loadTimer=0;shotTimer=arsenal[melee].drawCd??.12;view.equip(melee);sfx('equip',melee);hud();return 'now';
       }return 'respawn';
     }
     if(state.phase!=='playing')return;
     if(action==='slot'){useSlot(value);return;}
     if(action==='last'){useSlot(lastSlot);return;}
+    if(action==='wheelVal'){
+      if(!p.alive)return;
+      if(value>0){
+        if(p.slot!==2)useSlot(2);
+        else{view.flourish?.();sfx('equip',active(p).id);}
+      }else if(value<0){
+        useSlot(p.slot===0?1:0);
+      }
+      return;
+    }
     if(action==='cycle'){for(let i=1;i<=4;i++){const n=(p.slot+Math.sign(value)*i+8)%4;if(n!==3||p.inventory[3].ammo){useSlot(n);break;}}return;}
     const down=!!value;
     if(action==='jump'&&down&&!keys.jump&&grounded&&p.alive){sfx('jump',active(p).id);jumpVel=keys.crouch?8.4:7.1;grounded=false;}

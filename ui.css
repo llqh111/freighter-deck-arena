@@ -48,3 +48,41 @@
 #adsOverlay[data-weapon=m4a1] .adsFrame b{background:#66ffe0;box-shadow:0 0 0 .8px rgba(0,0,0,.65),0 0 4px #5effdc,0 0 9px rgba(82,255,216,.6)}
 #adsOverlay[data-weapon=mp5] .adsFrame b{background:#66ffe0;box-shadow:0 0 0 .8px rgba(0,0,0,.65),0 0 4px #5effdc,0 0 8px rgba(82,255,216,.55)}
 #adsOverlay[data-weapon=deagle] .adsFrame b{background:#ffd466;box-shadow:0 0 0 .8px rgba(0,0,0,.65),0 0 4px #ffc94a}
+/* Menu armory + crosshair studio bar */
+.armoryBar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px}
+.armoryBar .armoryPick{margin-top:0}
+.xhBtn{border-left:1px solid #ffffff38;padding-left:14px;color:#9ef6e4}
+.xhBtn:hover{color:#fff}
+.sectionTitle{margin:14px 0 8px;font-size:12px;letter-spacing:1.6px;color:#a8bebc;text-transform:uppercase}
+.meleeGrid{grid-template-columns:repeat(3,1fr)}
+@media(max-width:600px){.meleeGrid{grid-template-columns:1fr}}
+/* Crosshair Studio */
+.xhStudio{display:grid;gap:10px}
+.xhPreviewRow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.xhPreview{position:relative;height:76px;border-radius:3px;border:1px solid #ffffff2a;display:grid;place-items:center;overflow:hidden}
+.xhPreview span{position:absolute;left:7px;top:5px;font-size:10px;opacity:.75;letter-spacing:1px}
+.xhPreview.dark{background:repeating-linear-gradient(90deg,#1f313a 0 12px,#1a2a32 12px 24px);color:#c7d9e0}
+.xhPreview.light{background:linear-gradient(180deg,#8bb8d6,#d7e3e6);color:#192832}
+.xhPreview.wood{background:repeating-linear-gradient(90deg,#6e563c 0 16px,#624b33 16px 32px);color:#f3e6cf}
+.xhSample{background-repeat:no-repeat;background-position:center}
+.xhPresets{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.xhPresets button{font-size:12px;padding:7px 8px}
+.xhCodeRow{display:flex;gap:6px}
+.xhCodeRow input{flex:1;min-width:0;background:#0e181e;border:1px solid #ffffff38;border-radius:2px;color:#eaf2ef;padding:6px 8px;font:12px Consolas,monospace}
+.xhCodeRow button{padding:6px 10px;font-size:12px;white-space:nowrap}
+.swatches{display:flex;align-items:center;gap:6px}
+.swatch{width:22px;height:22px;border-radius:3px;border:2px solid #0008;padding:0}
+.swatch[aria-pressed=true]{border-color:var(--gold);transform:scale(1.12)}
+.swatches input[type=color]{width:26px;height:24px;padding:0;border:1px solid #ffffff44;background:transparent;cursor:pointer}
+.xhToggles{display:flex;gap:8px;margin-top:2px}
+.xhToggles button{flex:1;font-size:13px;padding:8px}
+.xhToggles [aria-pressed=true]{border-color:var(--gold);color:var(--gold);background:#38382c}
+/* Classic CF Kill Badge Callout */
+#callout{bottom:15%;flex-direction:column;gap:4px;padding:8px 18px 9px;background:linear-gradient(180deg,rgba(14,24,32,.78),rgba(8,14,19,.92));border-top:2px solid var(--gold);border-radius:3px;text-align:center}
+#killBadge{display:grid;place-items:center;height:66px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.72))}
+#killBadge svg{width:96px;height:66px;overflow:visible}
+.killText{display:flex;flex-direction:column;align-items:center;gap:2px}
+#callout.head #killBadge{filter:drop-shadow(0 0 14px rgba(255,212,72,.85)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
+#callout.multi #killBadge{filter:drop-shadow(0 0 16px rgba(255,78,48,.88)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
+#callout.first #killBadge{filter:drop-shadow(0 0 14px rgba(102,224,255,.85)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
+#callout.knife #killBadge{filter:drop-shadow(0 0 14px rgba(136,255,220,.82)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}

@@ -1,10 +1,11 @@
-import {names,teams,groups,choices,selectors,board,weaponIcon} from './lobby.js?v=7';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=13';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=7';
-import {createMatch} from './match.js?v=7';
-import {createViewModel} from './viewmodel.js?v=11';
-
-import {createDeckAudio} from './deck-audio.js?v=7';
+import {createMatch} from './match.js?v=13';
+import {createViewModel} from './viewmodel.js?v=13';
+import {isMelee,melees} from './arsenal.js?v=13';
+import {createDeckAudio} from './deck-audio.js?v=13';
+import {loadCrosshair,saveCrosshair,applyCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=13';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -31,14 +32,17 @@ function showDialog(kind,sub,title,html){
   dialogKind=kind;panel.dataset.dialog=kind;$('panelSub').textContent=sub;$('panelTitle').textContent=title;$('panelContent').innerHTML=html;
   if(!panel.open)panel.showModal();
 }
-const prefs={team:0,size:6,goal:50,diff:'normal',primary:'ak47',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
+let crosshairCfg=loadCrosshair();
+applyCrosshair($('cross'),crosshairCfg);
+const prefs={team:0,size:6,goal:50,diff:'normal',primary:'ak47',melee:'nepal',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
   if(['ak47','m4a1','awm','mp5'].includes(saved.primary))prefs.primary=saved.primary;
+  if(melees.includes(saved.melee))prefs.melee=saved.melee;
   if(Number.isFinite(saved.vol))prefs.vol=T.MathUtils.clamp(saved.vol,0,1);if(Number.isFinite(saved.fov))prefs.fov=T.MathUtils.clamp(saved.fov,65,100);
 }catch{}
 function save(){try{localStorage.setItem('df-lobby',JSON.stringify(prefs));}catch{}}
-function summary(){$('statSize').innerHTML=prefs.size+' <em>VS</em> '+prefs.size;$('statGoal').textContent=prefs.goal;$('statTime').textContent=prefs.size===3?'05:00':'10:00';$('primaryName').textContent=names[prefs.primary];}
+function summary(){$('statSize').innerHTML=prefs.size+' <em>VS</em> '+prefs.size;$('statGoal').textContent=prefs.goal;$('statTime').textContent=prefs.size===3?'05:00':'10:00';$('primaryName').textContent=names[prefs.primary]+' · '+names[prefs.melee];}
 function applyPref(key){
   if(key==='tod')world?.setTime(prefs.tod);
   if(key==='quality'){world?.setQuality(prefs.quality);if(renderer&&view)resize();}
@@ -55,27 +59,76 @@ function bindPrefs(){
 }
 function armory(inGame=false){
   if(inGame){if(mode==='playing')match.pause();setMode('paused');release();}
-  showDialog(inGame?'loadout':'armory','LOADOUT','选择主武器',choices(prefs.primary)+'<p class="panelNote">副武器、军刀和手雷随身配备。出生区内更换立即生效，离开出生区后在下次复活时领取。</p>');
+  showDialog(inGame?'loadout':'armory','LOADOUT','选择主武器与近战',
+    '<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary)+
+    '<div class="sectionTitle">近战武器 MELEE（滚轮下滚秒切刀 · F 键转刀检视）</div>'+meleeChoices(prefs.melee)+
+    '<p class="panelNote">副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。</p>');
   for(const b of panel.querySelectorAll('[data-weapon]'))b.onclick=()=>{
     prefs.primary=b.dataset.weapon;save();summary();
-    if(inGame){const when=match.input('primary',prefs.primary);resume();notify((when==='now'?'已装备 ':'复活后装备 ')+names[prefs.primary]);}else closePanel();
+    for(const p of panel.querySelectorAll('[data-weapon]'))p.setAttribute('aria-pressed',String(p===b));
+    if(inGame){const when=match.input('primary',prefs.primary);resume();notify((when==='now'?'已装备 ':'复活后装备 ')+names[prefs.primary]);}
+  };
+  for(const b of panel.querySelectorAll('[data-melee]'))b.onclick=()=>{
+    prefs.melee=b.dataset.melee;save();summary();
+    for(const p of panel.querySelectorAll('[data-melee]'))p.setAttribute('aria-pressed',String(p===b));
+    if(inGame){const when=match.input('melee',prefs.melee);resume();notify((when==='now'?'已切出 ':'复活后装备 ')+names[prefs.melee]);}
+  };
+}
+function crosshairStudio(){
+  showDialog('crosshair','CROSSHAIR STUDIO','自定义准星工坊',studioMarkup(crosshairCfg));
+  const sync=(cfg)=>{
+    crosshairCfg=saveCrosshair(cfg);
+    applyCrosshair($('cross'),crosshairCfg);
+    for(const s of panel.querySelectorAll('.xhSample'))applyCrosshair(s,crosshairCfg);
+    const codeInput=$('xhCode');if(codeInput&&document.activeElement!==codeInput)codeInput.value=exportValorantCode(crosshairCfg);
+    $('xhColor').value=crosshairCfg.color;
+    for(const sw of panel.querySelectorAll('.swatch'))sw.setAttribute('aria-pressed',String(sw.dataset.color===crosshairCfg.color));
+    $('xhLen').value=crosshairCfg.length;$('xhLen').nextElementSibling.value=crosshairCfg.length;
+    $('xhThick').value=crosshairCfg.thickness;$('xhThick').nextElementSibling.value=crosshairCfg.thickness;
+    $('xhOff').value=crosshairCfg.offset;$('xhOff').nextElementSibling.value=crosshairCfg.offset;
+    $('xhDotSize').value=crosshairCfg.dotSize;$('xhDotSize').nextElementSibling.value=crosshairCfg.dotSize;
+    $('xhOutline').setAttribute('aria-pressed',String(crosshairCfg.outline));$('xhOutline').textContent='黑边描边：'+(crosshairCfg.outline?'开':'关');
+    $('xhDot').setAttribute('aria-pressed',String(crosshairCfg.dot));$('xhDot').textContent='中心点：'+(crosshairCfg.dot?'开':'关');
+  };
+  sync(crosshairCfg);
+  for(const btn of panel.querySelectorAll('[data-preset]'))btn.onclick=()=>{
+    const found=CROSSHAIR_PRESETS.find(p=>p.id===btn.dataset.preset);
+    if(found){sync({...found.cfg});notify('已应用预设：'+found.name);}
+  };
+  for(const sw of panel.querySelectorAll('.swatch'))sw.onclick=()=>sync({...crosshairCfg,color:sw.dataset.color});
+  $('xhColor').oninput=e=>sync({...crosshairCfg,color:e.target.value});
+  $('xhLen').oninput=e=>sync({...crosshairCfg,length:+e.target.value});
+  $('xhThick').oninput=e=>sync({...crosshairCfg,thickness:+e.target.value});
+  $('xhOff').oninput=e=>sync({...crosshairCfg,offset:+e.target.value});
+  $('xhDotSize').oninput=e=>sync({...crosshairCfg,dotSize:+e.target.value});
+  $('xhOutline').onclick=()=>sync({...crosshairCfg,outline:!crosshairCfg.outline});
+  $('xhDot').onclick=()=>sync({...crosshairCfg,dot:!crosshairCfg.dot});
+  $('xhImport').onclick=()=>{
+    const parsed=parseValorantCode($('xhCode').value);
+    if(!parsed){notify('准星代码格式无效，请粘贴完整的无畏契约准星代码。');return;}
+    sync(parsed);notify('已成功导入无畏契约准星代码！');
+  };
+  $('xhCopy').onclick=()=>{
+    const code=exportValorantCode(crosshairCfg);
+    navigator.clipboard?.writeText(code).then(()=>notify('已复制无畏契约准星代码')).catch(()=>notify('代码：'+code));
   };
 }
 function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['team','size','goal','diff','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
-const controlRows=()=>coarse?'<p class="panelNote">左侧摇杆移动，右侧拖动转向。轻点武器栏选择装备，暂停菜单可换装或查看战绩。</p>':[['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],['射击 / 瞄准或重击','鼠标左键 / 右键'],['武器槽 / 快切','1–4 / Q / 滚轮'],['换弹 / 检视 / 换装','R / F / B'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
+const controlRows=()=>coarse?'<p class="panelNote">左侧摇杆移动，右侧拖动转向。轻点武器栏选择装备，暂停菜单可换装或查看战绩。</p>':[['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],['射击 / 瞄准或重击','鼠标左键 / 右键'],['滚轮切刀 / 快切','下滚秒切刀 · 上滚主枪 / Q'],['武器槽 / 转刀检视 / 换装','1–4 / F / B'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
 function settings(){
   let ranges='';for(const [id,name,min,max,step,value] of [['sens','视角灵敏度',.2,3,.05,sensitivity],['fov','视野',65,100,1,prefs.fov],['vol','音量',0,1,.05,prefs.vol]])ranges+='<div class="row"><label for="'+id+'">'+name+'</label><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'"><output>'+value+'</output></div>';
-  showDialog('settings','CONTROLS','设置与操作',ranges+selectors(prefs,['tod','quality'])+controlRows()+'<div class="row"><span>游戏声音</span><button id="audioToggle" class="secondary">'+(sound?'开启':'关闭')+'</button></div>');
+  showDialog('settings','CONTROLS','设置与操作',ranges+selectors(prefs,['wheel','tod','quality'])+'<div class="row"><span>自定义准星</span><button id="openXhFromSet" class="secondary">打开准星工坊</button></div>'+controlRows()+'<div class="row"><span>游戏声音</span><button id="audioToggle" class="secondary">'+(sound?'开启':'关闭')+'</button></div>');
   for(const el of panel.querySelectorAll('input'))el.oninput=()=>{
     el.nextElementSibling.value=el.value;if(el.id==='sens'){sensitivity=+el.value;try{localStorage.setItem('df-sensitivity',sensitivity);}catch{}}
     else{prefs[el.id]=+el.value;applyPref(el.id);}
   };bindPrefs();
+  $('openXhFromSet').onclick=crosshairStudio;
   if(location.protocol!=='file:'){
     const download=document.createElement('a');download.className='offline';download.href='./transport-ship.html';download.download='运输船-离线版.html';download.textContent='下载单文件离线版';$('panelContent').append(download);
   }
   $('audioToggle').onclick=()=>{sound=!sound;setSound();$('audioToggle').textContent=sound?'开启':'关闭';};
 }
-$('battleSetup').onclick=setup;$('armory').onclick=()=>armory(false);summary();
+$('battleSetup').onclick=setup;$('armory').onclick=()=>armory(false);$('openCrosshair').onclick=crosshairStudio;summary();
 $('controls').onclick=$('options').onclick=settings;
 const mapCache=new WeakMap();
 function staticMapLayer(target,horizontal){
@@ -139,8 +192,8 @@ function toMenu(){closePanel();release();setMode('menu');drawMap($('chart'),null
 function pauseUI(){
   if(mode!=='playing'&&mode!=='paused')return;
   match.pause();setMode('paused');release();
-  showDialog('pause','MATCH PAUSED','对局已暂停','<div class="actions"><button id="resume" class="primary">继续对局</button><button id="inLoadout" class="secondary">更换主武器</button><button id="inBoard" class="secondary">查看战绩</button><button id="inSettings" class="secondary">设置与操作</button><button id="leave" class="secondary">返回甲板首页</button></div>');
-  $('inLoadout').onclick=()=>armory(true);$('inBoard').onclick=()=>showDialog('board','SCOREBOARD','团队战绩',board(match.state));$('resume').onclick=resume;$('inSettings').onclick=settings;$('leave').onclick=toMenu;
+  showDialog('pause','MATCH PAUSED','对局已暂停','<div class="actions"><button id="resume" class="primary">继续对局</button><button id="inLoadout" class="secondary">更换主武器/近战</button><button id="inCrosshair" class="secondary">自定义准星</button><button id="inBoard" class="secondary">查看战绩</button><button id="inSettings" class="secondary">设置与操作</button><button id="leave" class="secondary">返回甲板首页</button></div>');
+  $('inLoadout').onclick=()=>armory(true);$('inCrosshair').onclick=crosshairStudio;$('inBoard').onclick=()=>showDialog('board','SCOREBOARD','团队战绩',board(match.state));$('resume').onclick=resume;$('inSettings').onclick=settings;$('leave').onclick=toMenu;
 }
 function dismiss(){if(dialogKind==='loadout'){resume();return;}if(dialogKind==='end'){toMenu();return;}if(dialogKind==='pause'){resume();return;}closePanel();if(mode==='paused')pauseUI();}
 $('closePanel').onclick=dismiss;panel.oncancel=e=>{e.preventDefault();dismiss();};
@@ -158,9 +211,55 @@ function pickCfVoice(){
   return cfVoice;
 }
 window.speechSynthesis?.addEventListener?.('voiceschanged',()=>{cfVoice=null;pickCfVoice();});
+function cfBadgeSvg(data){
+  const meleeHit=isMelee(data.weapon);
+  if(data.multi>1){
+    // Classic CF multi-kill red/gold star crest (2 to 6+ stars + flame wings for 4+).
+    const n=Math.min(6,data.multi);
+    const wings=n>=4?'<path d="M12 38L2 24l18 4-10-12 20 8M84 38l10-14-18 4 10-12-20 8" fill="none" stroke="#ff5c38" stroke-width="2.5" stroke-linejoin="round"/>':'';
+    let stars='';
+    for(let i=0;i<n;i++){
+      const x=48+(i-(n-1)/2)*(n>=5?14:17),y=30-Math.abs(i-(n-1)/2)*(n>=4?2.5:3.5);
+      stars+=`<polygon points="${x},${y-9} ${x+2.6},${y-2.5} ${x+9.2},${y-2.5} ${x+3.8},${y+1.8} ${x+5.8},${y+8.4} ${x},${y+4.4} ${x-5.8},${y+8.4} ${x-3.8},${y+1.8} ${x-9.2},${y-2.5} ${x-2.6},${y-2.5}" fill="${data.head?'#ffe066':'#ff5236'}" stroke="#2a0905" stroke-width="1.2"/>`;
+    }
+    const crown=data.head?'<circle cx="48" cy="12" r="4" fill="#ffe066" stroke="#3a1c00" stroke-width="1.2"/>':'';
+    return `<svg viewBox="0 0 96 66">${wings}<path d="M22 46h52l-6 12H28z" fill="#2a1110" stroke="#ff6240" stroke-width="1.6"/><text x="48" y="55" text-anchor="middle" fill="#ffd966" font-size="9" font-weight="900" font-family="Arial Black,sans-serif">${data.multi} KILL</text>${stars}${crown}</svg>`;
+  }
+  if(data.head){
+    // Iconic CF Golden Headshot Skull + starburst + forehead bullet hole.
+    return `<svg viewBox="0 0 96 66">
+      <defs><linearGradient id="cfG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff099"/><stop offset="55%" stop-color="#f7b731"/><stop offset="100%" stop-color="#a86408"/></linearGradient></defs>
+      <path d="M48 3l5 12 13-6-5 13 15 2-12 9 10 11-15-1-3 14-8-10-8 10-3-14-15 1 10-11-12-9 15-2-5-13 13 6z" fill="#ffbe33" fill-opacity=".28" stroke="#ffd859" stroke-width="1"/>
+      <path d="M31 28c0-11 7.6-18 17-18s17 7 17 18c0 6.5-3.2 10.5-6 13v7c0 2-1.5 3.5-3.5 3.5h-15c-2 0-3.5-1.5-3.5-3.5v-7c-2.8-2.5-6-6.5-6-13z" fill="url(#cfG)" stroke="#3d2100" stroke-width="2"/>
+      <ellipse cx="41.5" cy="30" rx="4.2" ry="4.6" fill="#221000"/><ellipse cx="54.5" cy="30" rx="4.2" ry="4.6" fill="#221000"/>
+      <path d="M48 34l-2.6 5h5.2z" fill="#221000"/>
+      <path d="M40 44v6m4-6v6m4-6v6m4-6v6m4-6v6" stroke="#3d2100" stroke-width="1.8"/>
+      <circle cx="52" cy="18" r="2.8" fill="#ff3b24" stroke="#fff3b0" stroke-width="1.2"/>
+    </svg>`;
+  }
+  if(data.first){
+    // First Kill blue-gold shield + lightning crest.
+    return `<svg viewBox="0 0 96 66"><path d="M48 7l21 8v18c0 13-9 22-21 27-12-5-21-14-21-27V15z" fill="#133347" stroke="#66e0ff" stroke-width="2.2"/><path d="M51 16L38 35h9l-3 15 14-20h-9z" fill="#ffe066" stroke="#182a34" stroke-width="1.2"/></svg>`;
+  }
+  if(meleeHit){
+    // Crossed cold-steel blades emblem (Kukri / Kris / Knife).
+    return `<svg viewBox="0 0 96 66"><circle cx="48" cy="33" r="22" fill="#10292d" stroke="#78ffd6" stroke-width="1.8"/><path d="M27 49L65 15l4 4-36 34zm42 0L31 15l-4 4 36 34z" fill="#dffcf4" stroke="#0c262a" stroke-width="1.4"/></svg>`;
+  }
+  if(data.weapon==='he'){
+    // Explosive grenade starburst emblem.
+    return `<svg viewBox="0 0 96 66"><polygon points="48,5 56,19 72,14 66,29 80,38 64,44 68,58 53,51 48,62 43,51 28,58 32,44 16,38 30,29 24,14 40,19" fill="#ff6236" fill-opacity=".35" stroke="#ff944d" stroke-width="1.4"/><circle cx="48" cy="36" r="13" fill="#4f5f42" stroke="#ffd466" stroke-width="1.8"/><rect x="44" y="18" width="8" height="6" fill="#ffd466"/></svg>`;
+  }
+  if(data.wall){
+    // Wallbang bullet piercing wooden crate emblem.
+    return `<svg viewBox="0 0 96 66"><rect x="33" y="14" width="30" height="38" fill="#5e4730" stroke="#e2c282" stroke-width="1.8"/><path d="M16 33h64" stroke="#ffe066" stroke-width="3" stroke-dasharray="6 4"/><polygon points="82,33 70,27 70,39" fill="#ffe066"/></svg>`;
+  }
+  // Classic CF standard kill metallic star badge.
+  return `<svg viewBox="0 0 96 66"><polygon points="48,8 55,24 72,25 59,36 63,53 48,44 33,53 37,36 24,25 41,24" fill="#d9e4e8" stroke="#2c3e47" stroke-width="2"/><polygon points="48,16 52,27 63,28 55,35 57,46 48,40 39,46 41,35 33,28 44,27" fill="#ffc44d"/></svg>`;
+}
 function announceHit(data){
   if(!data.kill)return;
   const banner=$('callout');
+  const meleeHit=isMelee(data.weapon);
   const cfMultiEn=['','','DOUBLE KILL','MULTI KILL','ULTRA KILL','UNBREAKABLE','UNBELIEVABLE','YOU WANNA PIECE OF ME?','COME GET SOME!'];
   const cfMultiZh=['','','双杀','三连杀','四连杀','五连杀','六连杀','七连杀','超神连杀'];
   const cfVoiceEn=['','','Double Kill','Multi Kill','Ultra Kill','Unbreakable','Unbelievable','You wanna piece of me','Come get some'];
@@ -174,20 +273,20 @@ function announceHit(data){
     if(data.first)tags.push('首杀');
     if(data.head)tags.push('黄金爆头');
     if(data.wall)tags.push('穿箱');
-    if(data.weapon==='knife')tags.push('军刀');
+    if(meleeHit)tags.push(names[data.weapon]||'近战');
     else if(data.weapon==='he')tags.push('手雷');
   }else if(data.first){
     title='FIRST KILL';voiceLine='First Kill';
     tags.push('首杀');
     if(data.head)tags.push('黄金爆头');
-    if(data.weapon==='knife')tags.push('军刀');
+    if(meleeHit)tags.push(names[data.weapon]||'近战');
     else if(data.weapon==='he')tags.push('手雷');
   }else if(data.head){
     title='HEADSHOT';voiceLine='Headshot';
     tags.push(data.wall?'穿箱爆头':'黄金爆头');
-  }else if(data.weapon==='knife'){
+  }else if(meleeHit){
     title='KNIFE KILL';voiceLine='Knife Kill';
-    tags.push('军刀击杀');
+    tags.push((names[data.weapon]||'军刀')+'击杀');
   }else if(data.weapon==='he'){
     title='GRENADE KILL';voiceLine='Grenade Kill';
     tags.push('手雷击杀');
@@ -199,12 +298,13 @@ function announceHit(data){
     tags.push('击杀');
   }
   if(data.victim)tags.push(data.victim);
+  $('killBadge').innerHTML=cfBadgeSvg(data);
   put('killTitle',title);
   put('killDetail',tags.join(' · '));
   banner.classList.toggle('head',!!data.head);
   banner.classList.toggle('multi',data.multi>1);
   banner.classList.toggle('first',!!data.first&&data.multi<=1);
-  banner.classList.toggle('knife',data.weapon==='knife'&&data.multi<=1&&!data.head);
+  banner.classList.toggle('knife',meleeHit&&data.multi<=1&&!data.head);
   banner.hidden=false;
   calloutAnimation?.cancel();
   calloutAnimation=banner.animate([
@@ -247,7 +347,7 @@ function hudEvent(type,data){
 
   if(type==='hud'){
     put('blue',String(data.score[0]).padStart(2,'0'));put('red',String(data.score[1]).padStart(2,'0'));
-    put('hp',data.hp);put('ammo',data.weapon==='knife'?'∞':data.ammo);put('reserve',data.reserve);
+    put('hp',data.hp);put('ammo',isMelee(data.weapon)?'∞':data.ammo);put('reserve',data.reserve);
     put('goalText','目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
     $('scopeOverlay').hidden=!data.zoom||!data.alive;
     $('adsOverlay').hidden=!data.aiming||!!data.zoom||!data.alive;
@@ -262,7 +362,7 @@ function hudEvent(type,data){
     if(data.hp!==lastHpPct){lastHpPct=data.hp;hpBarFill.style.width=data.hp+'%';}
     const lowAmmo=data.alive&&data.maxAmmo>1&&data.ammo<=Math.max(1,Math.ceil(data.maxAmmo*.25));
     ammoBox?.classList.toggle('lowammo',lowAmmo);
-    put('gunstatus',data.reloading?'正在换弹 '+Math.round((data.reloadProgress||0)*100)+'%':data.aiming?'瞄准':data.weapon==='knife'?'右键重击':data.weapon==='he'?'投掷':!data.ammo?'弹匣已空':lowAmmo?'弹药不足':'就绪');
+    put('gunstatus',data.reloading?'正在换弹 '+Math.round((data.reloadProgress||0)*100)+'%':data.aiming?'瞄准':isMelee(data.weapon)?'右键重击':data.weapon==='he'?'投掷':!data.ammo?'弹匣已空':lowAmmo?'弹药不足':'就绪');
     $('cross').hidden=data.aiming||!data.alive;$('respawn').hidden=data.alive||data.phase==='ended';
     $('slotRack').hidden=!data.alive;
     if(!data.alive)put('respawn','被 '+data.killedBy+' 击倒 · '+Math.ceil(data.respawnIn)+' 秒后复活');drawMap($('radar'),data);
@@ -309,7 +409,18 @@ for(const kind of ['keydown','keyup'])addEventListener(kind,e=>{
   if(keys[e.code]){e.preventDefault();match.input(keys[e.code],down);}
 });
 $('slotRack').addEventListener('pointerdown',e=>{const btn=e.target.closest('[data-slot]');if(btn&&mode==='playing')match.input('slot',+btn.dataset.slot);});
-canvas.addEventListener('wheel',e=>{if(mode==='playing'){e.preventDefault();match.input('cycle',Math.sign(e.deltaY));}},{passive:false});
+let lastWheelAt=0;
+canvas.addEventListener('wheel',e=>{
+  if(mode!=='playing')return;
+  e.preventDefault();
+  const now=performance.now();
+  if(now-lastWheelAt<65)return;
+  lastWheelAt=now;
+  const dir=Math.sign(e.deltaY);
+  if(!dir)return;
+  if(prefs.wheel==='val')match.input('wheelVal',dir);
+  else match.input('cycle',dir);
+},{passive:false});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 // Mouse events report each button transition, including a second press during ADS.
 function syncMouse(buttons){

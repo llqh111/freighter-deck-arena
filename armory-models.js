@@ -116,6 +116,44 @@ export function buildArmory(parts) {
     g.rotation.z=-.42;g.rotation.y=-.38;bake(g);
     arm(w.hand,[-.229,-.318,.28],[-.17,-.19,-.012],[-.144,-.156,-.044],true);
   });
+  model('nepal',w=>{
+    // Iconic Kukri recurve blade with rosewood grip and brass bolster/pommel.
+    w.hipX=.158;w.hipZ=-.395;w.hipY=-.175;
+    const g=new T.Group();w.body.add(g);
+    const rosewood=paint(0x52291c,.62,.08);
+    tube(g,rosewood,[0,-.15,.135],[0,-.038,.012],.028,.031);
+    tube(g,amber,[0,-.156,.142],[0,-.142,.127],.034,.031);
+    for(const t of [.35,.68])tube(g,amber,[0,-.15+t*.11,.135-t*.12],[0,-.143+t*.11,.128-t*.12],.0315,.0315);
+    box(g,amber,0,-.033,.008,.052,.036,.042);
+    // Broad forward-curving kukri belly & spine.
+    profile(g,blade,.014,[[.012,-.015],[-.07,.085],[-.185,.175],[-.315,.225],[-.365,.195],[-.275,.075],[-.155,.015],[-.055,-.005],[-.015,-.032]]);
+    profile(g,edge,.015,[[-.363,.194],[-.278,.072],[-.156,.012],[-.058,-.008],[-.028,-.024],[-.068,.006],[-.168,.032],[-.278,.094],[-.346,.192]]);
+    // Fuller / spine highlight.
+    profile(g,chrome,.0155,[[-.02,.015],[-.09,.092],[-.19,.168],[-.30,.208],[-.29,.192],[-.185,.152],[-.085,.078],[-.015,.006]]);
+    g.rotation.z=-.38;g.rotation.y=-.34;bake(g);
+    arm(w.hand,[-.235,-.32,.29],[-.175,-.192,-.010],[-.145,-.155,-.040],true);
+  });
+  model('malay',w=>{
+    // Iconic Kris wavy double-edged dagger with ornate asymmetric brass guard.
+    w.hipX=.148;w.hipZ=-.390;w.hipY=-.168;
+    const g=new T.Group();w.body.add(g);
+    const walnut=paint(0x4a3121,.66,.06);
+    tube(g,walnut,[0,-.145,.132],[0,-.040,.018],.025,.029);
+    tube(g,amber,[0,-.150,.138],[0,-.136,.124],.031,.027);
+    // Asymmetric wide Kris crossguard (ganja).
+    profile(g,amber,.022,[[.028,-.020],[.010,-.055],[-.042,-.042],[-.058,.012],[-.016,.024]]);
+    // Wavy flame-shaped double-edged blade (5 undulations).
+    profile(g,blade,.011,[
+      [-.012,-.020],[-.055,.040],[-.098,.062],[-.138,.118],[-.186,.132],[-.232,.186],[-.284,.198],[-.342,.242],
+      [-.302,.174],[-.248,.154],[-.204,.106],[-.154,.086],[-.112,.040],[-.068,.014],[-.028,-.032]
+    ]);
+    profile(g,edge,.0125,[
+      [-.018,-.018],[-.058,.034],[-.102,.056],[-.142,.110],[-.190,.124],[-.236,.178],[-.288,.190],[-.342,.242],
+      [-.296,.182],[-.244,.162],[-.198,.114],[-.150,.094],[-.108,.048],[-.064,.022],[-.024,-.026]
+    ]);
+    g.rotation.z=-.36;g.rotation.y=-.32;bake(g);
+    arm(w.hand,[-.226,-.315,.285],[-.168,-.188,-.015],[-.142,-.154,-.045],true);
+  });
   model('he',w=>{
     w.hipX=.133;w.hipZ=-.38;w.hipY=-.136;
     pad(w.action,olive,0,-.039,.065,.068,.086,.066);

@@ -44,7 +44,7 @@ export function createDeckAudio() {
   // Classic CrossFire transport-ship style kill / headshot / multi-kill / knife / grenade stingers.
   function cfKillSound(headshot, multi = 1, weapon = '', first = false) {
     const tau = 2 * Math.PI;
-    const knife = weapon === 'knife';
+    const knife = weapon === 'knife' || weapon === 'nepal' || weapon === 'malay';
     const grenade = weapon === 'he';
     const steps = [0, 2, 4, 7, 9, 12, 14, 16];
     const semi = steps[Math.min(Math.max(1, multi) - 1, steps.length - 1)];
@@ -134,7 +134,8 @@ export function createDeckAudio() {
     const key = kind + weapon + (head ? 'Head' : '');
     if (samples[key]) return samples[key];
     const freq = {ak47: 94, m4a1: 118, mp5: 155, awm: 61, deagle: 83}[weapon] || 110;
-    const duration = {sea: 3.2, gull: .62, step: .18, land: .23, jump: .14, death: .22, hurt: .12, scope: .075, timber: .15, clang: .19, dry: .06, shot: weapon === 'awm' ? .52 : .24, explode: .75, bolt: .34, reload: .42, bounce: .11, pulse: .21, hit: .09}[kind] || .14;
+    const isBlade = weapon === 'knife' || weapon === 'nepal' || weapon === 'malay';
+    const duration = {sea: 3.2, gull: .62, step: .18, land: .23, jump: .14, death: .22, hurt: .12, scope: .075, timber: .15, clang: .19, dry: .06, shot: weapon === 'awm' ? .52 : .24, explode: .75, bolt: .34, reload: .42, bounce: .11, pulse: .21, hit: .09, equip: isBlade ? .26 : .14, light: isBlade ? .18 : .14, heavy: isBlade ? .28 : .18}[kind] || .14;
     let seed = 3492, lp = 0;
     samples[key] = makeSample(duration, t => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -176,7 +177,30 @@ export function createDeckAudio() {
         const tick = .22 * Math.sin(6.28 * 960 * t) * Math.exp(-62 * t) + .18 * (white - lp) * Math.exp(-150 * t) + .12 * Math.sin(6.28 * 220 * t) * Math.exp(-48 * t);
         return Math.max(-.85, Math.min(.85, tick));
       }
-      if (kind === 'light' || kind === 'heavy' || kind === 'throw') return lp * Math.sin(Math.PI * t / duration) * .47;
+      if (kind === 'equip' && isBlade) {
+        // Signature crisp cold-steel unsheath & spin flourish per melee weapon.
+        const whoosh = .26 * (white - lp) * Math.sin(Math.PI * Math.min(1, t / .16)) * Math.exp(-10 * t);
+        if (weapon === 'nepal') {
+          const ring = (.24 * Math.sin(6.28 * (1180 + 520 * t) * t) + .14 * Math.sin(6.28 * 2460 * t)) * Math.exp(-16 * t);
+          return Math.max(-.9, Math.min(.9, whoosh * 1.15 + ring + .12 * lp * Math.exp(-14 * t)));
+        }
+        if (weapon === 'malay') {
+          const shimmer = (.26 * Math.sin(6.28 * (2180 - 320 * t) * t) + .16 * Math.sin(6.28 * 3480 * t)) * Math.exp(-18 * t);
+          return Math.max(-.9, Math.min(.9, whoosh * .9 + shimmer));
+        }
+        const snap = (.20 * Math.sin(6.28 * 1620 * t) + .18 * white * Math.exp(-120 * t)) * Math.exp(-22 * t);
+        return Math.max(-.9, Math.min(.9, whoosh + snap));
+      }
+      if (kind === 'light' || kind === 'heavy' || kind === 'throw') {
+        if (isBlade && kind !== 'throw') {
+          const heavy = kind === 'heavy';
+          const air = (heavy ? .58 : .42) * (weapon === 'malay' ? (white - lp) * .7 + lp * .5 : lp) * Math.sin(Math.PI * t / duration);
+          const edgePitch = weapon === 'malay' ? 2350 : weapon === 'nepal' ? 1120 : 1580;
+          const steel = (heavy ? .18 : .11) * Math.sin(6.28 * edgePitch * t) * Math.exp(-24 * t);
+          return Math.max(-.9, Math.min(.9, air + steel));
+        }
+        return lp * Math.sin(Math.PI * t / duration) * .47;
+      }
       const click = Math.exp(-68 * t) + (kind === 'reload' ? Math.exp(-76 * Math.abs(t - .26)) : 0);
       return click * (.3 * white + .15 * Math.sin(6.28 * (kind === 'bounce' ? 560 : 970) * t));
     });
@@ -194,6 +218,8 @@ export function createDeckAudio() {
     () => sampleFor('hit', '', false), () => sampleFor('hit', '', true),
     () => sampleFor('step'), () => sampleFor('reload', 'ak47'),
     () => sampleFor('clang'), () => sampleFor('timber'),
+    () => sampleFor('equip', 'nepal'), () => sampleFor('equip', 'malay'), () => sampleFor('equip', 'knife'),
+    () => sampleFor('light', 'nepal'), () => sampleFor('heavy', 'nepal'),
     () => sampleFor('sea'), () => sampleFor('hurt'), () => sampleFor('death')
   ];
 
@@ -305,7 +331,7 @@ export function createDeckAudio() {
     if (kind === 'kill' || kind === 'headshot') {
       const head = kind === 'headshot' || !!opts.head;
       const multi = Math.max(1, Math.min(8, Number(opts.multi) || 1));
-      const weapon = opts.weapon === 'knife' || opts.weapon === 'he' ? opts.weapon : '';
+      const weapon = (opts.weapon === 'knife' || opts.weapon === 'nepal' || opts.weapon === 'malay' || opts.weapon === 'he') ? opts.weapon : '';
       const first = !!opts.first;
       const key = 'kill_' + (head ? 'h' : 'b') + '_' + multi + '_' + weapon + '_' + (first ? 'f' : '');
       if (!samples[key]) samples[key] = cfKillSound(head, multi, weapon, first);
