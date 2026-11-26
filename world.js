@@ -128,14 +128,16 @@ function deckSkin(blocks) {
   return canvasMap(c);
 }
 export function buildWorld(scene) {
+  const headless=!scene;
   const solids=[], vents=[], batches=new Map(), materials=new Map(), cube=new T.BoxGeometry(1,1,1);
-  const unit=new T.Object3D(), axis=new T.Vector3(0,1,0), steelMap=paintedSteel();
+  const unit=new T.Object3D(), axis=new T.Vector3(0,1,0), steelMap=headless?null:paintedSteel();
   function mat(col) {
     if(typeof col!=='string')return col;
     if(!materials.has(col))materials.set(col,new T.MeshStandardMaterial({color:col,map:steelMap,roughness:.82,metalness:.07}));
     return materials.get(col);
   }
   function put(x,y,z,w,h,d,color,quat=null){
+    if(headless)return;
     const m=mat(color);
     if(!batches.has(m))batches.set(m,[]);
     unit.position.set(x,y,z);unit.scale.set(w,h,d);unit.quaternion.identity();if(quat)unit.quaternion.copy(quat);
@@ -148,7 +150,7 @@ export function buildWorld(scene) {
   function solid(x,z,w,d,bottom,top,extra={}){solids.push({x,z,w,d,bottom,top,...extra})}
   function wall(x,z,w,d,bot,top,col,extra){put(x,(bot+top)/2,z,w,top-bot,d,col);solid(x,z,w,d,bot,top,extra)}
   const colors=['#746f58','#465d70','#586650','#8d8572','#66705c','#596b75'];
-  const skins=colors.map((color,i)=>{
+  const skins=headless?colors.map(()=>({})):colors.map((color,i)=>{
     const side=new T.MeshStandardMaterial({map:boxSkin(color,i),roughness:.79,metalness:.12});
     const door=new T.MeshStandardMaterial({map:boxSkin(color,i,true),roughness:.76,metalness:.12});
     return {side,door,top:mat(color)};
@@ -164,9 +166,9 @@ export function buildWorld(scene) {
       put(x+dx*cos+dz*sin,base+2.67,z+dz*cos-dx*sin,w>d?.075:w-.08,.027,w>d?d-.08:.075,top,rotation);
     }
   }
-  const timber=new T.MeshStandardMaterial({map:crateSkin(),roughness:.98});
+  const timber=new T.MeshStandardMaterial({map:headless?null:crateSkin(),roughness:.98});
   function crate(x,z,s,base=0,h=s){wall(x,z,s,s,base,base+h,timber,{material:'wood'})}
-  const tarp=new T.MeshStandardMaterial({map:canvasCargo(),roughness:1});
+  const tarp=new T.MeshStandardMaterial({map:headless?null:canvasCargo(),roughness:1});
   const greenTimber=new T.MeshStandardMaterial({map:timber.map,color:'#a7ad8c',roughness:.98});
   function coveredFreight(x,z,w,d,yaw=0){
     const rot=new T.Quaternion().setFromAxisAngle(axis,yaw);
@@ -268,14 +270,17 @@ export function buildWorld(scene) {
     // Fire cabinets, hose and life ring hung on the spawn bulkhead.
     put(sign*8.1,1.43,sign*20.50,.76,.97,.20,'#994331');put(sign*8.1,1.46,sign*20.38,.47,.64,.05,'#ad6548');
     for(const xx of [-.18,.18])put(sign*8.1+xx,1.45,sign*20.34,.035,.4,.05,'#b4afa0');
-    const ring=new T.Mesh(new T.TorusGeometry(.31,.082,7,28),mat('#d9773c'));
-    ring.position.set(-sign*8.4,1.69,sign*20.43);scene.add(ring);
-    for(const a of [.78,2.36,3.93,5.50])put(ring.position.x+Math.cos(a)*.31,1.69+Math.sin(a)*.31,sign*20.41,.10,.11,.11,'#cdc6af');
+    if(!headless){
+      const ring=new T.Mesh(new T.TorusGeometry(.31,.082,7,28),mat('#d9773c'));
+      ring.position.set(-sign*8.4,1.69,sign*20.43);scene.add(ring);
+      for(const a of [.78,2.36,3.93,5.50])put(ring.position.x+Math.cos(a)*.31,1.69+Math.sin(a)*.31,sign*20.41,.10,.11,.11,'#cdc6af');
+    }
     for(const depth of [23,24.7])for(const x of [-6,5.8,3,-3])spawns[sign===1?0:1].push({x,z:sign*depth});
   }
   // A tandem-rotor airframe parked on the far deck gives that spawn its skyline.
   const heliPaint='#424940',heliGlass='#27383c', padZ=-24.0;
   function ellipsoid(x,y,z,sx,sy,sz,color){
+    if(headless)return;
     const shell=new T.Mesh(new T.SphereGeometry(1,16,10),mat(color));
     shell.position.set(x,y,z);shell.scale.set(sx,sy,sz);shell.castShadow=true;scene.add(shell);
   }
@@ -306,6 +311,8 @@ export function buildWorld(scene) {
     put(x,2.68,0,.065,.07,40.8,'#ba9a55');
     for(const y of [1.23,1.64])put(x,y,0,.065,.07,51.9,rail);
   }
+  const bounds={minX:-11.96,maxX:11.96,minZ:-25.65,maxZ:25.65};
+  if(headless)return {solids,vents,bounds,spawns};
   const dk=new T.Mesh(new T.PlaneGeometry(25,53),new T.MeshStandardMaterial({map:deckSkin(solids),roughness:.92}));
   dk.rotation.x=-Math.PI/2; dk.receiveShadow=true;scene.add(dk);
   const sky=new T.Color('#a7bab8');scene.fog=new T.FogExp2(sky,.0063);scene.background=sky;
@@ -487,7 +494,7 @@ export function buildWorld(scene) {
   }
   setTime('day');
   let lastTime=0;
-  return {solids,vents,bounds:{minX:-11.96,maxX:11.96,minZ:-25.65,maxZ:25.65},spawns,fx,setTime,setQuality,
+  return {solids,vents,bounds,spawns,fx,setTime,setQuality,
     update(timeSeconds,dt){
       dt=Number.isFinite(dt)?dt:Math.max(0,Math.min(.06,timeSeconds-lastTime));lastTime=timeSeconds;
       water.material.uniforms.time.value=timeSeconds;fx.update(dt);

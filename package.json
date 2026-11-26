@@ -1,0 +1,15 @@
+{
+  "name": "freighter-deck-arena",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "build:offline": "node tools/build-offline.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

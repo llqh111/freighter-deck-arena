@@ -1,12 +1,14 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=21';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=28';
 import * as T from './three.module.js';
-import {buildWorld} from './world.js?v=7';
-import {createMatch} from './match.js?v=21';
-import {createViewModel} from './viewmodel.js?v=21';
-import {isMelee,melees} from './arsenal.js?v=21';
-import {createDeckAudio} from './deck-audio.js?v=21';
+import {buildWorld} from './world.js?v=23';
+import {createMatch} from './match.js?v=35';
+import {createViewModel} from './viewmodel.js?v=34';
+import {isMelee,melees} from './arsenal.js?v=27';
+import {createDeckAudio} from './deck-audio.js?v=29';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
-import {matchRules,matchDuration} from './match-rules.js';
+import {createDuelClient} from './duel-client.js?v=34';
+import {createDuelRoom,invited} from './duel-room.js?v=23';
+import {matchRules,matchDuration} from './match-rules.js?v=23';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -15,7 +17,7 @@ function put(id,val){const e=$(id),s=String(val);if(e.textContent!==s)e.textCont
 addEventListener('pointerdown',()=>deckAudio.prime(),{once:true});
 addEventListener('keydown',()=>deckAudio.prime(),{once:true});
 const canvas=$('viewport'), panel=$('panel'), coarse=matchMedia('(pointer:coarse)').matches;
-let renderer,world,match,view, elapsed=0, mode='menu', dialogKind='',lockPending=false, frameDirty=true, lastIdleRender=0;
+let renderer,world,match,localMatch,onlineMatch,view, elapsed=0, mode='menu', dialogKind='',lockPending=false, frameDirty=true, lastIdleRender=0;
 let sensitivity=1, sound=true, draggingMouse=false, touchLook=null, locker=0;
 try {sensitivity=Number(localStorage.getItem('df-sensitivity'))||1;sound=localStorage.getItem('df-sound')!=='off';}catch{}
 const scene=new T.Scene(), camera=new T.PerspectiveCamera(72,1,.06,550);
@@ -54,7 +56,7 @@ function watchCrosshairScale(){
   },{once:true});
 }
 watchCrosshairScale();
-const prefs={mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',primary:'ak47',melee:'nepal',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
+const prefs={mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
   if(['ak47','m4a1','awm','mp5'].includes(saved.primary))prefs.primary=saved.primary;
@@ -62,23 +64,27 @@ try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   if(Number.isFinite(saved.vol))prefs.vol=T.MathUtils.clamp(saved.vol,0,1);if(Number.isFinite(saved.fov))prefs.fov=T.MathUtils.clamp(saved.fov,65,100);
 }catch{}
 const openMode=new URLSearchParams(location.search).get('mode');
-if(openMode==='knife'||openMode==='tdm')prefs.mode=openMode;
+if(invited)prefs.mode='duel';
+else if(Object.hasOwn(matchRules,openMode))prefs.mode=openMode;
 function save(){try{localStorage.setItem('df-lobby',JSON.stringify(prefs));}catch{}}
-const roundGoal=()=>prefs.mode==='knife'?prefs.knifeGoal:prefs.goal;
+const roundGoal=()=>prefs.mode==='duel'?matchRules.duel.goal:prefs.mode==='knife'?prefs.knifeGoal:prefs.goal;
 const clockText=seconds=>[Math.floor(seconds/60),seconds%60].map(v=>String(v).padStart(2,'0')).join(':');
+const botPrimaryLabel=()=>prefs.botPrimary==='mirror'?'镜像你的武器':prefs.botPrimary==='random'||!names[prefs.botPrimary]?'每局随机武器':names[prefs.botPrimary];
 function summary(){
-  const knife=prefs.mode==='knife', sz=knife?matchRules.knife.size:prefs.size;
+  const knife=prefs.mode==='knife',duel=prefs.mode==='duel';
+  const sz=prefs.mode==='tdm'?prefs.size:matchRules[prefs.mode].size;
   const eyebrow=document.querySelector('.eyebrow');
-  if(eyebrow)eyebrow.innerHTML=knife?'<b></b>3v3 刀战 <span>/</span> KNIFE FIGHT':'<b></b>团队竞技 <span>/</span> TEAM DEATHMATCH';
-  $('modeIntro').textContent=knife?'和队友在货柜间近身交锋，抢先达到目标击杀数。':'选择阵营与装备，从中央货柜区或舷侧管道登上对方甲板。';
+  if(eyebrow)eyebrow.innerHTML=duel?'<b></b>单挑 1v1 <span>/</span> DUEL':knife?'<b></b>3v3 刀战 <span>/</span> KNIFE FIGHT':'<b></b>团队竞技 <span>/</span> TEAM DEATHMATCH';
+  $('modeIntro').textContent=duel?'单挑一名电脑对手（'+botPrimaryLabel()+'），或开房邀请好友。':knife?'和队友在货柜间近身交锋，抢先达到目标击杀数。':'选择阵营与装备，从中央货柜区或舷侧管道登上对方甲板。';
   $('statSize').innerHTML=sz+' <em>VS</em> '+sz;
+  $('statSize').nextElementSibling.textContent=duel?'单挑人数':'人机对抗';
   $('statGoal').textContent=roundGoal();
   $('statTime').textContent=clockText(matchDuration(prefs.mode,sz));
   $('primaryName').textContent=knife?('纯近战 · '+names[prefs.melee]):(names[prefs.primary]+' · '+names[prefs.melee]);
   for(const btn of $('modePick').querySelectorAll('[data-pref=mode]')){
     btn.setAttribute('aria-pressed',String(btn.dataset.value===prefs.mode));
   }
-  if(!$('deploy').disabled)put('deployLabel',knife?'开始刀战':'开始对局');
+  if(!$('deploy').disabled)put('deployLabel',duel?'开始单挑':knife?'开始刀战':'开始对局');
 }
 function applyPref(key){
   if(key==='tod')world?.setTime(prefs.tod);
@@ -86,13 +92,18 @@ function applyPref(key){
   if(renderer&&(key==='tod'||key==='quality'))renderer.shadowMap.needsUpdate=true;
   if(key==='fov')match?.input('fov',prefs.fov);
   if(key==='vol')deckAudio.setVolume(prefs.vol);
+  if(key==='butterflyFinish')view?.setButterflyFinish(prefs.butterflyFinish);
+  if(key==='botPrimary'){
+    const swap=match?.input('botPrimary',prefs.botPrimary);
+    const line=$('botWeaponState');
+    if(line)line.textContent=swap?('电脑现用 '+names[swap.id]+(swap.pending?' · 存活中，下次复活后换枪':' · 已立即换枪')):'对局中切换才会立即生效，当前改动从下一局开始。';
+  }
   frameDirty=true;save();summary();
 }
 function syncSetupLocks(){
-  const knife=prefs.mode==='knife';
-  for(const key of ['size','goal','knifeGoal']){
+  for(const key of ['size','goal','knifeGoal','botPrimary']){
     const group=panel.querySelector('[data-pref='+key+']')?.closest('fieldset');
-    if(group)group.hidden=key==='knifeGoal'?!knife:knife;
+    if(group)group.hidden=prefs.mode!==(key==='knifeGoal'?'knife':key==='botPrimary'?'duel':'tdm');
   }
 }
 function bindPrefs(container=panel){
@@ -107,8 +118,10 @@ function armory(inGame=false){
   const knife=(inGame?match?.state?.mode:prefs.mode)==='knife';
   showDialog(inGame?'loadout':'armory','LOADOUT',knife?'选择近战武器（3v3 刀战）':'选择主武器与近战',
     (knife?'':'<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary))+
-    '<div class="sectionTitle">近战武器 MELEE（Y 检视 · 蝴蝶刀 R 连转）</div>'+meleeChoices(prefs.melee)+
+    '<div class="sectionTitle">近战武器 MELEE（Y 检视 · 蝴蝶刀 / 爪刀 R 连转）</div>'+meleeChoices(prefs.melee)+
+    selectors(prefs,['butterflyFinish'])+
     '<p class="panelNote">'+(knife?'当前为 3v3 刀战模式，全场仅使用近战武器。出生区内更换近战立即生效，离开出生区后在下次复活时领取。':'副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。')+'</p>');
+  bindPrefs();
   for(const b of panel.querySelectorAll('[data-weapon]'))b.onclick=()=>{
     prefs.primary=b.dataset.weapon;save();summary();
     for(const p of panel.querySelectorAll('[data-weapon]'))p.setAttribute('aria-pressed',String(p===b));
@@ -159,16 +172,16 @@ function crosshairStudio(){
     navigator.clipboard?.writeText(code).then(()=>notify('已复制无畏契约准星代码')).catch(()=>notify('代码：'+code));
   };
 }
-function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['mode','team','size','goal','knifeGoal','diff','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
+function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['mode','team','size','goal','knifeGoal','diff','botPrimary','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
 function controlRows(){
   if(coarse)return '<p class="panelNote">左侧摇杆移动，右侧拖动转向。暂停菜单可换装或查看战绩。</p>';
   const knife=prefs.mode==='knife';
   const combat=knife?[['轻击 / 重击','鼠标左键 / 右键'],['快捷滚轮','上滚甩刀 · 下滚检视']]:[['射击 / 瞄准或重击','鼠标左键 / 右键'],['快捷滚轮','下滚主枪 · 上滚切刀'],['武器槽 / 快切 / 换弹','1–4 / Q / R']];
-  return [['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],...combat,['检视 / 换装','Y / B'],['蝴蝶刀连转','R 连按'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
+  return [['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],['空中转向','A/D + 同向移动鼠标'],...combat,['检视 / 换装','Y / B'],['蝴蝶刀 / 爪刀连转','R 连按'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
 }
 function settings(){
   let ranges='';for(const [id,name,min,max,step,value] of [['sens','视角灵敏度',.2,3,.05,sensitivity],['fov','视野',65,100,1,prefs.fov],['vol','音量',0,1,.05,prefs.vol]])ranges+='<div class="row"><label for="'+id+'">'+name+'</label><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'"><output>'+value+'</output></div>';
-  showDialog('settings','CONTROLS','设置与操作',ranges+selectors(prefs,['wheel','tod','quality'])+'<div class="row"><span>自定义准星</span><button id="openXhFromSet" class="secondary">打开准星工坊</button></div>'+controlRows()+'<div class="row"><span>游戏声音</span><button id="audioToggle" class="secondary">'+(sound?'开启':'关闭')+'</button></div>');
+  showDialog('settings','CONTROLS','设置与操作',ranges+selectors(prefs,['wheel','tod','quality'])+'<div class="row"><span>自定义准星</span><button id="openXhFromSet" class="secondary">打开准星工坊</button></div>'+controlRows()+'<div class="row"><span>游戏声音</span><button id="audioToggle" class="secondary">'+(sound?'开启':'关闭')+'</button></div><p class="panelNote">爪刀模型 <a href="https://sketchfab.com/3d-models/low-poly-karambit-bicagi-9f48d6ee01584347ad54df3526170bd9" target="_blank" rel="noopener">OldTÜRK34</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> · 已适配握持与材质</p>');
   for(const el of panel.querySelectorAll('input'))el.oninput=()=>{
     el.nextElementSibling.value=el.value;if(el.id==='sens'){sensitivity=+el.value;try{localStorage.setItem('df-sensitivity',sensitivity);}catch{}}
     else{prefs[el.id]=+el.value;applyPref(el.id);}
@@ -238,19 +251,71 @@ function lock(){
 }
 function release(){if(document.pointerLockElement)document.exitPointerLock();}
 function closePanel(){if(panel.open)panel.close();dialogKind='';}
-function start(){clearAnnouncement();deckAudio.reset();closePanel();$('feed').replaceChildren();$('notice').hidden=true;setMode('playing');setSound();match.start({...prefs,goal:roundGoal()});match.input('fov',prefs.fov);canvas.focus();lock();}
+function resetFeedback(){clearAnnouncement();deckAudio.reset();$('feed').replaceChildren();$('notice').hidden=true;}
+function start(){
+  resetFeedback();closePanel();setMode('playing');setSound();
+  match.start({...prefs,goal:roundGoal()});match.input('fov',prefs.fov);canvas.focus();lock();
+}
+function chooseOpponent(){
+  if(prefs.mode!=='duel'){start();return;}
+  showDialog('duelChoice','1V1','选择对手',
+    '<div class="actions"><button id="duelComputer" class="primary">电脑对手</button><button id="duelFriend" class="secondary">好友房</button></div>'+
+    selectors(prefs,['botPrimary'])+
+    '<p class="panelNote">单挑的电脑只有一人，指定它的武器就能把对局变成专项练习：AWM 练爆头线与卡点，MP5 练近距离拉扯，跟随玩家则是完全镜像的公平枪法对枪。好友房不受此项影响。</p>');
+  bindPrefs();
+  $('duelComputer').onclick=start;
+  $('duelFriend').onclick=()=>duelRoom.open();
+}
+function botWeapon(){
+  if(mode==='playing')match.pause();
+  setMode('paused');release();
+  showDialog('botWeapon','1V1 DUEL','电脑对手武器',
+    selectors(prefs,['botPrimary'])+
+    '<p class="panelNote" id="botWeaponState">切换对当前对局立即生效：电脑存活时会在它下次复活后换枪。「跟随玩家」会同步你此刻装备的主武器。</p>'+
+    '<p class="panelNote">把电脑钉在一把枪上，就是最省事的专项练习：AWM 练爆头线与卡点反制，MP5 练近距离身法拉扯，AK 练中距离压枪对枪。好友房不受此项影响。</p>');
+  bindPrefs();
+}
+function stopOnlineMatch(){
+  if(!onlineMatch)return;
+  onlineMatch.dispose();
+  onlineMatch=null;match=localMatch;
+  release();setMode('menu');drawMap($('chart'),null,true);
+}
+const duelRoom=createDuelRoom({
+  show:showDialog,panel,notify,prefs,onDisconnect:stopOnlineMatch,
+  onPacket(packet){
+    if(packet.type==='started'){
+      localMatch.clearScene();resetFeedback();
+      onlineMatch=createDuelClient({scene,camera,view,world,send:duelRoom.send,emit:hudEvent});
+      match=onlineMatch;
+      setMode('paused');
+      setSound();
+      match.apply(packet);match.input('fov',prefs.fov);
+      showDialog('duelEnter','1V1','好友对局已开始',
+        '<div class="actions"><button id="duelEnter" class="primary">进入对局</button></div>');
+      $('duelEnter').onclick=resume;
+      return;
+    }
+    if(!onlineMatch)return;
+    if(packet.type==='state'||packet.type==='ended'){
+      match.apply(packet);
+      if(packet.type==='ended'){match.update(0);hudEvent('end',match.state);}
+    }else if(packet.type==='event'||packet.type==='fx'||packet.type==='view')match.visual(packet);
+  }
+});
 function resume(){closePanel();setMode('playing');match.resume();canvas.focus();lock();}
-function toMenu(){closePanel();release();setMode('menu');drawMap($('chart'),null,true);}
+function toMenu(){duelRoom.leave();stopOnlineMatch();closePanel();release();setMode('menu');drawMap($('chart'),null,true);}
 function pauseUI(){
   if(mode!=='playing'&&mode!=='paused')return;
   match.pause();setMode('paused');release();
   const swapLabel=match.state.mode==='knife'?'更换近战武器':'更换主武器/近战';
-  showDialog('pause','MATCH PAUSED','对局已暂停','<div class="actions"><button id="resume" class="primary">继续对局</button><button id="inLoadout" class="secondary">'+swapLabel+'</button><button id="inCrosshair" class="secondary">自定义准星</button><button id="inBoard" class="secondary">查看战绩</button><button id="inSettings" class="secondary">设置与操作</button><button id="leave" class="secondary">返回甲板首页</button></div>');
-  $('inLoadout').onclick=()=>armory(true);$('inCrosshair').onclick=crosshairStudio;$('inBoard').onclick=()=>showDialog('board','SCOREBOARD','团队战绩',board(match.state));$('resume').onclick=resume;$('inSettings').onclick=settings;$('leave').onclick=toMenu;
+  const botSwap=match.state.mode==='duel'&&!onlineMatch;
+  showDialog('pause','MATCH MENU',onlineMatch?'好友对局进行中':'对局已暂停','<div class="actions"><button id="resume" class="primary">继续对局</button><button id="inLoadout" class="secondary">'+swapLabel+'</button>'+(botSwap?'<button id="inBotWeapon" class="secondary">电脑武器</button>':'')+'<button id="inCrosshair" class="secondary">自定义准星</button><button id="inBoard" class="secondary">查看战绩</button><button id="inSettings" class="secondary">设置与操作</button><button id="leave" class="secondary">返回甲板首页</button></div>');
+  $('inLoadout').onclick=()=>armory(true);if(botSwap)$('inBotWeapon').onclick=botWeapon;$('inCrosshair').onclick=crosshairStudio;$('inBoard').onclick=()=>showDialog('board','SCOREBOARD','团队战绩',board(match.state));$('resume').onclick=resume;$('inSettings').onclick=settings;$('leave').onclick=toMenu;
 }
-function dismiss(){if(dialogKind==='loadout'){resume();return;}if(dialogKind==='end'){toMenu();return;}if(dialogKind==='pause'){resume();return;}closePanel();if(mode==='paused')pauseUI();}
+function dismiss(){if(dialogKind==='duelRoom'){duelRoom.leave();closePanel();return;}if(dialogKind==='duelEnter'){resume();return;}if(dialogKind==='loadout'){resume();return;}if(dialogKind==='end'){toMenu();return;}if(dialogKind==='pause'){resume();return;}closePanel();if(mode==='paused')pauseUI();}
 $('closePanel').onclick=dismiss;panel.oncancel=e=>{e.preventDefault();dismiss();};
-$('deploy').onclick=start;$('pauseHud').onclick=pauseUI;
+$('deploy').onclick=chooseOpponent;$('pauseHud').onclick=pauseUI;
 let calloutAnimation,hitAnimation;
 function clearAnnouncement(){
   calloutAnimation?.cancel();
@@ -416,7 +481,7 @@ function hudEvent(type,data){
     syncCombatHud(data.mode);
     put('blue',String(data.score[0]).padStart(2,'0'));put('red',String(data.score[1]).padStart(2,'0'));
     put('hp',data.hp);put('ammo',isMelee(data.weapon)?'∞':data.ammo);put('reserve',data.reserve);
-    put('goalText',(data.mode==='knife'?'3v3 刀战 · ':'')+'目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
+    put('goalText',(data.mode==='knife'?'3v3 刀战 · ':data.mode==='duel'?'单挑 1v1 · ':'')+'目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
     $('scopeOverlay').hidden=!data.zoom||!data.alive;
     $('adsOverlay').hidden=!data.aiming||!!data.zoom||!data.alive;
     put('aimName',data.aimName||'');$('aimName').style.color=data.aimTeam===data.team?'var(--ice)':'var(--red)';
@@ -459,7 +524,7 @@ function hudEvent(type,data){
     const mvp=[...data.scoreboard].sort((a,b)=>(b.kills*2-b.deaths+b.headshots)-(a.kills*2-a.deaths+a.headshots))[0];
     const knife=data.mode==='knife';
     const accuracy=knife?'挥刀命中 '+data.hits+' / '+data.attempts+'（'+data.accuracy+'%）':data.headshots+' 爆头 · 命中率 '+data.accuracy+'%';
-    showDialog('end',knife?'3v3 刀战 · 对局结算':'MATCH RESULT',b===r?'双方平局':win?'我方胜利':'对方胜利','<div class="result"><span>'+b+'</span> · <b>'+r+'</b></div><div class="row">MVP <b>'+mvp.name+' · '+mvp.kills+' 击杀</b></div><p class="panelNote">你的战绩　'+data.kills+' 击杀 · '+data.deaths+' 阵亡 · '+accuracy+'</p>'+board(data)+'<div class="actions"><button id="again" class="primary">再来一局</button><button id="home" class="secondary">返回首页</button></div>');$('again').onclick=start;$('home').onclick=toMenu;
+    showDialog('end',knife?'3v3 刀战 · 对局结算':data.mode==='duel'?'单挑 1v1 · 对局结算':'MATCH RESULT',b===r?'双方平局':win?'我方胜利':'对方胜利','<div class="result"><span>'+b+'</span> · <b>'+r+'</b></div><div class="row">MVP <b>'+mvp.name+' · '+mvp.kills+' 击杀</b></div><p class="panelNote">你的战绩　'+data.kills+' 击杀 · '+data.deaths+' 阵亡 · '+accuracy+'</p>'+board(data)+'<div class="actions"><button id="again" class="primary">再来一局</button><button id="home" class="secondary">返回首页</button></div>');if(onlineMatch){$('again').textContent='返回好友房';$('again').onclick=duelRoom.lobby;}else $('again').onclick=start;$('home').onclick=toMenu;
   }
 }
 const keys={KeyW:'forward',KeyS:'back',KeyA:'left',KeyD:'right',Space:'jump',ShiftLeft:'walk',ShiftRight:'walk',KeyX:'sprint',KeyC:'crouch',ArrowLeft:'left',ArrowRight:'right',KeyR:'reload',ArrowUp:'forward',ArrowDown:'back'};
@@ -609,34 +674,41 @@ function render(time){
   }
 }
 async function prewarm(){
-  const cleanup=match.warmup?.();
+  const warmup=match.warmup();
   const savedVis=[];
   view.scene.traverse(o=>{savedVis.push([o,o.visible]);o.visible=true;});
   let deferredCleanup=false;
   try{
     if(renderer.compileAsync&&renderer.extensions.has('KHR_parallel_shader_compile')){
       deferredCleanup=true;
-      const job=(async()=>{await renderer.compileAsync(scene,camera);await renderer.compileAsync(view.scene,view.camera);})();
-      job.catch(()=>{}).finally(()=>cleanup?.());
+      const job=(async()=>{
+        await renderer.compileAsync(scene,camera);
+        await renderer.compileAsync(warmup.scene,camera,scene);
+        await renderer.compileAsync(view.scene,view.camera);
+      })();
+      job.then(warmup.dispose,warmup.dispose);
       await Promise.race([job,new Promise(r=>setTimeout(r,2500))]);
     }else{
       renderer.compile(scene,camera);
+      renderer.compile(warmup.scene,camera,scene);
       renderer.compile(view.scene,view.camera);
     }
   }catch{}
   finally{
     for(const [o,v] of savedVis)o.visible=v;
-    if(!deferredCleanup)cleanup?.();
+    if(!deferredCleanup)warmup.dispose();
   }
 }
 async function init(){
   try{
     renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});renderer.autoClear=false;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-    world=buildWorld(scene);view=createViewModel(deckAudio.sfx);view.initEnv?.(renderer);match=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov'])applyPref(key);setSound();resize();
+    world=buildWorld(scene);view=createViewModel(deckAudio.sfx);view.initEnv?.(renderer);match=localMatch=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov','butterflyFinish'])applyPref(key);setSound();resize();
+    await view.ready;
     await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);
     $('deploy').disabled=false;summary();$('readyText').textContent='甲板就绪';addEventListener('resize',resize);
+    if(invited)duelRoom.open(true);
   }catch(e){console.error(e);$('deployLabel').textContent='无法载入';$('readyText').textContent='3D 场景未能启动';notify('无法启动 3D 画面。请在开启硬件加速的 Chrome 或 Edge 中打开。');}
 }
 init();

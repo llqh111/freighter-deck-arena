@@ -1,6 +1,53 @@
 import * as T from './three.module.js';
+import {buildKarambit} from './karambit-model.js?v=7';
 
 // Compact exterior models built in camera space, with an independent magazine and action.
+function violetTideTexture(){
+  const canvas=document.createElement('canvas');
+  const width=512,height=128;
+  canvas.width=width;canvas.height=height;
+  const ctx=canvas.getContext('2d');
+  const base=ctx.createLinearGradient(0,height,width,0);
+  base.addColorStop(0,'#242030');
+  base.addColorStop(.32,'#4c306b');
+  base.addColorStop(.69,'#6a4896');
+  base.addColorStop(1,'#30243f');
+  ctx.fillStyle=base;
+  ctx.fillRect(0,0,width,height);
+  for(let y=0;y<height;y+=2){
+    ctx.fillStyle=y%6===0?'#eee1ff13':'#180e2713';
+    ctx.fillRect(0,y,width,1);
+  }
+
+  // Bathymetric lines fan out around a deep point and taper toward the tip.
+  for(let i=0;i<10;i++){
+    const depth=i*9.4;
+    ctx.beginPath();
+    ctx.moveTo(38+depth*.85,142);
+    ctx.bezierCurveTo(27+depth*.52,77-i*5,109+depth*.54,14-i*.7,193+depth,52-i*4.4);
+    ctx.bezierCurveTo(290+depth*.53,94-i*2.5,321+depth,81-i*4.6,367+depth*1.55,-12);
+    const major=i===2||i===6;
+    ctx.strokeStyle=major?'#ead9fce0':'#cda9edaa';
+    ctx.lineWidth=major?5.4:3;
+    ctx.stroke();
+  }
+  ctx.strokeStyle='#e0c6f2a0';
+  ctx.lineWidth=1.3;
+  for(let x=113;x<=409;x+=16){
+    const length=(x-113)%64===0?9:4;
+    ctx.beginPath();
+    ctx.moveTo(x,116);
+    ctx.lineTo(x+3,116-length);
+    ctx.stroke();
+  }
+  const texture=new T.CanvasTexture(canvas);
+  texture.colorSpace=T.SRGBColorSpace;
+  texture.repeat.set(1.40,3.07);
+  texture.offset.set(-.086,-.89);
+  texture.anisotropy=4;
+  return texture;
+}
+
 export function buildArmory(parts) {
   const {box,tube,pad,profile,arm,bake,paint,graphite,alloy,edges,parker,rubber,amber,bone,cloth,clothFold,glove,knuckle,sleeveBand,steelGrain,twill}=parts;
   const olive=paint(0x64724e,.8,.13), wood=paint(0x94532f,.54,.13);
@@ -178,6 +225,27 @@ export function buildArmory(parts) {
       m.envMapIntensity=1.38;
     }
     mirrorEdge.envMapIntensity=1.62;
+    const handleRail=tiChamfer.clone(),bladeSpine=tiChamfer.clone();
+    const finishColors=[
+      [tiScale,0x3d4a54,0x23212a],[tiDark,0x1f262c,0x19151e],
+      [tiChamfer,0xcbd6de,0xb1a5c5],[handleRail,0xcbd6de,0xa370ed],
+      [cryoAccent,0x66bfd6,0xb38bef],[bronzeWasher,0xc98f49,0x8964af],
+      [satinFlat,0x9aa8b2,0xe4d9ef],[bladeSpine,0xcbd6de,0xd4bfe9],
+      [hollowBevel,0xd2dde4,0xac94c5],[mirrorEdge,0xf4f9fb,0xf0e9fa]
+    ];
+    let tide=false,tideTexture;
+    w.setFinish=value=>{
+      const next=value==='violet-tide';
+      if(next===tide)return;
+      tide=next;
+      if(tide&&!tideTexture)tideTexture=violetTideTexture();
+      for(const [material,steel,coated] of finishColors)material.color.setHex(tide?coated:steel);
+      satinFlat.map=tide?tideTexture:steelGrain;
+      bladeSpine.map=tide?tideTexture:null;
+      satinFlat.metalness=tide?.67:.84;
+      bladeSpine.metalness=tide?.68:.89;
+      bladeSpine.needsUpdate=true;
+    };
 
     // Extrude helper with real 3D through-holes (Shape.holes)
     function scalePlate(parent,mat,thickness,outerPts,holesPts,xOff){
@@ -325,7 +393,7 @@ export function buildArmory(parts) {
       }
 
       const matFor={
-        swedgeL:tiChamfer,swedgeR:tiChamfer,swedgeCap:tiChamfer,
+        swedgeL:bladeSpine,swedgeR:bladeSpine,swedgeCap:tiChamfer,
         flatL:satinFlat,flatR:satinFlat,
         bevelL:hollowBevel,bevelR:hollowBevel,
         edgeL:mirrorEdge,edgeR:mirrorEdge
@@ -514,10 +582,10 @@ export function buildArmory(parts) {
       const scaleX=.0072, scaleThick=.0030;
       for(const side of [-1,1]){
         scalePlate(target,tiScale,scaleThick,outer,holes,side*scaleX);
-        profile(target,tiChamfer,.0009,[
+        profile(target,handleRail,.0009,[
           [.018, .0102],[.096, .0108],[.178, .0092],[.178, .0074],[.096, .0088],[.018, .0084]
         ],side*(scaleX+.0017));
-        profile(target,tiChamfer,.0009,[
+        profile(target,handleRail,.0009,[
           [.018,-.0084],[.096,-.0088],[.178,-.0074],[.178,-.0092],[.096,-.0108],[.018,-.0102]
         ],side*(scaleX+.0017));
         const px=side*(scaleX+.0018);
@@ -641,6 +709,7 @@ export function buildArmory(parts) {
       safeJoint,biteJoint,latchPivot
     };
   });
+  model('karambit',w=>buildKarambit(w,parts));
   model('he',w=>{
     w.hipX=.133;w.hipZ=-.38;w.hipY=-.136;
     pad(w.action,olive,0,-.039,.065,.068,.086,.066);

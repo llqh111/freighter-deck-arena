@@ -54,6 +54,9 @@
 .xhBtn:hover{color:#fff}
 .sectionTitle{margin:14px 0 8px;font-size:12px;letter-spacing:1.6px;color:#a8bebc;text-transform:uppercase}
 .meleeGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.meleeGrid+.choice{margin-top:12px}
+button[data-pref=butterflyFinish]::before{content:"";display:inline-block;width:16px;height:9px;margin-right:7px;vertical-align:1px;border:1px solid #ffffff44;background:linear-gradient(125deg,#29323b 20%,#aab9c2 72%,#424955)}
+button[data-pref=butterflyFinish][data-value=violet-tide]::before{background:linear-gradient(125deg,#23192e 18%,#8d5bb6 69%,#3a294d)}
 @media(max-width:600px){.meleeGrid{grid-template-columns:1fr}}
 /* Crosshair Studio */
 .xhStudio{display:grid;gap:10px}
@@ -86,10 +89,11 @@
 #callout.first #killBadge{filter:drop-shadow(0 0 14px rgba(102,224,255,.85)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
 #callout.knife #killBadge{filter:drop-shadow(0 0 14px rgba(136,255,220,.82)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
 
-#modePick{margin-top:12px;max-width:248px}
+#modePick{margin-top:12px;max-width:min(300px,100%)}
 #modePick .choice{margin:0}
 #modePick legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-#modePick button{background:#15232bd9;padding:8px 10px}
+#modePick button{background:#15232bd9;padding:8px 7px;white-space:nowrap}
+#duelInvite{width:100%;margin-top:8px}
 #modePick [aria-pressed=true]{background:#38382c}
 #modePick+.stats{margin-top:17px}
 @media(max-height:570px){

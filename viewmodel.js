@@ -1,6 +1,7 @@
-import {buildArmory} from './armory-models.js?v=21';
-import {isMelee} from './arsenal.js?v=21';
-import {createButterflyMotion} from './butterfly-motion.js?v=21';
+import {buildArmory} from './armory-models.js?v=29';
+import {isMelee} from './arsenal.js?v=27';
+import {createKarambitMotion} from './karambit-motion.js?v=8';
+import {createButterflyMotion} from './butterfly-motion.js?v=23';
 import * as T from './three.module.js';
 
 function brushedSurface(fabric = false) {
@@ -255,6 +256,7 @@ export function createViewModel(playMotionSound = () => {}) {
     const boost=cue==='butterflySpin'?Math.min(.22,spinSpeed*.008):0;
     playMotionSound({kind:cue,weapon:'butterfly',volume:Math.min(.92,.72+boost),pan:.13});
   });
+  const karambitMotion=createKarambitMotion((cue,volume)=>playMotionSound({kind:cue,weapon:'karambit',volume,pan:.13}));
   function equip(value) {
     const raw=String(value?.id || value || '').toLowerCase().replace(/[-_ ]/g,'');
     const next=({grenade:'he',deserteagle:'deagle',ak:'ak47',m4:'m4a1',kukri:'nepal',kris:'malay'})[raw]||raw;
@@ -263,29 +265,35 @@ export function createViewModel(playMotionSound = () => {}) {
     current.root.visible=false;id=next;current=arsenal[id];current.root.visible=true;
     current.root.position.set(0,0,0);draw=1;gesture=inspectT=1;loading=-1;reloadSignal=false;aim=0;recoil=spark=0;
     camKickPitch=camKickRoll=0;camera.rotation.set(0,0,0);
-    butterflyMotion.reset();
+    butterflyMotion.reset();karambitMotion.reset();
+    if(id==='karambit'){draw=0;karambitMotion.draw();}
     if(id==='butterfly'){
-      draw=0;
+      // Keep a partial rig-level draw so the whole hand rises from the weapon's low rest pose
+      // instead of popping up 10cm on the equip frame (draw decay 5.2/s -> ~119ms lift).
+      draw=.62;
       curPivX=PIVOT_TABLE[0][0];curPivY=PIVOT_TABLE[0][1];curPivZ=PIVOT_TABLE[0][2];
       butterflyMotion.draw();
     }
     flash.visible=false;flash.position.set(0,id==='deagle'?.029:.010,current.muzzle??-.5);
   }
   function flourish(){
-    if(id==='butterfly')butterflyMotion.flourish();
+    if(id==='karambit')karambitMotion.spin();
+    else if(id==='butterfly')butterflyMotion.flourish();
     else if(isMelee(id)&&gesture>=.85){draw=.88;inspectT=1;}
   }
   function fidget(){
-    if(id==='butterfly')butterflyMotion.fidget();
+    if(id==='karambit')karambitMotion.spin();
+    else if(id==='butterfly')butterflyMotion.fidget();
   }
   function reload(duration) {
     if(id==='he'||isMelee(id)||loading>=0)return;
     loadDuration=Number.isFinite(duration)?Math.max(.30,duration):({awm:3.0,deagle:1.8,mp5:2.0,ak47:2.35,m4a1:2.15})[id];
     loading=0;inspectT=1;
   }
-  function shoot(action='primary',hitKind='air'){
+  function shoot(action='primary'){
+    if(id==='karambit'){karambitMotion.attack(action==='heavy'?'heavy':'light');return;}
     if(id==='butterfly'){
-      butterflyMotion.attack(action==='heavy'?'heavy':'light',hitKind);
+      butterflyMotion.attack(action==='heavy'?'heavy':'light');
       return;
     }
     inspectT=1;gesture=0;kind=action;
@@ -433,6 +441,32 @@ export function createViewModel(playMotionSound = () => {}) {
         camera.rotation.set(camKickPitch,0,camKickRoll);
 
         current.updateTrail?.(sec.trailIntensity);
+      }else if(id==='karambit'){
+        if(values.alive===false){
+          karambitMotion.reset();
+          current.resetTrail();
+        }else karambitMotion.update(dt);
+        [mx,my,mz,mrx,mry,mrz]=karambitMotion.pose;
+        const part=current.karambit;
+        // Exact CS2 dorsal-fist Karambit idle angle: ring left, dorsal knuckles facing camera, curved claw sweeping right & up!
+        part.mount.rotation.set(.08,-.32,.14);
+        current.hand.rotation.copy(part.mount.rotation);
+        const ring=karambitMotion.pose[6];
+        part.ringPivot.rotation.z=ring;
+        const opening=T.MathUtils.clamp(karambitMotion.pose[7],0,1);
+        for(let i=0;i<part.fingers.length;i++){
+          const sweep=Math.max(0,Math.cos(ring+(i-1)*.24))*opening;
+          // Uncurl upward & back (+X rotation) cleanly out of the XY spin plane!
+          part.fingers[i].rotation.x=opening*1.08+sweep*.18;
+          part.fingers[i].rotation.z=-opening*.10*(i-1);
+        }
+        const thumbOpening=T.MathUtils.clamp(karambitMotion.pose[8],0,1);
+        const thumbSweep=Math.max(0,Math.cos(ring-.18))*thumbOpening;
+        part.thumb.rotation.set(-thumbOpening*.65-thumbSweep*.14,thumbOpening*.55,-thumbOpening*.24);
+        const kick=(karambitMotion.pose[9]||0)-Math.min(1,karambitMotion.impact*24);
+        camKickPitch=ease(camKickPitch,kick*.0058,dt,30);
+        camKickRoll=ease(camKickRoll,-kick*.0082,dt,30);
+        camera.rotation.set(camKickPitch,0,camKickRoll);
       }else if(id==='nepal'){
         // Kukri wrist-flip draw + heavy sweeping cleaver arc.
         mx=-drawArc*.055-slash*(heavy?.16:.21);
@@ -459,21 +493,28 @@ export function createViewModel(playMotionSound = () => {}) {
     const bflyScale=id==='butterfly'?.65:1;
     rig.position.set(
       idle*(offset+Math.sin(phase)*(.0014+walk*.005*bflyScale))+lower*.034+mx-(melee?0:inspection*.10)-swayX,
-      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003*bflyScale)-lower*.044+recoil*.003-draw*(melee?.17:.24)+my+inspection*.027+throwing*.14+swayY+(id==='butterfly'?0:airOffset+landDip),
+      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003*bflyScale)-lower*.044+recoil*.003-draw*(id==='butterfly'?.15:(melee?.17:.24))+my+inspection*.027+throwing*.14+swayY+(id==='butterfly'?0:airOffset+landDip),
       T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*(aim>.6?.021:.043)+lower*.038+draw*.07+mz-throwing*.12);
     rig.rotation.set(
       .045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*(melee?.35:.52)+mrx+throwing*.85+swayY*1.4,
       .190*idle-lower*.19+mry-(melee?0:inspection*.57)-swayX*1.5,
       -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+mrz-(melee?0:inspection*.84)-tilt);
+    if(id==='karambit'&&values.alive!==false)current.updateTrail(dt);
     // Keep built-in 3D reflex dot hidden so only the crisp HUD ADS dot is shown.
     reflex.visible=false;
     // Once magnified, the HUD supplies the full-field AWM reticle immediately like CS AWP.
     current.root.visible=!(id==='awm'&&values.aiming&&loading<0);
   }
   update(0);
-  return {scene,camera,update,equip,flourish,fidget,reload,shoot,
+  return {scene,camera,ready:arsenal.karambit.karambit.ready,update,equip,flourish,fidget,reload,shoot,
+    setButterflyFinish(finish){arsenal.butterfly.setFinish(finish);},
+    meleeContact(hitKind){
+      if(id==='karambit')karambitMotion.contact(hitKind);
+      else if(id==='butterfly')butterflyMotion.contact(hitKind);
+    },
     inspect(){
-      if(id==='butterfly')butterflyMotion.inspect();
+      if(id==='karambit')karambitMotion.inspect();
+      else if(id==='butterfly')butterflyMotion.inspect();
       else if(loading<0&&gesture>=.98)inspectT=0;
     },
     setTeam(team){sleeveBand.color.set(team===1?0xae4c3b:0x47788b);},

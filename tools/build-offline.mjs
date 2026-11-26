@@ -21,7 +21,8 @@ const svgDataUri = `data:image/svg+xml;base64,${svgB64}`;
 const inlineTypes = {
   './freighter-sky.webp': 'image/webp',
   './assets/butterfly/mechanical-latch-light.wav': 'audio/wav',
-  './assets/butterfly/swish-hard.wav': 'audio/wav'
+  './assets/butterfly/swish-hard.wav': 'audio/wav',
+  './assets/karambit/low_poly_karambit_bicagi.glb': 'model/gltf-binary'
 };
 
 const offlineAssets = {
@@ -30,7 +31,7 @@ const offlineAssets = {
     build.onResolve({filter: /\?v=\d+$/}, args => ({
       path: path.resolve(args.resolveDir, args.path.replace(/\?v=\d+$/, ''))
     }));
-    build.onLoad({filter: /(?:world|deck-audio)\.js$/}, async args => {
+    build.onLoad({filter: /(?:world|deck-audio|karambit-model)\.js$/}, async args => {
       let contents = await fs.promises.readFile(args.path, 'utf8');
       contents = contents.replace(
         /new URL\(['"](\.\/[^'"]+)['"]\s*,\s*import\.meta\.url\)\.href/g,
@@ -57,7 +58,7 @@ const result = await esbuild.build({
 
 const bundleJs = result.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>');
 const css = fs.readFileSync(path.join(root, 'ui.css'), 'utf8');
-const notices = ['THREE-LICENSE.txt', 'assets/butterfly/NOTICE.txt']
+const notices = ['THREE-LICENSE.txt', 'assets/butterfly/NOTICE.txt', 'assets/karambit/NOTICE.txt']
   .map(file => fs.readFileSync(path.join(root, file), 'utf8').trim()).join('\n\n');
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 

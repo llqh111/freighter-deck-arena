@@ -1,18 +1,26 @@
-import {isMelee} from './arsenal.js?v=21';
+import {isMelee} from './arsenal.js?v=27';
 
 const butterflyAssets = {
   latch: new URL('./assets/butterfly/mechanical-latch-light.wav', import.meta.url).href,
   swish: new URL('./assets/butterfly/swish-hard.wav', import.meta.url).href
 };
 // External foley starts just before its catalogued contact or peak, layered with cold-steel synthesis.
-const butterflySounds = {
+const bladeMotionSounds = {
   butterflyAir: {asset: 'swish', offset: .042, mix: .32, pitch: 2120, ring: .048, duration: .125},
   butterflySpin: {asset: 'swish', offset: .036, mix: .44, pitch: 2760, ring: .105, duration: .115},
   butterflyTick: {asset: 'latch', offset: .049, mix: .42, pitch: 2920, ring: .175, duration: .072},
   butterflyRicochet: {asset: 'latch', offset: .048, mix: .34, pitch: 3380, ring: .19, duration: .088},
   butterflyCatch: {asset: 'latch', offset: .046, mix: .66, pitch: 1580, ring: .26, duration: .128},
   butterflySlash: {asset: 'swish', offset: .042, mix: .72, pitch: 1740, ring: .145, duration: .138},
-  butterflyThrust: {asset: 'swish', offset: .040, mix: .78, pitch: 1040, ring: .18, duration: .168}
+  butterflyThrust: {asset: 'swish', offset: .040, mix: .78, pitch: 1040, ring: .18, duration: .168},
+  // Inspect-only sheen: the near-silent ridge roll between showcase beats. Low mix so it fills the
+  // 1.05s inspect silence without competing with latch transients.
+  butterflySheen: {asset: 'swish', offset: .012, mix: .20, pitch: 3520, ring: .075, duration: .28},
+  karambitSpin: {asset: 'swish', offset: .038, mix: .46, pitch: 2480, ring: .095, duration: .145},
+  karambitRing: {asset: 'swish', offset: .028, mix: .26, pitch: 3180, ring: .095, duration: .26},
+  karambitFlick: {asset: 'swish', offset: .032, mix: .48, pitch: 2150, ring: .075, duration: .115},
+  karambitCatch: {asset: 'latch', offset: .048, mix: .56, pitch: 2640, ring: .22, duration: .118},
+  karambitCut: {asset: 'swish', offset: .037, mix: .72, pitch: 1520, ring: .14, duration: .16}
 };
 
 // Short, cached Web Audio samples with idle prewarming and classic CF kill cues.
@@ -152,7 +160,7 @@ export function createDeckAudio() {
     if (samples[key]) return samples[key];
     const freq = {ak47: 94, m4a1: 118, mp5: 155, awm: 61, deagle: 83}[weapon] || 110;
     const isBlade = isMelee(weapon);
-    const motion = butterflySounds[kind];
+    const motion = bladeMotionSounds[kind];
     const duration = motion?.duration ?? ({sea: 3.2, gull: .62, step: .18, land: .23, jump: .14, death: .22, hurt: .12, scope: .075, timber: .15, clang: .19, dry: .06, shot: weapon === 'awm' ? .52 : .24, explode: .75, bolt: .34, reload: .42, bounce: .11, pulse: .21, hit: .09, equip: isBlade ? .26 : .14, light: isBlade ? .18 : .14, heavy: isBlade ? .28 : .18}[kind] || .14);
     let seed = 3492, lp = 0;
     samples[key] = makeSample(duration, t => {
@@ -176,6 +184,19 @@ export function createDeckAudio() {
           const tap = .26 * Math.sin(tau * 340 * t) * Math.exp(-68 * t) + .18 * (white - lp) * Math.exp(-240 * t);
           const ring = (.20 * Math.sin(tau * motion.pitch * t) + .11 * Math.sin(tau * motion.pitch * 1.62 * t)) * Math.exp(-42 * t);
           return Math.max(-.9, Math.min(.9, tap + ring));
+        }
+        if (kind === 'karambitRing') {
+          // Hypnotic Valorant Reaver/RGX continuous ring-whir: smooth air swell + delicate crystalline steel hum
+          const swell = Math.sin(Math.PI * t / duration);
+          const air = .20 * (white - lp) * swell * swell;
+          const hum = (.095 * Math.sin(tau * 3180 * t) + .055 * Math.sin(tau * 4960 * t)) * swell;
+          return Math.max(-.85, Math.min(.85, air + hum));
+        }
+        if (kind === 'karambitCatch') {
+          // Weighty CS2 Karambit palm-clamp catch: crisp metallic ring-stop + warm gloved palm thud
+          const click = Math.exp(-310 * t) * (.30 * (white - lp) + .24 * Math.sin(tau * 2640 * t) + .12 * Math.sin(tau * 4420 * t));
+          const palm = .36 * Math.sin(tau * (145 * t + .42 * (1 - Math.exp(-52 * t)))) * Math.exp(-44 * t);
+          return Math.max(-.92, Math.min(.92, click + palm));
         }
         const contact = motion.asset === 'latch';
         const noise = (white - lp) * (contact ? .26 * Math.exp(-340 * t) : .25 * Math.sin(Math.PI * t / duration));
@@ -262,7 +283,7 @@ export function createDeckAudio() {
     () => sampleFor('clang'), () => sampleFor('timber'),
     () => sampleFor('equip', 'nepal'), () => sampleFor('equip', 'malay'), () => sampleFor('equip', 'knife'),
     () => sampleFor('light', 'nepal'), () => sampleFor('heavy', 'nepal'),
-    ...Object.keys(butterflySounds).map(kind => () => sampleFor(kind, 'butterfly')),
+    ...Object.keys(bladeMotionSounds).map(kind => () => sampleFor(kind, kind.startsWith('karambit') ? 'karambit' : 'butterfly')),
     () => sampleFor('sea'), () => sampleFor('hurt'), () => sampleFor('death')
   ];
 
@@ -394,7 +415,7 @@ export function createDeckAudio() {
     if (!enabled || !samples) return;
     if (level < .025) return;
     const spread = Math.max(-1, Math.min(1, pan));
-    const motion = butterflySounds[kind];
+    const motion = bladeMotionSounds[kind];
     const rate = motion ? .965 + Math.random() * .075 : 1;
     if (motion) play(samples[motion.asset], level * motion.mix, spread, motion.offset, rate);
     play(sampleFor(kind, weapon, head), level, spread, 0, rate);

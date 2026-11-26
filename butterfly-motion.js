@@ -38,6 +38,8 @@ function kf(t, w, j, s, h = {}, cue = '') {
 
 const IDLE = kf(0, [0, 0, 0, 0, 0, 0], [0, 0], [0, 0, 0], {piv: 0, lift: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0});
 
+export const butterflyContactTime = {light: 0.090, heavy: 0.138};
+
 const clips = {
   // Signature Zen Rollover Quick-Draw (0.68s): crisp upward whip from closed, thumb rollover, double-clack palm lock.
   draw: [
@@ -72,8 +74,9 @@ const clips = {
     kf(0.475, [-.078,  .066, -.058,  .22,  .24,  .28], [0.42, 0.88], [ 5.62,  .18, -.14], {piv: 1, thumb:  .58, idx:  .45, low:  .22, left: .42}, 'butterflyTick'),
     kf(0.585, [-.068,  .054, -.052,  .26,  .32,  .22], [0.00, 0.00], [ TAU,  -.16, -.06], {piv: 0, thumb: -.05, idx: 1.05, low: 1.06, left: .46, kick: .65}, 'butterflyCatch'),
     // Slow cold-steel bevel light sweep: glides overhead key-light down the hollow-ground ridge to needle tip
-    kf(0.960, [-.074,  .062, -.056,  .32,  .42,  .30], [0.00, 0.00], [ TAU,  -.28, -.10], {piv: 0, thumb:  .04, idx:  .98, low:  .98, left: .52}),
-    kf(1.380, [-.064,  .056, -.050,  .18, -.14, -.26], [0.00, 0.00], [ TAU,   .18,  .14], {piv: 0, thumb:  .10, idx:  .94, low:  .95, left: .40}),
+    // Push-in beat: blade glides 36mm toward the lens while the bevelled ridge rolls over, then eases back.
+    kf(0.960, [-.074,  .076, -.020,  .32,  .42,  .30], [0.00, 0.00], [ TAU,  -.34, -.10], {piv: 0, thumb:  .04, idx:  .98, low:  .98, left: .52}, 'butterflySheen'),
+    kf(1.380, [-.064,  .056, -.050,  .18, -.14, -.26], [0.00, 0.00], [ TAU,   .24,  .14], {piv: 0, thumb:  .10, idx:  .94, low:  .95, left: .40}, 'butterflySheen'),
     // Crisp index-pinch fan snap back to guard
     kf(1.640, [-.048,  .044, -.036,  .24, -.22, -.34], [0.92, 1.48], [ TAU,   .08,  2.45], {piv: 0, thumb: -.32, idx:  .42, low:  .10, left: .24}, 'butterflySpin'),
     kf(1.860, [-.016,  .012, -.010,  .06,  .08,  .14], [0.04, 0.14], [ TAU,   .02,  TAU],  {piv: 0, thumb:  .12, idx:  .88, low:  .72, left: .10}, 'butterflyTick'),
@@ -97,7 +100,7 @@ const clips = {
     kf(1.835, [-.044,  .036, -.030,  .16,  .28,  .34], [0.48, 0.92], [-10.2,  .10,  TAU],  {piv: 1, thumb:  .52, idx:  .44, low:  .22, left: .26}, 'butterflySpin'),
     kf(2.020, [ .008, -.018,  .010, -.12,  .08, -.14], [0.00, 0.00], [-TAU,   .00,  TAU],  {piv: 0, thumb: -.10, idx: 1.08, low: 1.10, left: .14, kick: .95}, 'butterflyCatch'),
     // Brief poised admiration gleam & smooth settle
-    kf(2.360, [-.032,  .026, -.024,  .16,  .20,  .12], [0.00, 0.00], [-TAU,  -.12,  TAU],  {piv: 0, thumb:  .00, idx: 1.00, low: 1.00, left: .08, kick: -.16}),
+    kf(2.360, [-.032,  .026, -.024,  .16,  .20,  .12], [0.00, 0.00], [-TAU,  -.12,  TAU],  {piv: 0, thumb:  .00, idx: 1.00, low: 1.00, left: .08, kick: -.16}, 'butterflySheen'),
     kf(2.720, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, TAU], {piv: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
   ],
 
@@ -145,7 +148,7 @@ const clips = {
   light1: [
     IDLE,
     kf(0.034, [ .054,  .032,  .030, -.20,  .28,  .26], [0.00, 0.04], [0,  .08,  .10], {thumb: -.12, idx: 1.06, low: 1.06, left: .18}),
-    kf(0.088, [-.162,  .024, -.118,  .14, -.92, -.76], [0.00, 0.10], [0, -.26, -.28], {thumb: -.15, idx: 1.10, low: 1.10, left: .36, kick: .75}, 'butterflySlash'),
+    kf(butterflyContactTime.light, [-.162,  .024, -.118,  .14, -.92, -.76], [0.00, 0.10], [0, -.26, -.28], {thumb: -.15, idx: 1.10, low: 1.10, left: .36, kick: .75}, 'butterflySlash'),
     kf(0.148, [-.212, -.038, -.082,  .30, -1.08, -.88],[0.00, 0.03], [0, -.30, -.36], {thumb: -.10, idx: 1.06, low: 1.06, left: .28, kick: -.22}),
     kf(0.238, [-.058, -.024,  .008,  .10, -.34, -.22], [0.00, 0.00], [0, -.06, -.08], {thumb:  .00, idx: 1.00, low: 1.00, left: .08}),
     kf(0.330, [0, 0, 0, 0, 0, 0], [0, 0], [0, 0, 0], {thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
@@ -155,7 +158,7 @@ const clips = {
   light2: [
     IDLE,
     kf(0.036, [-.096, -.014,  .022, -.12, -.48, -.46], [0.00, 0.05], [0, -.18, -.20], {thumb: -.12, idx: 1.06, low: 1.06, left: .18}),
-    kf(0.090, [ .088,  .036, -.112,  .10,  .66,  .58], [0.00, 0.12], [0,  .28,  .32], {thumb: -.15, idx: 1.10, low: 1.10, left: .34, kick: .72}, 'butterflySlash'),
+    kf(butterflyContactTime.light, [ .088,  .036, -.112,  .10,  .66,  .58], [0.00, 0.12], [0,  .28,  .32], {thumb: -.15, idx: 1.10, low: 1.10, left: .34, kick: .72}, 'butterflySlash'),
     kf(0.152, [ .128, -.012, -.072,  .22,  .78,  .68], [0.00, 0.04], [0,  .24,  .26], {thumb: -.08, idx: 1.05, low: 1.05, left: .22, kick: -.20}),
     kf(0.242, [ .036, -.016,  .006,  .08,  .24,  .18], [0.00, 0.00], [0,  .06,  .06], {thumb:  .00, idx: 1.00, low: 1.00, left: .06}),
     kf(0.330, [0, 0, 0, 0, 0, 0], [0, 0], [0, 0, 0], {thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
@@ -165,7 +168,7 @@ const clips = {
   heavy: [
     IDLE,
     kf(0.072, [ .052, -.028,  .080, -.18,  .34,  .36], [0.16, 0.46], [-0.32,  .16,  .28], {piv: 0, thumb:  .32, idx:  .72, low:  .62, left: .68, kick: -.35}, 'butterflyTick'),
-    kf(0.138, [-.072,  .022, -.192, -.14, -.24, -.46], [0.00, 0.00], [-0.14, -.08, -.26], {piv: 0, thumb: -.18, idx: 1.14, low: 1.14, left: .95, kick: 1.35}, 'butterflyThrust'),
+    kf(butterflyContactTime.heavy, [-.072,  .022, -.192, -.14, -.24, -.46], [0.00, 0.00], [-0.14, -.08, -.26], {piv: 0, thumb: -.18, idx: 1.14, low: 1.14, left: .95, kick: 1.35}, 'butterflyThrust'),
     kf(0.212, [-.102,  .030, -.242, -.18, -.32, -.54], [0.00, 0.00], [-0.18, -.12, -.32], {piv: 0, thumb: -.16, idx: 1.12, low: 1.12, left: .86, kick: -.30}),
     kf(0.305, [-.076,  .018, -.168, -.10, -.20, -.36], [0.00, 0.00], [-0.10, -.06, -.18], {piv: 0, thumb: -.08, idx: 1.05, low: 1.05, left: .52, kick:  .00}),
     kf(0.455, [-.018, -.012, -.032, -.04, -.08, -.08], [0.08, 0.18], [-0.10, -.02,  .16], {piv: 0, thumb:  .14, idx:  .92, low:  .90, left: .18}, 'butterflyAir'),
@@ -239,7 +242,9 @@ export function createButterflyMotion(emit) {
   let inspectAlt = false, comboStep = 0, comboWindow = 0, lightAlt = false, inspectQueued = false;
   let prevBiteTotal = 0;
 
+  let contactAt = 0, contactFrame = false;
   function begin(name, blendHalfLife = 0.065) {
+    contactAt = 0;
     const nextClip = clips[name];
     if (!nextClip) return;
     evalClipAt(nextClip, 0, 0, rawPose, rawVel);
@@ -272,7 +277,9 @@ export function createButterflyMotion(emit) {
     if (comboWindow > 0) comboWindow = Math.max(0, comboWindow - dt);
 
     if (clip) {
-      time += dt;
+      // Wait for the match to resolve contact before passing the impact keyframe.
+      if (!contactFrame) time = contactAt ? Math.min(time + dt, contactAt - 1e-6) : time + dt;
+      contactFrame = false;
       while (section + 1 < clip.length && time >= clip[section + 1][0]) {
         section++;
         const cue = clip[section].cue;
@@ -369,6 +376,8 @@ export function createButterflyMotion(emit) {
   }
 
   function reset() {
+    contactAt = 0;
+    contactFrame = false;
     clip = null;
     clipName = '';
     time = 0;
@@ -422,13 +431,21 @@ export function createButterflyMotion(emit) {
     begin(rare ? 'rareInspect' : 'inspect', 0.075);
   }
 
-  function attack(kind, hitKind = 'air') {
+  function attack(kind) {
     if (kind === 'heavy') {
       begin('heavy', 0.052);
     } else {
       begin(lightAlt ? 'light2' : 'light1', 0.045);
       lightAlt = !lightAlt;
     }
+    contactAt = butterflyContactTime[kind];
+  }
+
+  function contact(hitKind) {
+    if (!contactAt) return;
+    time = contactAt;
+    contactAt = 0;
+    contactFrame = true;
     if (hitKind === 'wall') {
       secondary.reboundVel += 0.38;
       secondary.reboundRoll += (lightAlt ? -1 : 1) * 0.16;
@@ -448,6 +465,7 @@ export function createButterflyMotion(emit) {
     inspect,
     fidget,
     attack,
+    contact,
     flourish() { fidget(); }
   };
 }

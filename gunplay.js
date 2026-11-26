@@ -19,9 +19,11 @@ export function recoverBurst(burst,weapon,now,dt){
 
 export function firingCone(weapon,burst,motion){
   if(!weapon.interval)return 0;
-  const rest=motion.scoped?.0003:weapon.base;
+  const scoped=motion.scoped||motion.scope>=.5;
+  const scope=Math.min(1,Math.max(0,motion.scope??(scoped?1:0)));
+  const rest=weapon.base+(.0003-weapon.base)*scope;
   const ratio=Math.min(1.25,motion.speed/(5*weapon.speed));
-  const movement=Math.max(0,(ratio-(motion.scoped?.28:.24))/(motion.scoped?.72:.76));
+  const movement=Math.max(0,(ratio-(scoped?.28:.24))/(scoped?.72:.76));
   const base=rest*(motion.crouch?.77:1)*(motion.ads?.82:1);
   const run=movement*weapon.moving*(motion.crouch?.64:1);
   return base+run+burst.width*(motion.ads?.67:1)+(motion.grounded?0:Math.max(.095,weapon.moving*1.6));
