@@ -1,7 +1,7 @@
 import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js?v=8';
 import * as T from './three.module.js';
 import {arsenal,primaries,melees,isMelee,loadout,skills,falloff} from './arsenal.js?v=27';
-import {karambitContactTime} from './karambit-motion.js?v=8';
+import {karambitContactTime} from './karambit-motion.js?v=11';
 import {butterflyContactTime} from './butterfly-motion.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
 

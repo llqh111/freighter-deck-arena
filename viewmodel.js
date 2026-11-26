@@ -1,6 +1,6 @@
-import {buildArmory} from './armory-models.js?v=29';
+import {buildArmory} from './armory-models.js?v=33';
 import {isMelee} from './arsenal.js?v=27';
-import {createKarambitMotion} from './karambit-motion.js?v=8';
+import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=13';
 import {createButterflyMotion} from './butterfly-motion.js?v=23';
 import * as T from './three.module.js';
 
@@ -257,6 +257,8 @@ export function createViewModel(playMotionSound = () => {}) {
     playMotionSound({kind:cue,weapon:'butterfly',volume:Math.min(.92,.72+boost),pan:.13});
   });
   const karambitMotion=createKarambitMotion((cue,volume)=>playMotionSound({kind:cue,weapon:'karambit',volume,pan:.13}));
+  const karambitBaseRigQ=new T.Quaternion(),karambitRigEul=new T.Euler(0,0,0,'YXZ');
+  const karambitMountBaseQ=new T.Quaternion().setFromEuler(new T.Euler(.08,-.56,.18,'YXZ'));
   function equip(value) {
     const raw=String(value?.id || value || '').toLowerCase().replace(/[-_ ]/g,'');
     const next=({grenade:'he',deserteagle:'deagle',ak:'ak47',m4:'m4a1',kukri:'nepal',kris:'malay'})[raw]||raw;
@@ -446,23 +448,26 @@ export function createViewModel(playMotionSound = () => {}) {
           karambitMotion.reset();
           current.resetTrail();
         }else karambitMotion.update(dt);
-        [mx,my,mz,mrx,mry,mrz]=karambitMotion.pose;
+        [mx,my,mz]=karambitMotion.pose;
         const part=current.karambit;
-        // Exact CS2 dorsal-fist Karambit idle angle: ring left, dorsal knuckles facing camera, curved claw sweeping right & up!
-        part.mount.rotation.set(.08,-.32,.14);
-        current.hand.rotation.copy(part.mount.rotation);
+        // Independent Quaternion wrist rotation composed onto CS2 dorsal-fist mount base (zero gimbal lock!)
+        part.mount.quaternion.copy(karambitMountBaseQ).multiply(karambitMotion.wristQuat);
+        current.hand.quaternion.copy(part.mount.quaternion);
+        // Local SpinPivot offset + pure unwrapped-angle Quaternion rotation around spinAxis
+        part.spinPivot.position.copy(karambitMotion.pivotPos);
+        part.spinPivot.quaternion.copy(karambitMotion.spinQuat);
+        if(part.debugGizmo)part.debugGizmo.position.copy(karambitMotion.pivotPos);
+        part.updateDebugGizmo?.(karambitMotion.spinAxis,KARAMBIT_INSPECT_CONFIG.showGizmos);
         const ring=karambitMotion.pose[6];
-        part.ringPivot.rotation.z=ring;
-        const opening=T.MathUtils.clamp(karambitMotion.pose[7],0,1);
+        const fArr=karambitMotion.fingers;
         for(let i=0;i<part.fingers.length;i++){
-          const sweep=Math.max(0,Math.cos(ring+(i-1)*.24))*opening;
-          // Uncurl upward & back (+X rotation) cleanly out of the XY spin plane!
-          part.fingers[i].rotation.x=opening*1.08+sweep*.18;
-          part.fingers[i].rotation.z=-opening*.10*(i-1);
+          const opening=T.MathUtils.clamp(fArr[i+1],0,1);
+          // Uncurl upward & back (+X) and fan naturally outward to the right (-Z)
+          part.fingers[i].rotation.x=opening*1.12;
+          part.fingers[i].rotation.z=-opening*(.14+i*.13);
         }
-        const thumbOpening=T.MathUtils.clamp(karambitMotion.pose[8],0,1);
-        const thumbSweep=Math.max(0,Math.cos(ring-.18))*thumbOpening;
-        part.thumb.rotation.set(-thumbOpening*.65-thumbSweep*.14,thumbOpening*.55,-thumbOpening*.24);
+        const thumbOpening=T.MathUtils.clamp(fArr[4],0,1);
+        part.thumb.rotation.set(-thumbOpening*.55,thumbOpening*.42,thumbOpening*.48);
         const kick=(karambitMotion.pose[9]||0)-Math.min(1,karambitMotion.impact*24);
         camKickPitch=ease(camKickPitch,kick*.0058,dt,30);
         camKickRoll=ease(camKickRoll,-kick*.0082,dt,30);
@@ -495,11 +500,24 @@ export function createViewModel(playMotionSound = () => {}) {
       idle*(offset+Math.sin(phase)*(.0014+walk*.005*bflyScale))+lower*.034+mx-(melee?0:inspection*.10)-swayX,
       T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003*bflyScale)-lower*.044+recoil*.003-draw*(id==='butterfly'?.15:(melee?.17:.24))+my+inspection*.027+throwing*.14+swayY+(id==='butterfly'?0:airOffset+landDip),
       T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*(aim>.6?.021:.043)+lower*.038+draw*.07+mz-throwing*.12);
-    rig.rotation.set(
-      .045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*(melee?.35:.52)+mrx+throwing*.85+swayY*1.4,
-      .190*idle-lower*.19+mry-(melee?0:inspection*.57)-swayX*1.5,
-      -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+mrz-(melee?0:inspection*.84)-tilt);
-    if(id==='karambit'&&values.alive!==false)current.updateTrail(dt);
+    if(id==='karambit'){
+      karambitRigEul.set(
+        .045*idle+swayY*1.4,
+        .190*idle-swayX*1.5,
+        -.056*idle-tilt,
+        'YXZ'
+      );
+      rig.quaternion.copy(karambitBaseRigQ.setFromEuler(karambitRigEul)).multiply(karambitMotion.handQuat);
+    }else{
+      rig.rotation.set(
+        .045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*(melee?.35:.52)+mrx+throwing*.85+swayY*1.4,
+        .190*idle-lower*.19+mry-(melee?0:inspection*.57)-swayX*1.5,
+        -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22+mrz-(melee?0:inspection*.84)-tilt);
+    }
+    if(id==='karambit'&&values.alive!==false){
+      if(KARAMBIT_INSPECT_CONFIG.showTrail)current.updateTrail(dt);
+      else current.resetTrail();
+    }
     // Keep built-in 3D reflex dot hidden so only the crisp HUD ADS dot is shown.
     reflex.visible=false;
     // Once magnified, the HUD supplies the full-field AWM reticle immediately like CS AWP.
@@ -517,6 +535,15 @@ export function createViewModel(playMotionSound = () => {}) {
       else if(id==='butterfly')butterflyMotion.inspect();
       else if(loading<0&&gesture>=.98)inspectT=0;
     },
+    holster(){
+      if(id==='karambit')karambitMotion.holster();
+    },
+    karambitConfig:KARAMBIT_INSPECT_CONFIG,
+    karambitKeyframes:KARAMBIT_KEYFRAMES,
+    scrubKarambit(tSec,pause=true){karambitMotion.scrubTo(tSec,pause);},
+    stepKarambit(deltaSec=1/60){karambitMotion.stepFrame(deltaSec);},
+    getKarambitDebugState(){return karambitMotion.getDebugState();},
+    isKarambitActive(){return id==='karambit';},
     setTeam(team){sleeveBand.color.set(team===1?0xae4c3b:0x47788b);},
     initEnv(renderer){
       if(scene.environment||!renderer)return;

@@ -1,8 +1,8 @@
 import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=28';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=23';
-import {createMatch} from './match.js?v=35';
-import {createViewModel} from './viewmodel.js?v=34';
+import {createMatch} from './match.js?v=38';
+import {createViewModel} from './viewmodel.js?v=38';
 import {isMelee,melees} from './arsenal.js?v=27';
 import {createDeckAudio} from './deck-audio.js?v=29';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
@@ -539,6 +539,25 @@ for(const kind of ['keydown','keyup'])addEventListener(kind,e=>{
     if(/^Digit[1-4]$/.test(e.code))match.input('slot',Number(e.code.at(-1))-1);
     if(e.code==='KeyQ')match.input('last',true);
     if((e.code==='KeyY'||e.code==='KeyF')&&match.state.alive)view.inspect();
+    if((e.code==='F8'||e.code==='KeyG')&&view?.isKarambitActive?.()){
+      e.preventDefault();
+      view.karambitConfig.showGizmos=!view.karambitConfig.showGizmos;
+      notify('爪刀 Debug 面板与 Gizmos：'+(view.karambitConfig.showGizmos?'开启（F8/G 切换）':'关闭'));
+    }
+    if((e.code==='F9'||e.code==='KeyT')&&view?.isKarambitActive?.()){
+      e.preventDefault();
+      view.karambitConfig.slowMo=!view.karambitConfig.slowMo;
+      notify('爪刀动作倍率：'+(view.karambitConfig.slowMo?'0.2x 慢动作（F9/T 切换）':'1.0x 正常速度'));
+    }
+    if(e.code==='BracketLeft'&&view?.isKarambitActive?.()&&view.karambitConfig.showGizmos){
+      e.preventDefault();view.stepKarambit(-1/60);
+    }
+    if(e.code==='BracketRight'&&view?.isKarambitActive?.()&&view.karambitConfig.showGizmos){
+      e.preventDefault();view.stepKarambit(1/60);
+    }
+    if(e.code==='KeyP'&&view?.isKarambitActive?.()&&view.karambitConfig.showGizmos){
+      e.preventDefault();view.karambitConfig.paused=!view.karambitConfig.paused;
+    }
     if(e.code==='KeyB'){e.preventDefault();armory(true);return;}
   }
   if(keys[e.code]){e.preventDefault();match.input(keys[e.code],down);}
@@ -668,6 +687,7 @@ function render(time){
       }
       friendTags(s);
       deckAudio.step(dt,{walking:s.player.walking,sprint:s.sprinting,grounded:s.grounded,alive:s.alive,hp:s.hp,quiet:s.crouching||s.player.quiet});
+      updateKarambitDebugBadge();
     }
     renderer.clear();renderer.render(scene,camera);
     if(match.state.alive&&!match.state.zoom){renderer.clearDepth();renderer.render(view.scene,view.camera);}
@@ -699,11 +719,124 @@ async function prewarm(){
     if(!deferredCleanup)warmup.dispose();
   }
 }
+let karambitDebugEl=null,kdRefs=null;
+function buildKarambitDebugPanel(){
+  const el=document.createElement('div');
+  el.id='karambitDebugBadge';
+  el.style.cssText='position:fixed;left:14px;top:240px;z-index:30;width:336px;padding:9px 11px;border-radius:8px;background:rgba(10,16,22,.86);border:1px solid rgba(0,245,255,.45);color:#dff8ff;font:500 11.5px/1.45 ui-monospace,Consolas,monospace;backdrop-filter:blur(6px);user-select:none;';
+  el.innerHTML=`
+    <div id="kdTelemetry" style="white-space:pre;margin-bottom:6px;color:#9cf4ff;"></div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+      <input id="kdScrub" type="range" min="0" max="2.10" step="0.005" value="0" style="flex:1;accent-color:#00f5ff;">
+      <span id="kdTimeTxt" style="min-width:46px;text-align:right;">0.00s</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px;">
+      <button id="kdPlay" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">暂停(P)</button>
+      <button id="kdPrev" style="padding:3px 6px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">-1f [</button>
+      <button id="kdNext" style="padding:3px 6px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">+1f ]</button>
+      <button id="kdSlow" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">0.2x(T)</button>
+      <button id="kdLoop" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">持续循环</button>
+      <button id="kdTrail" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">刀光:开</button>
+    </div>
+    <div style="border-top:1px solid rgba(0,245,255,.22);padding-top:6px;">
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
+        <span>KF:</span>
+        <select id="kdKfSel" style="flex:1;background:#0d1a22;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;padding:2px 4px;font:inherit;"></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;font-size:11px;">
+        <label>Spin° <input id="kdSpin" type="number" step="5" style="width:68px;background:#0d1a22;color:#ffd24c;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;"></label>
+        <label>Finger <input id="kdFing" type="number" step="0.05" min="0" max="1" style="width:58px;background:#0d1a22;color:#dff8ff;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;"></label>
+        <label>ArmX <input id="kdAx" type="number" step="0.005" style="width:62px;background:#0d1a22;color:#dff8ff;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;"></label>
+        <label>ArmY <input id="kdAy" type="number" step="0.005" style="width:62px;background:#0d1a22;color:#dff8ff;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;"></label>
+        <label>ArmYaw <input id="kdRy" type="number" step="0.05" style="width:56px;background:#0d1a22;color:#dff8ff;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;"></label>
+        <label>ArmRoll <input id="kdRz" type="number" step="0.05" style="width:56px;background:#0d1a22;color:#dff8ff;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;"></label>
+        <label>WrsPitch <input id="kdWx" type="number" step="0.05" style="width:52px;background:#0d1a22;color:#dff8ff;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;"></label>
+        <label>WrsRoll <input id="kdWz" type="number" step="0.05" style="width:52px;background:#0d1a22;color:#dff8ff;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;"></label>
+      </div>
+    </div>`;
+  for(const ev of ['mousedown','pointerdown','click','wheel'])el.addEventListener(ev,e=>e.stopPropagation());
+  document.body.append(el);
+  const q=id=>el.querySelector('#'+id);
+  const refs={el,telemetry:q('kdTelemetry'),scrub:q('kdScrub'),timeTxt:q('kdTimeTxt'),play:q('kdPlay'),prev:q('kdPrev'),next:q('kdNext'),slow:q('kdSlow'),loop:q('kdLoop'),trail:q('kdTrail'),kfSel:q('kdKfSel'),spin:q('kdSpin'),fing:q('kdFing'),ax:q('kdAx'),ay:q('kdAy'),ry:q('kdRy'),rz:q('kdRz'),wx:q('kdWx'),wz:q('kdWz')};
+  const kfs=view.karambitKeyframes;
+  kfs.forEach((kf,idx)=>{
+    const opt=document.createElement('option');
+    opt.value=String(idx);opt.textContent=`${kf.time.toFixed(2)}s (${kf.phase})`;
+    refs.kfSel.append(opt);
+  });
+  const syncKfInputs=()=>{
+    const kf=kfs[Number(refs.kfSel.value)||0];
+    refs.spin.value=kf.unwrappedSpinAngle;
+    refs.fing.value=kf.fingers[1].toFixed(2);
+    refs.ax.value=kf.armPos[0].toFixed(3);refs.ay.value=kf.armPos[1].toFixed(3);
+    refs.ry.value=kf.armRot[1].toFixed(2);refs.rz.value=kf.armRot[2].toFixed(2);
+    refs.wx.value=kf.wristRot[0].toFixed(2);refs.wz.value=kf.wristRot[2].toFixed(2);
+  };
+  syncKfInputs();
+  refs.kfSel.onchange=()=>{syncKfInputs();const kf=kfs[Number(refs.kfSel.value)||0];view.scrubKarambit(kf.time,true);};
+  const applyKf=()=>{
+    const kf=kfs[Number(refs.kfSel.value)||0];
+    kf.unwrappedSpinAngle=Number(refs.spin.value)||0;
+    const fVal=T.MathUtils.clamp(Number(refs.fing.value)||0,0,1);
+    kf.fingers[1]=kf.fingers[2]=kf.fingers[3]=kf.fingers[4]=fVal;
+    kf.armPos[0]=Number(refs.ax.value)||0;kf.armPos[1]=Number(refs.ay.value)||0;
+    kf.armRot[1]=Number(refs.ry.value)||0;kf.armRot[2]=Number(refs.rz.value)||0;
+    kf.wristRot[0]=Number(refs.wx.value)||0;kf.wristRot[2]=Number(refs.wz.value)||0;
+    view.scrubKarambit(kf.time,true);
+  };
+  for(const inp of [refs.spin,refs.fing,refs.ax,refs.ay,refs.ry,refs.rz,refs.wx,refs.wz])inp.oninput=applyKf;
+  refs.scrub.oninput=()=>view.scrubKarambit(Number(refs.scrub.value),true);
+  refs.play.onclick=()=>{view.karambitConfig.paused=!view.karambitConfig.paused;};
+  refs.prev.onclick=()=>view.stepKarambit(-1/60);
+  refs.next.onclick=()=>view.stepKarambit(1/60);
+  refs.slow.onclick=()=>{view.karambitConfig.slowMo=!view.karambitConfig.slowMo;};
+  refs.loop.onclick=()=>{view.karambitConfig.loopMode=view.karambitConfig.loopMode==='loop'?'single':'loop';};
+  refs.trail.onclick=()=>{view.karambitConfig.showTrail=!view.karambitConfig.showTrail;};
+  return refs;
+}
+function updateKarambitDebugBadge(){
+  if(!view?.karambitConfig)return;
+  const cfg=view.karambitConfig;
+  const show=view.isKarambitActive()&&(cfg.showGizmos||cfg.slowMo);
+  if(!show){if(karambitDebugEl)karambitDebugEl.hidden=true;return;}
+  if(!kdRefs){kdRefs=buildKarambitDebugPanel();karambitDebugEl=kdRefs.el;}
+  const st=view.getKarambitDebugState();
+  karambitDebugEl.hidden=false;
+  kdRefs.telemetry.textContent=
+    `State:${st.state} | ${st.phase}\n`+
+    `t:${st.loopTime.toFixed(2)}s (Ref ${st.refTime.toFixed(2)}s) | Loop#${st.cycles} | ${st.timeScale}x\n`+
+    `Spin:${st.unwrappedSpinDeg.toFixed(1)}° (${(st.unwrappedSpinDeg/360).toFixed(2)}圈) | ω:${st.spinVelDegS}°/s`;
+  if(document.activeElement!==kdRefs.scrub){
+    kdRefs.scrub.max=String(st.loopDuration);
+    kdRefs.scrub.value=String(st.loopTime);
+  }
+  kdRefs.timeTxt.textContent=st.loopTime.toFixed(2)+'s';
+  kdRefs.play.textContent=st.paused?'继续(P)':'暂停(P)';
+  kdRefs.slow.textContent=cfg.slowMo?'0.2x:开':'0.2x:关';
+  kdRefs.loop.textContent=cfg.loopMode==='loop'?'持续循环':'单次循环';
+  kdRefs.trail.textContent=cfg.showTrail?'刀光:开':'刀光:关';
+}
 async function init(){
   try{
     renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});renderer.autoClear=false;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-    world=buildWorld(scene);view=createViewModel(deckAudio.sfx);view.initEnv?.(renderer);match=localMatch=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov','butterflyFinish'])applyPref(key);setSound();resize();
+    world=buildWorld(scene);view=createViewModel(deckAudio.sfx);view.initEnv?.(renderer);
+    const dbgParam=new URLSearchParams(location.search).get('debug');
+    if(dbgParam==='karambit'||dbgParam==='karambit-notrail')view.karambitConfig.showGizmos=true;
+    if(dbgParam==='karambit-notrail')view.karambitConfig.showTrail=false;
+    globalThis.__KARAMBIT_DEBUG__={
+      config:view.karambitConfig,
+      keyframes:view.karambitKeyframes,
+      getState:()=>view.getKarambitDebugState(),
+      inspect:()=>view.inspect(),
+      holster:()=>view.holster(),
+      scrubTo:(t,pause=true)=>view.scrubKarambit(t,pause),
+      step:(dt=1/60)=>view.stepKarambit(dt),
+      toggleGizmos:()=>{view.karambitConfig.showGizmos=!view.karambitConfig.showGizmos;return view.karambitConfig.showGizmos;},
+      toggleSlowMo:()=>{view.karambitConfig.slowMo=!view.karambitConfig.slowMo;return view.karambitConfig.slowMo;},
+      toggleTrail:()=>{view.karambitConfig.showTrail=!view.karambitConfig.showTrail;return view.karambitConfig.showTrail;}
+    };
+    match=localMatch=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov','butterflyFinish'])applyPref(key);setSound();resize();
     await view.ready;
     await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);
