@@ -101,70 +101,96 @@ export function exportValorantCode(cfg) {
   return tokens.join(';');
 }
 
-// Render an exact integer-grid crispEdges SVG so it stays 100% symmetrical at any DPI scaling.
-export function buildCrosshairSvg(cfg) {
+// Render on an exact physical-pixel Canvas (DPR-aware) so arms and 1px outlines
+// are 100% symmetrical on 100%, 125%, 150%, 175%, and 200% Windows DPI scaling.
+export function buildCrosshairImage(cfg) {
   const c = normalizeCrosshair(cfg);
-  const pad = c.outline ? 1 : 0;
-  const t = c.thickness;
-  const len = c.length;
-  const off = c.offset;
-  const dotS = c.dot ? c.dotSize : 0;
+  const dpr = Math.max(1, Number(globalThis.devicePixelRatio) || 1);
+  const scale = v => Math.max(1, Math.round(v * dpr));
 
-  // Parity alignment: keep center parity consistent between cross arms and dot.
-  const armSpan = len > 0 ? (off === 0 ? len * 2 + t : (off + len) * 2 + (t % 2)) : 0;
-  const inner = Math.max(armSpan, dotS, 2);
-  const size = inner + pad * 2;
-  // Ensure parity matches thickness so arms sit on exact integer pixels.
-  const finalSize = (len > 0 && ((size - t) % 2 !== 0)) ? size + 1 : size;
-  const cx = finalSize / 2;
+  const pt = scale(c.thickness);
+  const pl = c.length > 0 ? scale(c.length) : 0;
+  const po = c.offset > 0 ? Math.round(c.offset * dpr) : 0;
+  const pad = c.outline ? Math.max(1, Math.round(dpr)) : 0;
+  let pDot = c.dot ? scale(c.dotSize) : 0;
+
+  // Match dot parity to arm thickness parity so dot and arms share the exact same center.
+  if (pl > 0 && pDot > 0 && (pDot % 2) !== (pt % 2)) pDot += 1;
+
+  const armSpan = pl > 0 ? (po === 0 ? pl * 2 + pt : po * 2 + pl * 2 + pt) : 0;
+  const inner = Math.max(armSpan, pDot, 2);
+  let physSize = inner + pad * 2;
+  const refParity = pl > 0 ? pt % 2 : pDot % 2;
+  if ((physSize % 2) !== refParity) physSize += 1;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = physSize;
+  canvas.height = physSize;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
 
   const rects = [];
   const outlines = [];
 
-  if (len > 0) {
-    if (off === 0) {
-      // Seamless solid cross (no center gap).
-      const x = cx - t / 2, y = cx - t / 2 - len, h = len * 2 + t;
-      rects.push([x, y, t, h], [y, x, h, t]);
-      if (c.outline) outlines.push([x - 1, y - 1, t + 2, h + 2], [y - 1, x - 1, h + 2, t + 2]);
+  if (pl > 0) {
+    const a0 = (physSize - pt) / 2; // Guaranteed integer because physSize % 2 === pt % 2.
+    if (po === 0) {
+      const span = pl * 2 + pt;
+      const start = (physSize - span) / 2;
+      rects.push([a0, start, pt, span], [start, a0, span, pt]);
+      if (pad) outlines.push([a0 - pad, start - pad, pt + pad * 2, span + pad * 2], [start - pad, a0 - pad, span + pad * 2, pt + pad * 2]);
     } else {
-      const halfGap = off + (t % 2) * .5;
-      const a0 = cx - t / 2;
-      const topY = cx - halfGap - len;
-      const botY = cx + halfGap;
+      const topY = a0 - po - pl;
+      const botY = a0 + pt + po;
       const arms = [
-        [a0, topY, t, len],
-        [a0, botY, t, len],
-        [topY, a0, len, t],
-        [botY, a0, len, t]
+        [a0, topY, pt, pl],
+        [a0, botY, pt, pl],
+        [topY, a0, pl, pt],
+        [botY, a0, pl, pt]
       ];
       for (const [rx, ry, rw, rh] of arms) {
         rects.push([rx, ry, rw, rh]);
-        if (c.outline) outlines.push([rx - 1, ry - 1, rw + 2, rh + 2]);
+        if (pad) outlines.push([rx - pad, ry - pad, rw + pad * 2, rh + pad * 2]);
       }
     }
   }
 
-  if (c.dot) {
-    const dx = Math.floor(cx - dotS / 2);
-    rects.push([dx, dx, dotS, dotS]);
-    if (c.outline) outlines.push([dx - 1, dx - 1, dotS + 2, dotS + 2]);
+  if (pDot > 0) {
+    const d0 = (physSize - pDot) / 2; // Guaranteed integer.
+    rects.push([d0, d0, pDot, pDot]);
+    if (pad) outlines.push([d0 - pad, d0 - pad, pDot + pad * 2, pDot + pad * 2]);
   }
 
-  const rSvg = (list, fill, op = 1) =>
-    list.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"${op < 1 ? ` fill-opacity="${op}"` : ''}/>`).join('');
+  if (outlines.length) {
+    ctx.fillStyle = '#000000';
+    ctx.globalAlpha = Math.min(1, c.opacity + .15);
+    for (const [x, y, w, h] of outlines) ctx.fillRect(x, y, w, h);
+  }
+  if (rects.length) {
+    ctx.fillStyle = c.color;
+    ctx.globalAlpha = c.opacity;
+    for (const [x, y, w, h] of rects) ctx.fillRect(x, y, w, h);
+  }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalSize}" height="${finalSize}" viewBox="0 0 ${finalSize} ${finalSize}" shape-rendering="crispEdges">${rSvg(outlines, '#000', Math.min(1, c.opacity + .15))}${rSvg(rects, c.color, c.opacity)}</svg>`;
-  return {size: finalSize, url: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`};
+  const cssSize = physSize / dpr;
+  return {cssSize, physSize, dpr, url: `url("${canvas.toDataURL('image/png')}")`};
 }
 
-export function applyCrosshair(el, cfg) {
+export function applyCrosshair(el, cfg, snapViewport = false) {
   if (!el) return;
-  const {size, url} = buildCrosshairSvg(cfg);
-  el.style.width = size + 'px';
-  el.style.height = size + 'px';
+  const {cssSize, physSize, dpr, url} = buildCrosshairImage(cfg);
+  el.style.width = cssSize + 'px';
+  el.style.height = cssSize + 'px';
   el.style.backgroundImage = url;
-  el.style.backgroundSize = `${size}px ${size}px`;
+  el.style.backgroundSize = `${cssSize}px ${cssSize}px`;
+  if (snapViewport) {
+    // Snap element top-left to exact physical pixel boundary to prevent half-pixel blur/shift.
+    const leftPhys = Math.floor((innerWidth * dpr - physSize) / 2);
+    const topPhys = Math.floor((innerHeight * dpr - physSize) / 2);
+    el.style.left = (leftPhys / dpr) + 'px';
+    el.style.top = (topPhys / dpr) + 'px';
+    el.style.transform = 'none';
+  }
 }
 
 export function studioMarkup(cfg) {

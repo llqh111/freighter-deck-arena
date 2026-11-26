@@ -5,7 +5,7 @@ import {createMatch} from './match.js?v=13';
 import {createViewModel} from './viewmodel.js?v=13';
 import {isMelee,melees} from './arsenal.js?v=13';
 import {createDeckAudio} from './deck-audio.js?v=13';
-import {loadCrosshair,saveCrosshair,applyCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=13';
+import {loadCrosshair,saveCrosshair,applyCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=14';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -33,7 +33,7 @@ function showDialog(kind,sub,title,html){
   if(!panel.open)panel.showModal();
 }
 let crosshairCfg=loadCrosshair();
-applyCrosshair($('cross'),crosshairCfg);
+applyCrosshair($('cross'),crosshairCfg,true);
 const prefs={team:0,size:6,goal:50,diff:'normal',primary:'ak47',melee:'nepal',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
@@ -78,7 +78,7 @@ function crosshairStudio(){
   showDialog('crosshair','CROSSHAIR STUDIO','自定义准星工坊',studioMarkup(crosshairCfg));
   const sync=(cfg)=>{
     crosshairCfg=saveCrosshair(cfg);
-    applyCrosshair($('cross'),crosshairCfg);
+    applyCrosshair($('cross'),crosshairCfg,true);
     for(const s of panel.querySelectorAll('.xhSample'))applyCrosshair(s,crosshairCfg);
     const codeInput=$('xhCode');if(codeInput&&document.activeElement!==codeInput)codeInput.value=exportValorantCode(crosshairCfg);
     $('xhColor').value=crosshairCfg.color;
@@ -494,7 +494,7 @@ for(const btn of document.querySelectorAll('[data-touch]')){
 function resize(){
   const w=innerWidth,h=innerHeight,aspect=w/h;
   renderer.setPixelRatio(Math.min(devicePixelRatio,prefs.quality==='low'?1:prefs.quality==='medium'?1.3:1.8));renderer.setSize(w,h,false);
-  for(const c of [camera,fly]){c.aspect=aspect;c.updateProjectionMatrix();}view.resize(aspect);frameDirty=true;
+  for(const c of [camera,fly]){c.aspect=aspect;c.updateProjectionMatrix();}view.resize(aspect);applyCrosshair($('cross'),crosshairCfg,true);frameDirty=true;
 }
 function render(time){
   const t=time*.001,dt=Math.min(.08,Math.max(0,t-elapsed));elapsed=t;
