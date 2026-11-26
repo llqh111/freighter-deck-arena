@@ -1,17 +1,18 @@
-import {isMelee} from './arsenal.js?v=17';
+import {isMelee} from './arsenal.js?v=21';
 
 const butterflyAssets = {
   latch: new URL('./assets/butterfly/mechanical-latch-light.wav', import.meta.url).href,
   swish: new URL('./assets/butterfly/swish-hard.wav', import.meta.url).href
 };
-// External foley starts just before its catalogued contact or peak.
+// External foley starts just before its catalogued contact or peak, layered with cold-steel synthesis.
 const butterflySounds = {
-  butterflyAir: {asset: 'swish', offset: .042, mix: .34, pitch: 2050, ring: .045, duration: .12},
-  butterflySpin: {asset: 'swish', offset: .038, mix: .42, pitch: 2680, ring: .095, duration: .11},
-  butterflyTick: {asset: 'latch', offset: .049, mix: .40, pitch: 2520, ring: .16, duration: .065},
-  butterflyCatch: {asset: 'latch', offset: .047, mix: .68, pitch: 1460, ring: .28, duration: .095},
-  butterflySlash: {asset: 'swish', offset: .044, mix: .68, pitch: 1620, ring: .12, duration: .125},
-  butterflyThrust: {asset: 'swish', offset: .042, mix: .74, pitch: 980, ring: .16, duration: .155}
+  butterflyAir: {asset: 'swish', offset: .042, mix: .32, pitch: 2120, ring: .048, duration: .125},
+  butterflySpin: {asset: 'swish', offset: .036, mix: .44, pitch: 2760, ring: .105, duration: .115},
+  butterflyTick: {asset: 'latch', offset: .049, mix: .42, pitch: 2920, ring: .175, duration: .072},
+  butterflyRicochet: {asset: 'latch', offset: .048, mix: .34, pitch: 3380, ring: .19, duration: .088},
+  butterflyCatch: {asset: 'latch', offset: .046, mix: .66, pitch: 1580, ring: .26, duration: .128},
+  butterflySlash: {asset: 'swish', offset: .042, mix: .72, pitch: 1740, ring: .145, duration: .138},
+  butterflyThrust: {asset: 'swish', offset: .040, mix: .78, pitch: 1040, ring: .18, duration: .168}
 };
 
 // Short, cached Web Audio samples with idle prewarming and classic CF kill cues.
@@ -159,11 +160,28 @@ export function createDeckAudio() {
       const white = seed / 2147483648 - 1;
       lp += .15 * (white - lp);
       if (motion) {
+        const tau = 2 * Math.PI;
+        if (kind === 'butterflyCatch') {
+          // Authentic balisong double-clack (tang lock + handle mate 18ms apart) + gloved palm thud + subtle T-latch clink!
+          const c1 = Math.exp(-320 * t) * (.28 * (white - lp) + .22 * Math.sin(tau * 2680 * t) + .12 * Math.sin(tau * 4890 * t));
+          const dt2 = t - .018;
+          const c2 = dt2 > 0 ? Math.exp(-290 * dt2) * (.32 * (white - lp) + .26 * Math.sin(tau * 1840 * dt2) + .14 * Math.sin(tau * 3420 * dt2)) : 0;
+          const palm = .34 * Math.sin(tau * (138 * t + .45 * (1 - Math.exp(-55 * t)))) * Math.exp(-42 * t);
+          const dt3 = t - .044;
+          const latch = dt3 > 0 ? .11 * Math.sin(tau * 3960 * dt3) * Math.exp(-140 * dt3) : 0;
+          return Math.max(-.92, Math.min(.92, c1 + c2 + palm + latch));
+        }
+        if (kind === 'butterflyRicochet') {
+          // Gloved knuckle bounce + ringing steel spine shimmer
+          const tap = .26 * Math.sin(tau * 340 * t) * Math.exp(-68 * t) + .18 * (white - lp) * Math.exp(-240 * t);
+          const ring = (.20 * Math.sin(tau * motion.pitch * t) + .11 * Math.sin(tau * motion.pitch * 1.62 * t)) * Math.exp(-42 * t);
+          return Math.max(-.9, Math.min(.9, tap + ring));
+        }
         const contact = motion.asset === 'latch';
-        const noise = (white - lp) * (contact ? .24 * Math.exp(-330 * t) : .23 * Math.sin(Math.PI * t / duration));
-        const phase = 2 * Math.PI * motion.pitch * t;
-        const metal = (Math.sin(phase) + .35 * Math.sin(phase * 1.87)) * motion.ring * Math.exp(-57 * t);
-        return noise + metal;
+        const noise = (white - lp) * (contact ? .26 * Math.exp(-340 * t) : .25 * Math.sin(Math.PI * t / duration));
+        const phase = tau * motion.pitch * t;
+        const metal = (Math.sin(phase) + .38 * Math.sin(phase * 1.87) + .16 * Math.sin(phase * 2.73)) * motion.ring * Math.exp(-54 * t);
+        return Math.max(-.92, Math.min(.92, noise + metal));
       }
       if (kind === 'shot') {
         if (weapon === 'awm') {
@@ -293,12 +311,13 @@ export function createDeckAudio() {
     schedulePrewarm();
   }
 
-  function play(buffer, level = 1, pan = 0, offset = 0) {
+  function play(buffer, level = 1, pan = 0, offset = 0, rate = 1) {
     if (!enabled || context?.state !== 'running' || !buffer) return;
     if (level < .025) return;
     if (playing.size >= 40 && level < .35) return;
     const source = context.createBufferSource();
     source.buffer = buffer;
+    if (rate !== 1) source.playbackRate.value = rate;
     const gain = context.createGain();
     gain.gain.value = Math.max(0, Math.min(1, level));
     const stereo = context.createStereoPanner?.();
@@ -376,8 +395,9 @@ export function createDeckAudio() {
     if (level < .025) return;
     const spread = Math.max(-1, Math.min(1, pan));
     const motion = butterflySounds[kind];
-    if (motion) play(samples[motion.asset], level * motion.mix, spread, motion.offset);
-    play(sampleFor(kind, weapon, head), level, spread);
+    const rate = motion ? .965 + Math.random() * .075 : 1;
+    if (motion) play(samples[motion.asset], level * motion.mix, spread, motion.offset, rate);
+    play(sampleFor(kind, weapon, head), level, spread, 0, rate);
   }
 
   function setVolume(v) {

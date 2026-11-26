@@ -2,7 +2,7 @@ import * as T from './three.module.js';
 
 // Compact exterior models built in camera space, with an independent magazine and action.
 export function buildArmory(parts) {
-  const {box,tube,pad,profile,arm,bake,paint,graphite,alloy,edges,parker,rubber,amber,bone}=parts;
+  const {box,tube,pad,profile,arm,bake,paint,graphite,alloy,edges,parker,rubber,amber,bone,cloth,clothFold,glove,knuckle,sleeveBand,steelGrain,twill}=parts;
   const olive=paint(0x64724e,.8,.13), wood=paint(0x94532f,.54,.13);
   const grain=paint(0xb37349,.67,.07), chrome=paint(0xc2c7c5,.32,.55);
   const blade=paint(0x858f91,.38,.45), edge=paint(0xd5d7ce,.30,.49);
@@ -155,84 +155,491 @@ export function buildArmory(parts) {
     arm(w.hand,[-.226,-.315,.285],[-.168,-.188,-.015],[-.142,-.154,-.045],true);
   });
   model('butterfly',w=>{
-    // CS-style curved tactical Butterfly Knife (Balisong) with skeletal cutout handles,
-    // swept clip-point blade, spine cutout, pivot hardware, and independent in-hand spin pivot.
-    w.hipX=.162;w.hipY=-.095;w.hipZ=-.465;
-    const hingeBase=new T.Group();
-    hingeBase.position.set(.022,-.042,-.042);
-    hingeBase.rotation.set(.32,.44,-.30);
-    w.body.add(hingeBase);
-    const knifePivot=new T.Group();
-    hingeBase.add(knifePivot);
-    const bladePivot=new T.Group(), gripPivot=new T.Group(), flipPivot=new T.Group();
-    gripPivot.position.y=-.017;
-    flipPivot.position.y=.017;
-    knifePivot.add(bladePivot,gripPivot,flipPivot);
-    w.knifePivot=knifePivot;
-    w.hinges=[bladePivot,gripPivot,flipPivot];
+    // Precision custom Balisong: true 2-joint serial kinematics (Safe Handle -> Blade -> Bite Handle),
+    // skeletonized twin-scale titanium channels with real through-holes, 3D multi-plane hollow-ground
+    // recurve clip-point blade with through-fuller, spring T-latch, articulated 5-finger right hand,
+    // independent tactical left guard, and zero-GC cold-steel specular motion ribbon.
+    w.hipX=.160;w.hipY=-.092;w.hipZ=-.452;
+    w.hinges=true;
+    w.isArticulatedButterfly=true;
 
-    const darkSteel=paint(0x232a2f,.32,.68), handleInlay=paint(0x121619,.62,.30);
-    const chamfer=paint(0x9ca9b0,.24,.78), csBlade=paint(0x7c8a92,.22,.78), csEdge=paint(0xe6eeef,.14,.88);
+    const D=.0130; // Half-span between Safe Pivot and Bite Pivot (26mm center-to-center)
+    const tiScale=paint(0x3d4a54,.25,.76,steelGrain);
+    const tiDark=paint(0x1f262c,.38,.64,steelGrain);
+    const tiChamfer=paint(0xcbd6de,.16,.89);
+    const cryoAccent=paint(0x66bfd6,.24,.78);
+    const bronzeWasher=paint(0xc98f49,.26,.82);
+    const satinFlat=paint(0x9aa8b2,.21,.84,steelGrain);
+    const hollowBevel=paint(0xd2dde4,.11,.92);
+    const mirrorEdge=paint(0xf4f9fb,.06,.97);
+    const cuffMatte=paint(0x1d2224,.88,.04);
+    const dialGlass=paint(0x132028,.18,.65);
+    for(const m of [tiScale,tiDark,tiChamfer,cryoAccent,bronzeWasher,satinFlat,hollowBevel,mirrorEdge,dialGlass]){
+      m.envMapIntensity=1.38;
+    }
+    mirrorEdge.envMapIntensity=1.62;
 
-    // Curved ergonomic CS handles: safe handle (lower) and bite handle (upper).
-    const safeShape=[[.008,.011],[.044,.013],[.096,.009],[.148,.000],[.165,-.006],[.163,-.016],[.142,-.021],[.088,-.014],[.036,-.011],[.004,-.008]];
-    const biteShape=[[.008,.008],[.036,.011],[.088,.014],[.142,.021],[.163,.016],[.165,.006],[.148,.000],[.096,-.009],[.044,-.013],[.004,-.011]];
-    const buildHandle=(handle,shape,sign,hasLatch)=>{
-      profile(handle,darkSteel,.025,shape);
-      // Chamfered metallic rail trim along outer spine of the curved handle.
-      for(const side of [-1,1]){
-        profile(handle,chamfer,.0022,[
-          [.024,sign*.008],[.082,sign*.012],[.144,sign*.017],[.148,sign*.012],[.082,sign*.008],[.024,sign*.004]
-        ],side*.0132);
-        // Signature CS skeletal circular/oval weight-reduction ports along the handle.
-        for(let i=0;i<4;i++){
-          const z=.040+i*.028;
-          const y=sign*(.001+i*.0024);
-          tube(handle,handleInlay,[side*.0125,y,z],[side*.0142,y,z],.0062-i*.0004,.0062-i*.0004,10);
-          tube(handle,chamfer,[side*.0122,y,z],[side*.0132,y,z],.0074-i*.0004,.0074-i*.0004,10);
+    // Extrude helper with real 3D through-holes (Shape.holes)
+    function scalePlate(parent,mat,thickness,outerPts,holesPts,xOff){
+      const shape=new T.Shape();
+      outerPts.forEach(([z,y],i)=>i?shape.lineTo(-z,y):shape.moveTo(-z,y));
+      shape.closePath();
+      for(const hPts of holesPts){
+        const p=new T.Path();
+        hPts.forEach(([z,y],i)=>i?p.lineTo(-z,y):p.moveTo(-z,y));
+        p.closePath();
+        shape.holes.push(p);
+      }
+      const bev=Math.min(.0006,thickness*.18);
+      const geo=new T.ExtrudeGeometry(shape,{depth:thickness,bevelEnabled:true,bevelThickness:bev,bevelSize:bev,bevelSegments:1});
+      geo.translate(0,0,-thickness/2);
+      geo.rotateY(Math.PI/2);
+      const m=new T.Mesh(geo,mat);
+      m.position.set(xOff,0,0);
+      parent.add(m);
+      return m;
+    }
+
+    function ovalHole(zc,yc,rz,ry,segs=10){
+      const pts=[];
+      for(let i=0;i<segs;i++){
+        const a=(i/segs)*Math.PI*2;
+        pts.push([zc+Math.cos(a)*rz,yc+Math.sin(a)*ry]);
+      }
+      return pts;
+    }
+
+    // Build high-resolution 3D hollow-ground curved Bowie clip-point blade with smooth longitudinal normals
+    function buildHollowBlade(parent){
+      // Control profile: [z, ySpine, yRidge, yFlatBot, yEdgeTop, yEdge, halfThick]
+      // Sweeps into an iconic concave clip-point swedge + recurve S-belly meeting at upswept needle tip (-0.184, +0.0026)
+      const ctrl=[
+        [-.016,  .0044, -.0024, -.0160, -.0242, -.0264, .00215],
+        [-.028,  .0060, -.0018, -.0145, -.0228, -.0252, .00220],
+        [-.046,  .0072, -.0010, -.0104, -.0214, -.0238, .00220],
+        [-.068,  .0070, -.0008, -.0102, -.0218, -.0242, .00215],
+        [-.092,  .0074, -.0005, -.0102, -.0248, -.0276, .00208],
+        [-.116,  .0080,  .0002, -.0098, -.0272, -.0302, .00196],
+        [-.134,  .0062, -.0006, -.0092, -.0266, -.0296, .00178],
+        [-.150,  .0038, -.0012, -.0078, -.0232, -.0260, .00150],
+        [-.164,  .0026, -.0010, -.0056, -.0172, -.0196, .00112],
+        [-.175,  .0024, -.0002, -.0028, -.0096, -.0112, .00064],
+        [-.181,  .0025,  .0012,  .0002, -.0032, -.0042, .00028],
+        [-.1845, .0026,  .0026,  .0026,  .0026,  .0026, .00008]
+      ];
+      // Subdivide control stations via Catmull-Rom interpolation for liquid-smooth silhouette & specular flow
+      const stations=[];
+      const catmull=(p0,p1,p2,p3,t)=>{
+        const t2=t*t,t3=t2*t;
+        return .5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t2+(-p0+3*p1-3*p2+p3)*t3);
+      };
+      for(let i=0;i<ctrl.length-1;i++){
+        const p0=ctrl[Math.max(0,i-1)],p1=ctrl[i],p2=ctrl[i+1],p3=ctrl[Math.min(ctrl.length-1,i+2)];
+        const subs=i>=5?3:2;
+        for(let s=0;s<subs;s++){
+          const t=s/subs,row=[];
+          for(let c=0;c<7;c++)row.push(catmull(p0[c],p1[c],p2[c],p3[c],t));
+          stations.push(row);
         }
       }
-      // Pivot barrel & hex torx screw.
-      tube(handle,chamfer,[-.0155,0,0],[.0155,0,0],.0092,.0092,12);
-      tube(handle,darkSteel,[-.0165,0,0],[.0165,0,0],.0052,.0052,6);
-      // Tail spacer & optional T-latch on bite handle.
-      box(handle,chamfer,0,sign*.006,.157,.024,.012,.010);
-      if(hasLatch){
-        tube(handle,chamfer,[0,sign*.007,.162],[0,sign*.005,.180],.0042,.0036,8);
-        box(handle,darkSteel,0,sign*.005,.181,.015,.009,.007);
+      stations.push(ctrl[ctrl.length-1]);
+
+      // Build indexed-then-smoothed per-group meshes so normals are smooth ALONG z, razor-sharp ACROSS bevel ridges!
+      function makeGroupBuilder(){
+        return {verts:[],uvs:[],indices:[],map:new Map()};
       }
-    };
-    buildHandle(gripPivot,safeShape,-1,false);
-    buildHandle(flipPivot,biteShape,1,true);
+      const groups={
+        swedgeL:makeGroupBuilder(),swedgeR:makeGroupBuilder(),swedgeCap:makeGroupBuilder(),
+        flatL:makeGroupBuilder(),flatR:makeGroupBuilder(),
+        bevelL:makeGroupBuilder(),bevelR:makeGroupBuilder(),
+        edgeL:makeGroupBuilder(),edgeR:makeGroupBuilder()
+      };
+      const va=new T.Vector3(),vb=new T.Vector3(),vc=new T.Vector3(),ab=new T.Vector3(),ac=new T.Vector3(),nrm=new T.Vector3();
 
-    // Swept CS curved clip-point blade with concave swedge, spine cutout & honed edge.
-    profile(bladePivot,csBlade,.0075,[
-      [.020,-.009],[.012,.011],[-.022,.017],[-.086,.022],[-.158,.021],[-.204,.011],[-.256,-.004],
-      [-.218,-.019],[-.150,-.024],[-.078,-.021],[-.032,-.014],[-.014,-.017]
-    ]);
-    // Razor-bright honed cutting edge along lower curved belly to tip.
-    profile(bladePivot,csEdge,.0084,[
-      [-.256,-.004],[-.218,-.019],[-.150,-.024],[-.078,-.021],[-.036,-.015],
-      [-.044,-.010],[-.082,-.014],[-.148,-.016],[-.210,-.012]
-    ]);
-    // Top swedge bevel highlight.
-    profile(bladePivot,chamfer,.0084,[
-      [-.152,.020],[-.204,.011],[-.256,-.004],[-.202,.005],[-.150,.014]
-    ]);
-    // Iconic CS oval/teardrop blade spine cutout (recessed dark window with chamfer rim).
-    for(const side of [-1,1]){
-      profile(bladePivot,handleInlay,.0018,[
-        [-.068,.012],[-.132,.013],[-.146,.008],[-.130,.003],[-.068,.004],[-.056,.008]
-      ],side*.0042);
+      function vIdx(grp,p,weld=true){
+        if(weld){
+          const key=Math.round(p[0]*200000)+','+Math.round(p[1]*200000)+','+Math.round(p[2]*200000);
+          const hit=grp.map.get(key);
+          if(hit!==undefined)return hit;
+          const id=grp.verts.length/3;
+          grp.verts.push(p[0],p[1],p[2]);
+          grp.uvs.push(-p[2]*4,p[1]*12+.5);
+          grp.map.set(key,id);
+          return id;
+        }
+        const id=grp.verts.length/3;
+        grp.verts.push(p[0],p[1],p[2]);
+        grp.uvs.push(-p[2]*4,p[1]*12+.5);
+        return id;
+      }
+      function tri(grpName,p0,p1,p2,outX,outY=0,weld=true){
+        const grp=groups[grpName];
+        va.set(...p0);vb.set(...p1);vc.set(...p2);
+        ab.subVectors(vb,va);ac.subVectors(vc,va);nrm.crossVectors(ab,ac);
+        if(nrm.lengthSq()<1e-13)return;
+        const dot=nrm.x*outX+nrm.y*outY;
+        const seq=dot<0?[p0,p2,p1]:[p0,p1,p2];
+        grp.indices.push(vIdx(grp,seq[0],weld),vIdx(grp,seq[1],weld),vIdx(grp,seq[2],weld));
+      }
+      function quad(grpName,a,b,c,d,outX,outY=0,weld=true){
+        tri(grpName,a,b,c,outX,outY,weld);
+        tri(grpName,a,c,d,outX,outY,weld);
+      }
+
+      // Through-fuller slot spans z in [-0.046, -0.116] (stations 4..10)
+      const slotStart=4,slotEnd=10;
+      for(let i=0;i<stations.length-1;i++){
+        const [z0,sp0,rg0,fb0,et0,ed0,t0]=stations[i];
+        const [z1,sp1,rg1,fb1,et1,ed1,t1]=stations[i+1];
+        const crown0=t0*.32,crown1=t1*.32;
+        const edgeT0=Math.min(.00035,t0*.24),edgeT1=Math.min(.00035,t1*.24);
+        const inSlot=i>=slotStart&&i<slotEnd;
+
+        for(const side of [-1,1]){
+          const sfx=side<0?'L':'R';
+          quad('swedge'+sfx,[side*crown0,sp0,z0],[side*crown1,sp1,z1],[side*t1,rg1,z1],[side*t0,rg0,z0],side,.35);
+          if(inSlot){
+            const sTop0=rg0-.0020,sTop1=rg1-.0020;
+            const sBot0=fb0+.0020,sBot1=fb1+.0020;
+            quad('flat'+sfx,[side*t0,rg0,z0],[side*t1,rg1,z1],[side*t1,sTop1,z1],[side*t0,sTop0,z0],side,0);
+            quad('flat'+sfx,[side*t0,sBot0,z0],[side*t1,sBot1,z1],[side*t1,fb1,z1],[side*t0,fb0,z0],side,0);
+          }else{
+            quad('flat'+sfx,[side*t0,rg0,z0],[side*t1,rg1,z1],[side*t1,fb1,z1],[side*t0,fb0,z0],side,0);
+          }
+          quad('bevel'+sfx,[side*t0,fb0,z0],[side*t1,fb1,z1],[side*edgeT1,et1,z1],[side*edgeT0,et0,z0],side,-.24);
+          quad('edge'+sfx,[side*edgeT0,et0,z0],[side*edgeT1,et1,z1],[0,ed1,z1],[0,ed0,z0],side,-.45);
+        }
+        quad('swedgeCap',[-crown0,sp0,z0],[crown0,sp0,z0],[crown1,sp1,z1],[-crown1,sp1,z1],0,1,false);
+        if(inSlot){
+          const sTop0=rg0-.0020,sTop1=rg1-.0020;
+          const sBot0=fb0+.0020,sBot1=fb1+.0020;
+          quad('swedgeCap',[-t0,sTop0,z0],[t0,sTop0,z0],[t1,sTop1,z1],[-t1,sTop1,z1],0,-1,false);
+          quad('swedgeCap',[-t0,sBot0,z0],[t0,sBot0,z0],[t1,sBot1,z1],[-t1,sBot1,z1],0,1,false);
+        }
+      }
+      for(const [idx,dirZ] of [[slotStart,-1],[slotEnd,1]]){
+        const [z,sp,rg,fb,et,ed,t]=stations[idx];
+        const a=[-t,rg-.0020,z],b=[t,rg-.0020,z],c=[t,fb+.0020,z],d=[-t,fb+.0020,z];
+        if(dirZ<0)quad('swedgeCap',a,b,c,d,0,0,false);
+        else quad('swedgeCap',b,a,d,c,0,0,false);
+      }
+
+      const matFor={
+        swedgeL:tiChamfer,swedgeR:tiChamfer,swedgeCap:tiChamfer,
+        flatL:satinFlat,flatR:satinFlat,
+        bevelL:hollowBevel,bevelR:hollowBevel,
+        edgeL:mirrorEdge,edgeR:mirrorEdge
+      };
+      for(const [name,grp] of Object.entries(groups)){
+        if(!grp.indices.length)continue;
+        const g=new T.BufferGeometry();
+        g.setAttribute('position',new T.Float32BufferAttribute(grp.verts,3));
+        g.setAttribute('uv',new T.Float32BufferAttribute(grp.uvs,2));
+        g.setIndex(grp.indices);
+        g.computeVertexNormals();
+        parent.add(new T.Mesh(g,matFor[name]));
+      }
     }
-    // Tang block & twin tang pins.
-    box(bladePivot,darkSteel,0,0,-.006,.014,.024,.024);
-    tube(bladePivot,chamfer,[-.012,.013,-.008],[.012,.013,-.008],.0032,.0032,8);
-    tube(bladePivot,chamfer,[-.012,-.013,-.008],[.012,-.013,-.008],.0032,.0032,8);
 
-    for(const part of w.hinges)bake(part);
-    arm(w.body,[.178,-.315,.425],[.078,-.130,.095],[.050,-.106,.048],false);
-    arm(w.hand,[-.245,-.335,.31],[-.188,-.205,.012],[-.162,-.170,-.022],true);
+    // --- 1. RIGHT ARTICULATED ARM, WRIST, PALM & 5-FINGER RIG ---
+    const rightRig=new T.Group();
+    const rightBasePos=[.008,-.014,-.010];
+    const rightBaseRot=[.22,.37,-.22];
+    rightRig.position.set(...rightBasePos);
+    rightRig.rotation.set(...rightBaseRot);
+    w.body.add(rightRig);
+
+    const wristGroup=new T.Group();
+    rightRig.add(wristGroup);
+
+    // Seamless wrist gaiter + tapered tactical forearm + flush dorsal chronometer (zero cuff gap or blocky UV!)
+    const forearmGroup=new T.Group();
+    wristGroup.add(forearmGroup);
+    const wristBridge=[.023,-.024,.096], wristPt=[.030,-.034,.138], elbowPt=[.165,-.230,.465];
+    const armLerp=t=>[
+      wristPt[0]+(elbowPt[0]-wristPt[0])*t,
+      wristPt[1]+(elbowPt[1]-wristPt[1])*t,
+      wristPt[2]+(elbowPt[2]-wristPt[2])*t
+    ];
+    // Smooth neoprene wrist gaiter with spherical joint bridges (zero wedge gap & zero concentric z-fighting!)
+    tube(forearmGroup,glove,[.020,-.022,.074],wristBridge,.033,.040,14);
+    pad(forearmGroup,cuffMatte,wristBridge[0],wristBridge[1],wristBridge[2],.041,.041,.041);
+    tube(forearmGroup,cuffMatte,wristBridge,wristPt,.041,.049,14);
+    pad(forearmGroup,cuffMatte,wristPt[0],wristPt[1],wristPt[2],.050,.050,.050);
+    tube(forearmGroup,cuffMatte,wristPt,armLerp(.14),.050,.055,14);
+    tube(forearmGroup,sleeveBand,armLerp(.14),armLerp(.22),.0565,.0595,14);
+    tube(forearmGroup,cloth,elbowPt,armLerp(.13),.098,.0555,12);
+    for(const t of [.28,.52,.74]){
+      tube(forearmGroup,clothFold,armLerp(t-.03),armLerp(t+.02),.099-.042*t,.097-.042*t,12);
+    }
+    // Proud dark-titanium watch band (+3.5mm radial clearance over cuffMatte -> zero z-fighting!)
+    const bandA=[.025,-.027,.106], bandB=[.028,-.031,.122];
+    tube(forearmGroup,tiDark,bandA,bandB,.0468,.0488,14);
+    const watchCase=tube(forearmGroup,tiChamfer,[.041,-.019,.114],[.047,-.017,.114],.0115,.0108,12);
+    watchCase.rotation.y=.18;
+    const watchDial=tube(forearmGroup,dialGlass,[.044,-.018,.114],[.048,-.016,.114],.0088,.0088,12);
+    watchDial.rotation.y=.18;
+    bake(forearmGroup);
+
+    // Sculpted palm + dorsal carbon-knuckle armor
+    const palmGroup=new T.Group();
+    wristGroup.add(palmGroup);
+    pad(palmGroup,glove,.024,-.025,.074,.021,.031,.054);
+    pad(palmGroup,glove,.018,-.009,.082,.019,.021,.034);
+    pad(palmGroup,knuckle,.034,-.022,.068,.011,.027,.046);
+    for(let i=0;i<4;i++){
+      pad(palmGroup,knuckle,.028,-.014-i*.008,.032+i*.024,.012,.010,.011);
+    }
+    bake(palmGroup);
+
+    // 2-Segment Articulated Thumb: rests cleanly along +X/+Y Safe Handle spine in idle (never blocking -X scales!),
+    // and swings into rollover barrel position at thumbPose = 1!
+    const thumbProximal=new T.Group();
+    thumbProximal.position.set(.018,.002,.082);
+    wristGroup.add(thumbProximal);
+    const thumbMesh1=new T.Group();
+    tube(thumbMesh1,glove,[0,0,0],[-.006,.009,-.026],.0122,.0108,10);
+    pad(thumbMesh1,knuckle,-.003,.005,-.013,.0118,.0102,.014);
+    bake(thumbMesh1);
+    thumbProximal.add(thumbMesh1);
+
+    const thumbDistal=new T.Group();
+    thumbDistal.position.set(-.006,.009,-.026);
+    thumbProximal.add(thumbDistal);
+    const thumbMesh2=new T.Group();
+    tube(thumbMesh2,glove,[0,0,0],[-.003,.003,-.023],.0105,.0090,10);
+    pad(thumbMesh2,knuckle,-.003,.003,-.023,.0092,.0086,.010);
+    bake(thumbMesh2);
+    thumbDistal.add(thumbMesh2);
+
+    // 2-Segment Articulated Index Finger: hugs -X handle face cleanly in grip, extends straight through V-choil in Chaplin!
+    const indexProximal=new T.Group();
+    indexProximal.position.set(.018,-.012,.024);
+    wristGroup.add(indexProximal);
+    const indexMesh1=new T.Group();
+    tube(indexMesh1,glove,[0,0,0],[-.016,-.018,-.004],.0110,.0098,10);
+    pad(indexMesh1,knuckle,-.007,-.008,-.002,.0112,.0095,.011);
+    bake(indexMesh1);
+    indexProximal.add(indexMesh1);
+
+    const indexDistal=new T.Group();
+    indexDistal.position.set(-.016,-.018,-.004);
+    indexProximal.add(indexDistal);
+    const indexMesh2=new T.Group();
+    tube(indexMesh2,glove,[0,0,0],[-.015,.011,-.002],.0096,.0082,10);
+    pad(indexMesh2,glove,-.015,.011,-.002,.0084,.0080,.0088);
+    bake(indexMesh2);
+    indexDistal.add(indexMesh2);
+
+    // 3 Staggered Lower Fingers (Middle, Ring, Pinky) wrapping cleanly onto x = -0.014 without clipping scales!
+    const lowerFingers=new T.Group();
+    lowerFingers.position.set(.015,-.042,.076);
+    wristGroup.add(lowerFingers);
+    const lowerMesh=new T.Group();
+    const fingerSpecs=[
+      [-.022, 1.02, .0106], // Middle
+      [ .002, 0.96, .0100], // Ring
+      [ .025, 0.85, .0092]  // Pinky
+    ];
+    for(const [fz,len,rad] of fingerSpecs){
+      const p1=[-0.019*len,-.004,fz], p2=[-0.029*len,.019*len,fz-.002];
+      tube(lowerMesh,glove,[0,0,fz],p1,rad,rad*.90,9);
+      pad(lowerMesh,knuckle,p1[0]*.55,-.003,fz,rad*1.02,rad*.92,rad*1.02);
+      tube(lowerMesh,glove,p1,p2,rad*.88,rad*.76,9);
+      pad(lowerMesh,glove,p2[0],p2[1],p2[2],rad*.78,rad*.75,rad*.82);
+    }
+    bake(lowerMesh);
+    lowerFingers.add(lowerMesh);
+
+    // --- 2. INDEPENDENT TACTICAL LEFT GUARD ARM ---
+    const leftRig=new T.Group();
+    leftRig.position.set(-.180,-.315,-.068);
+    leftRig.rotation.set(.18,-.22,.24);
+    w.hand.add(leftRig);
+    const leftMesh=new T.Group();
+    tube(leftMesh,cloth,[-.115,-.195,.34],[-.020,-.034,.062],.096,.054,11);
+    tube(leftMesh,sleeveBand,[-.026,-.044,.078],[-.016,-.027,.048],.056,.053,11);
+    tube(leftMesh,cuffMatte,[-.016,-.027,.048],[.002,.002,-.004],.052,.046,11);
+    pad(leftMesh,glove,.012,.012,-.038,.020,.028,.044);
+    pad(leftMesh,knuckle,.002,.020,-.036,.013,.024,.040);
+    tube(leftMesh,glove,[.016,.028,-.024],[.032,.044,-.054],.0112,.0092,9);
+    for(let i=0;i<4;i++){
+      const zz=-.068+i*.019, s=1-i*.07;
+      tube(leftMesh,glove,[.012,.018-i*.004,zz],[.034*s,.024-i*.005,zz-.022*s],.0100*s,.0082*s,8);
+    }
+    bake(leftMesh);
+    leftRig.add(leftMesh);
+
+    // --- 3. TRUE 2-JOINT SERIAL BALISONG HIERARCHY ---
+    const spinMount=new T.Group();
+    spinMount.position.set(0,0,0);
+    wristGroup.add(spinMount);
+
+    const spinPivot=new T.Group();
+    spinMount.add(spinPivot);
+
+    const knifeCarrier=new T.Group();
+    spinPivot.add(knifeCarrier);
+
+    // Base Link: Safe Handle (origin at P_safe = (0, 0, 0))
+    const safeHandle=new T.Group();
+    knifeCarrier.add(safeHandle);
+
+    // Joint 1: Safe Pivot -> Blade Group (rotates around X in [0, +pi])
+    const safeJoint=new T.Group();
+    safeHandle.add(safeJoint);
+
+    // Joint 2: Bite Pivot attached to Blade Tang at (0, -2*D, 0) (rotates around X in [0, +pi])
+    const biteJoint=new T.Group();
+    biteJoint.position.set(0,-2*D,0);
+    safeJoint.add(biteJoint);
+
+    const biteHandle=new T.Group();
+    biteJoint.add(biteHandle);
+
+    // Build Twin-Scale Skeletonized Channel Handle (192mm elongated silhouette so 184mm curved clip-point nests 100% inside)
+    function populateHandle(target,isBite){
+      const sign=isBite?1:-1;
+      const outer=[
+        [-.009, .0065],[-.004, .0106],[.034, .0112],[.096, .0116],[.158, .0108],[.187, .0084],
+        [.192, .0000],[.187,-.0084],[.158,-.0108],[.096,-.0114],[.034,-.0110],[-.004,-.0106],[-.009,-.0065]
+      ];
+      const holes=[
+        ovalHole(.036,0,.0115,.0048,10),
+        ovalHole(.070,0,.0128,.0050,10),
+        ovalHole(.106,0,.0128,.0048,10),
+        ovalHole(.141,0,.0120,.0044,10),
+        ovalHole(.168,0,.0068,.0034,8)
+      ];
+      const scaleX=.0072, scaleThick=.0030;
+      for(const side of [-1,1]){
+        scalePlate(target,tiScale,scaleThick,outer,holes,side*scaleX);
+        profile(target,tiChamfer,.0009,[
+          [.018, .0102],[.096, .0108],[.178, .0092],[.178, .0074],[.096, .0088],[.018, .0084]
+        ],side*(scaleX+.0017));
+        profile(target,tiChamfer,.0009,[
+          [.018,-.0084],[.096,-.0088],[.178,-.0074],[.178,-.0092],[.096,-.0108],[.018,-.0102]
+        ],side*(scaleX+.0017));
+        const px=side*(scaleX+.0018);
+        tube(target,isBite?bronzeWasher:cryoAccent,[side*(scaleX+.0012),0,0],[px,0,0],.0064,.0064,14);
+        tube(target,tiChamfer,[px,0,0],[px+side*.0005,0,0],.0048,.0045,12);
+        tube(target,tiDark,[px+side*.0003,0,0],[px+side*.0008,0,0],.0024,.0024,6);
+        tube(target,tiChamfer,[px,sign*.0055,.183],[px+side*.0005,sign*.0055,.183],.0028,.0028,8);
+      }
+      for(let k=0;k<4;k++){
+        const jz=.016+k*.0055;
+        for(const side of [-1,1]){
+          box(target,tiDark,side*scaleX,-sign*.0108,jz,.0032,.0018,.0024);
+        }
+      }
+      tube(target,isBite?bronzeWasher:cryoAccent,[-scaleX,sign*.0062,.183],[scaleX,sign*.0062,.183],.0030,.0030,10);
+      tube(target,tiChamfer,[-scaleX,sign*.0072,.124],[scaleX,sign*.0072,.124],.0020,.0020,8);
+      bake(target);
+    }
+
+    populateHandle(safeHandle,false);
+    populateHandle(biteHandle,true);
+
+    // Articulated Spring-Loaded T-Latch on Bite Handle pommel
+    const latchPivot=new T.Group();
+    latchPivot.position.set(0,-.0058,.187);
+    biteHandle.add(latchPivot);
+    const latchMesh=new T.Group();
+    tube(latchMesh,tiChamfer,[0,0,0],[0,.002,.019],.0026,.0024,8);
+    box(latchMesh,tiScale,0,.002,.020,.0125,.0056,.0052);
+    tube(latchMesh,bronzeWasher,[-.0068,.002,.020],[.0068,.002,.020],.0022,.0022,8);
+    bake(latchMesh);
+    latchPivot.add(latchMesh);
+
+    // Populate Blade Tang, Phosphor-Bronze Washers, Zen/Tang Pins & 3D Hollow-Ground Blade
+    const bladeMeshGroup=new T.Group();
+    safeJoint.add(bladeMeshGroup);
+    // Stonewashed tang & ricasso block bridging P_safe (0,0,0) and P_bite (0,-2D,0)
+    profile(bladeMeshGroup,tiDark,.0042,[
+      [.007, .0055],[-.018, .0050],[-.024,-.0040],[-.024,-.0220],[-.018,-.0310],[.007,-.0315],[.009,-.0130]
+    ]);
+    // Phosphor-bronze pivot washers visible inside handle gaps at both pivots
+    for(const py of [0,-2*D]){
+      tube(bladeMeshGroup,bronzeWasher,[-.0054,py,0],[.0054,py,0],.0062,.0062,12);
+    }
+    // Dual hardened steel Tang Pins (open lock stop & closed stop)
+    tube(bladeMeshGroup,tiChamfer,[-.0086,-.0130,-.0085],[.0086,-.0130,-.0085],.0024,.0024,10);
+    tube(bladeMeshGroup,tiChamfer,[-.0082, .0052,-.0135],[.0082, .0052,-.0135],.0020,.0020,8);
+    buildHollowBlade(bladeMeshGroup);
+    bake(bladeMeshGroup);
+
+    // --- 4. ZERO-GC COLD-STEEL SPECULAR MOTION RIBBON (active during fast spins & slashes) ---
+    const TRAIL_STEPS=12;
+    const trailPos=new Float32Array(TRAIL_STEPS*2*3);
+    const trailCol=new Float32Array(TRAIL_STEPS*2*4);
+    const trailIdx=[];
+    for(let i=0;i<TRAIL_STEPS-1;i++){
+      const a=i*2,b=a+1,c=a+2,d=a+3;
+      trailIdx.push(a,b,c, b,d,c);
+    }
+    const trailGeo=new T.BufferGeometry();
+    trailGeo.setAttribute('position',new T.BufferAttribute(trailPos,3).setUsage(T.DynamicDrawUsage));
+    trailGeo.setAttribute('color',new T.BufferAttribute(trailCol,4).setUsage(T.DynamicDrawUsage));
+    trailGeo.setIndex(trailIdx);
+    const trailMat=new T.MeshBasicMaterial({
+      vertexColors:true,
+      transparent:true,
+      opacity:.56,
+      depthWrite:false,
+      side:T.DoubleSide,
+      blending:T.AdditiveBlending,
+      toneMapped:false
+    });
+    const trailRibbon=new T.Mesh(trailGeo,trailMat);
+    trailRibbon.frustumCulled=false;
+    trailRibbon.visible=false;
+    w.root.add(trailRibbon);
+
+    const pBase=new T.Vector3(),pTip=new T.Vector3(),invRoot=new T.Matrix4();
+    let trailPrimed=false;
+    w.resetTrail=()=>{trailPrimed=false;trailRibbon.visible=false;};
+    w.updateTrail=(intensity)=>{
+      if(intensity<.035){
+        trailPrimed=false;
+        trailRibbon.visible=false;
+        return;
+      }
+      w.root.updateMatrixWorld(true);
+      invRoot.copy(w.root.matrixWorld).invert();
+      pBase.set(0,-.010,-.054).applyMatrix4(safeJoint.matrixWorld).applyMatrix4(invRoot);
+      pTip.set(0,.0025,-.183).applyMatrix4(safeJoint.matrixWorld).applyMatrix4(invRoot);
+      if(!trailPrimed){
+        for(let i=0;i<TRAIL_STEPS;i++){
+          const k=i*6;
+          trailPos[k]=pBase.x;trailPos[k+1]=pBase.y;trailPos[k+2]=pBase.z;
+          trailPos[k+3]=pTip.x;trailPos[k+4]=pTip.y;trailPos[k+5]=pTip.z;
+        }
+        trailPrimed=true;
+      }else{
+        trailPos.copyWithin(6,0,(TRAIL_STEPS-1)*6);
+        trailPos[0]=pBase.x;trailPos[1]=pBase.y;trailPos[2]=pBase.z;
+        trailPos[3]=pTip.x;trailPos[4]=pTip.y;trailPos[5]=pTip.z;
+      }
+      for(let i=0;i<TRAIL_STEPS;i++){
+        const fade=Math.pow(1-i/(TRAIL_STEPS-1),1.65)*intensity;
+        const c=i*8;
+        trailCol[c]=.76;trailCol[c+1]=.88;trailCol[c+2]=.96;trailCol[c+3]=fade*.22;
+        trailCol[c+4]=.94;trailCol[c+5]=.98;trailCol[c+6]=1.0;trailCol[c+7]=fade*.74;
+      }
+      trailGeo.attributes.position.needsUpdate=true;
+      trailGeo.attributes.color.needsUpdate=true;
+      trailRibbon.visible=true;
+    };
+
+    w.rigParts={
+      rightRig,rightBasePos,rightBaseRot,
+      leftRig,
+      thumbProximal,thumbDistal,
+      indexProximal,indexDistal,
+      lowerFingers,
+      spinPivot,knifeCarrier,
+      safeJoint,biteJoint,latchPivot
+    };
   });
   model('he',w=>{
     w.hipX=.133;w.hipZ=-.38;w.hipY=-.136;

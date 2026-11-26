@@ -1,10 +1,10 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=18';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=21';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=7';
-import {createMatch} from './match.js?v=18';
-import {createViewModel} from './viewmodel.js?v=17';
-import {isMelee,melees} from './arsenal.js?v=17';
-import {createDeckAudio} from './deck-audio.js?v=17';
+import {createMatch} from './match.js?v=21';
+import {createViewModel} from './viewmodel.js?v=21';
+import {isMelee,melees} from './arsenal.js?v=21';
+import {createDeckAudio} from './deck-audio.js?v=21';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
 import {matchRules,matchDuration} from './match-rules.js';
 
@@ -612,12 +612,13 @@ async function prewarm(){
   const cleanup=match.warmup?.();
   const savedVis=[];
   view.scene.traverse(o=>{savedVis.push([o,o.visible]);o.visible=true;});
+  let deferredCleanup=false;
   try{
     if(renderer.compileAsync&&renderer.extensions.has('KHR_parallel_shader_compile')){
-      await Promise.race([
-        (async()=>{await renderer.compileAsync(scene,camera);await renderer.compileAsync(view.scene,view.camera);})(),
-        new Promise(r=>setTimeout(r,2500))
-      ]);
+      deferredCleanup=true;
+      const job=(async()=>{await renderer.compileAsync(scene,camera);await renderer.compileAsync(view.scene,view.camera);})();
+      job.catch(()=>{}).finally(()=>cleanup?.());
+      await Promise.race([job,new Promise(r=>setTimeout(r,2500))]);
     }else{
       renderer.compile(scene,camera);
       renderer.compile(view.scene,view.camera);
@@ -625,14 +626,14 @@ async function prewarm(){
   }catch{}
   finally{
     for(const [o,v] of savedVis)o.visible=v;
-    cleanup?.();
+    if(!deferredCleanup)cleanup?.();
   }
 }
 async function init(){
   try{
     renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});renderer.autoClear=false;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-    world=buildWorld(scene);view=createViewModel(deckAudio.sfx);match=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov'])applyPref(key);setSound();resize();
+    world=buildWorld(scene);view=createViewModel(deckAudio.sfx);view.initEnv?.(renderer);match=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov'])applyPref(key);setSound();resize();
     await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);
     $('deploy').disabled=false;summary();$('readyText').textContent='甲板就绪';addEventListener('resize',resize);

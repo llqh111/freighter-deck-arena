@@ -1,6 +1,6 @@
-import {buildArmory} from './armory-models.js?v=17';
-import {isMelee} from './arsenal.js?v=17';
-import {createButterflyMotion} from './butterfly-motion.js?v=17';
+import {buildArmory} from './armory-models.js?v=21';
+import {isMelee} from './arsenal.js?v=21';
+import {createButterflyMotion} from './butterfly-motion.js?v=21';
 import * as T from './three.module.js';
 
 function brushedSurface(fabric = false) {
@@ -26,6 +26,39 @@ function brushedSurface(fabric = false) {
   return texture;
 }
 
+// Lightweight maritime sky + steel-deck studio environment map so high-metalness blades reflect liquid highlights.
+function maritimeStudioEnv() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const sky = ctx.createLinearGradient(0, 0, 0, 128);
+  sky.addColorStop(0.00, '#5d8ab2');
+  sky.addColorStop(0.32, '#bad9f2');
+  sky.addColorStop(0.47, '#fff6e4');
+  sky.addColorStop(0.52, '#6d777c');
+  sky.addColorStop(0.72, '#3d4548');
+  sky.addColorStop(1.00, '#23282b');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, 256, 128);
+  // Crisp key-sun & cool rim studio cards for anisotropic-like blade bevel sweeps
+  const sun = ctx.createRadialGradient(72, 38, 2, 72, 38, 42);
+  sun.addColorStop(0, 'rgba(255,250,235,0.95)');
+  sun.addColorStop(0.45, 'rgba(255,228,185,0.42)');
+  sun.addColorStop(1, 'rgba(255,228,185,0)');
+  ctx.fillStyle = sun;
+  ctx.fillRect(0, 0, 160, 90);
+  const rim = ctx.createRadialGradient(204, 44, 3, 204, 44, 48);
+  rim.addColorStop(0, 'rgba(180,230,255,0.78)');
+  rim.addColorStop(1, 'rgba(180,230,255,0)');
+  ctx.fillStyle = rim;
+  ctx.fillRect(140, 0, 116, 96);
+  const tex = new T.CanvasTexture(canvas);
+  tex.colorSpace = T.SRGBColorSpace;
+  tex.mapping = T.EquirectangularReflectionMapping;
+  return tex;
+}
+
 // Bake fixed pieces by finish so fine surface details cost few draw calls.
 function bake(group) {
   const batches = new Map();
@@ -49,6 +82,15 @@ function bake(group) {
   }
 }
 
+// Pre-defined physical rotation fulcrums in spinMount local space:
+// 0: palm grip center, 1: thumb barrel rollover, 2: V-notch index Chaplin axle, 3: blade-tang CoM aerial
+const PIVOT_TABLE = [
+  [ 0.000, -0.012,  0.044],
+  [-0.003,  0.017,  0.042],
+  [-0.003,  0.013,  0.014],
+  [ 0.000, -0.013, -0.002]
+];
+
 export function createViewModel(playMotionSound = () => {}) {
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(48, 1, .015, 5);
@@ -56,15 +98,19 @@ export function createViewModel(playMotionSound = () => {}) {
   const fixed = new T.Group(), magazine = new T.Group(), support = new T.Group();
   scene.add(rig);
   rig.add(fixed, magazine, support);
-  scene.add(new T.HemisphereLight(0xe8f3ff, 0x8e7861, 2.1));
-  const key = new T.DirectionalLight(0xffdfb1, 3.4);
+  scene.add(new T.HemisphereLight(0xe8f3ff, 0x8e7861, 2.05));
+  const key = new T.DirectionalLight(0xffdfb1, 3.35);
   key.position.set(-2, 3, -2);
   scene.add(key);
-  const rim = new T.DirectionalLight(0xa4d6f6, 1.5);
+  const rim = new T.DirectionalLight(0xa4d6f6, 1.55);
   rim.position.set(3, 2, 1);
   scene.add(rim);
   const steelGrain = brushedSurface(), twill = brushedSurface(true);
-  const paint = (color, roughness, metalness, map) => new T.MeshStandardMaterial({color, roughness, metalness, map: map || null});
+  const paint = (color, roughness, metalness, map) => {
+    const m = new T.MeshStandardMaterial({color, roughness, metalness, map: map || null});
+    m.envMapIntensity = 0.28;
+    return m;
+  };
   const alloy = paint(0x465057, .43, .42, steelGrain), graphite = paint(0x2e3438, .49, .38, steelGrain);
   const parker = paint(0x171e22,.65,.26), edges = paint(0x748087,.42,.50), rubber = paint(0x202526,.90,.02,twill);
   const earth = paint(0x625e4d,.71,.12,steelGrain), inlay = paint(0x171c1c,.96,.01);
@@ -189,26 +235,38 @@ export function createViewModel(playMotionSound = () => {}) {
   }
   bake(flash);
   flash.visible=false;
-  const arsenal=buildArmory({box,tube,pad,profile,arm,bake,paint,graphite,alloy,edges,parker,rubber,amber,bone});
+  const arsenal=buildArmory({
+    box,tube,pad,profile,arm,bake,paint,
+    graphite,alloy,edges,parker,rubber,amber,bone,
+    cloth,clothFold,glove,knuckle,sleeveBand,steelGrain,twill
+  });
   const original=new T.Group();
   original.name='m4a1';original.add(fixed,magazine,support);
   arsenal.m4a1={root:original,mag:magazine,hand:support,sight:sightY,hipX:.222,hipY:-.191,hipZ:-.546,muzzle:-.65,kick:.94};
   for (const entry of Object.values(arsenal)){rig.add(entry.root);entry.root.visible=false;}
   let id='m4a1', current=arsenal[id];current.root.visible=true;
-  let phase=0,recoil=0,spark=0,aim=0,walk=0,loading=-1,reloadSignal=false;
+  let phase=0,recoil=0,spark=0,aim=0,walk=0,sprintBlend=0,loading=-1,reloadSignal=false;
   let swayX=0,swayY=0,tilt=0;
+  let wasGrounded=true,airOffset=0,landDip=0,landVel=0,camKickPitch=0,camKickRoll=0;
+  let curPivX=0,curPivY=-.012,curPivZ=.042;
   let aspect=1.7,draw=0,gesture=1,gestureDuration=.5,kind='',inspectT=1,loadDuration=1.45;
   const ease=(x,y,dt,rate)=>T.MathUtils.lerp(x,y,1-Math.exp(-rate*dt));
-  const butterflyMotion=createButterflyMotion(kind=>playMotionSound({kind,weapon:'butterfly',volume:.70,pan:.14}));
+  const butterflyMotion=createButterflyMotion((cue,spinSpeed=0)=>{
+    const boost=cue==='butterflySpin'?Math.min(.22,spinSpeed*.008):0;
+    playMotionSound({kind:cue,weapon:'butterfly',volume:Math.min(.92,.72+boost),pan:.13});
+  });
   function equip(value) {
     const raw=String(value?.id || value || '').toLowerCase().replace(/[-_ ]/g,'');
     const next=({grenade:'he',deserteagle:'deagle',ak:'ak47',m4:'m4a1',kukri:'nepal',kris:'malay'})[raw]||raw;
     if(!arsenal[next])return;
+    if(current.resetTrail)current.resetTrail();
     current.root.visible=false;id=next;current=arsenal[id];current.root.visible=true;
     current.root.position.set(0,0,0);draw=1;gesture=inspectT=1;loading=-1;reloadSignal=false;aim=0;recoil=spark=0;
+    camKickPitch=camKickRoll=0;camera.rotation.set(0,0,0);
     butterflyMotion.reset();
     if(id==='butterfly'){
       draw=0;
+      curPivX=PIVOT_TABLE[0][0];curPivY=PIVOT_TABLE[0][1];curPivZ=PIVOT_TABLE[0][2];
       butterflyMotion.draw();
     }
     flash.visible=false;flash.position.set(0,id==='deagle'?.029:.010,current.muzzle??-.5);
@@ -225,9 +283,9 @@ export function createViewModel(playMotionSound = () => {}) {
     loadDuration=Number.isFinite(duration)?Math.max(.30,duration):({awm:3.0,deagle:1.8,mp5:2.0,ak47:2.35,m4a1:2.15})[id];
     loading=0;inspectT=1;
   }
-  function shoot(action='primary'){
+  function shoot(action='primary',hitKind='air'){
     if(id==='butterfly'){
-      butterflyMotion.attack(action==='heavy'?'heavy':'light');
+      butterflyMotion.attack(action==='heavy'?'heavy':'light',hitKind);
       return;
     }
     inspectT=1;gesture=0;kind=action;
@@ -251,8 +309,13 @@ export function createViewModel(playMotionSound = () => {}) {
     const drop=Math.sin(Math.PI*T.MathUtils.clamp((t-.12)/.68,0,1));
     current.mag.position.set(-drop*(id==='deagle'?.013:.06),-drop*(id==='mp5'?.20:.17),drop*.05);
     current.mag.rotation.x=id==='ak47'?drop*.42:0;
-    current.hand.position.set(drop*.035,-drop*.054,drop*(id==='deagle'?.045:.12));
-    current.hand.rotation.x=drop*.19;
+    if(!current.isArticulatedButterfly){
+      current.hand.position.set(drop*.035,-drop*.054,drop*(id==='deagle'?.045:.12));
+      current.hand.rotation.x=drop*.19;
+    }else{
+      current.hand.position.set(0,0,0);
+      current.hand.rotation.set(0,0,0);
+    }
     draw=Math.max(0,draw-dt*(id==='awm'?2.8:melee?5.2:3.6));
     inspectT=Math.min(1,inspectT+dt*(melee?.78:.68));
     gesture=Math.min(1,gesture+dt/gestureDuration);
@@ -261,11 +324,27 @@ export function createViewModel(playMotionSound = () => {}) {
     const item=melee||id==='he';
     aim=ease(aim,values.aiming&&!item&&loading<0?1:0,dt,15);
     walk=ease(walk,values.moving?1:0,dt,10);
+    sprintBlend=ease(sprintBlend,values.sprinting?1:0,dt,9);
+
+    // Jump float & landing cushion physics
+    const groundedNow=values.grounded!==false;
+    const vy=Number(values.vy)||0;
+    let landImpulse=0;
+    if(groundedNow&&!wasGrounded){
+      landVel-=Math.min(.26,Math.max(.07,Math.abs(vy)*.024));
+      landImpulse=1;
+    }
+    wasGrounded=groundedNow;
+    airOffset=ease(airOffset,groundedNow?0:T.MathUtils.clamp(-vy*.0024,-.015,.018),dt,12);
+    landVel+=(-landDip*195-landVel*19)*dt;
+    landDip+=landVel*dt;
+    if(Math.abs(landDip)<1e-5&&Math.abs(landVel)<1e-4)landDip=landVel=0;
+
     const swayScale=1-.76*aim;
     swayX=ease(swayX,T.MathUtils.clamp((values.swayX||0)*swayScale,-.032,.032),dt,14);
     swayY=ease(swayY,T.MathUtils.clamp((values.swayY||0)*swayScale,-.026,.026),dt,14);
     tilt=ease(tilt,T.MathUtils.clamp((values.strafe||0)*swayScale,-1,1)*.048,dt,11);
-    phase+=dt*(values.moving?10:1.8);recoil*=Math.exp(-dt*24);spark-=dt;
+    phase+=dt*(values.moving?(values.sprinting?12.4:10):1.8);recoil*=Math.exp(-dt*24);spark-=dt;
     flash.visible=spark>0&&!item;
     if(current.action){
       const bolt=id==='awm'?Math.sin(Math.PI*T.MathUtils.clamp((gesture-.22)/.62,0,1)):0;
@@ -276,17 +355,84 @@ export function createViewModel(playMotionSound = () => {}) {
     const offset=Math.min(current.hipX,.160*aspect),idle=1-aim;
     const slash=melee?movement:0,throwing=id==='he'?movement:0;
     const heavy=kind==='heavy';
-    // Signature crisp melee draw flourish + weapon-specific slash/thrust + 360 inspect spin.
     const drawArc=melee?Math.sin(Math.PI*draw):0;
     let mx=0,my=0,mz=0,mrx=0,mry=0,mrz=0;
     if(melee){
-      if(id==='butterfly'){
-        if(values.alive===false)butterflyMotion.reset();
-        else butterflyMotion.update(dt);
-        const pose=butterflyMotion.pose;
-        mx=pose[0];my=pose[1];mz=pose[2];mrx=pose[3];mry=pose[4];mrz=pose[5];
-        for(let i=0;i<current.hinges.length;i++)current.hinges[i].rotation.x=pose[6+i];
-        if(current.knifePivot)current.knifePivot.rotation.set(pose[9],pose[10],pose[11]);
+      if(id==='butterfly'&&current.rigParts){
+        if(values.alive===false){
+          butterflyMotion.reset();
+          current.resetTrail?.();
+        }else{
+          butterflyMotion.update(dt,{swayX,swayY,landImpulse,moving:values.moving,sprinting:values.sprinting});
+        }
+        const p=butterflyMotion.pose;
+        const sec=butterflyMotion.secondary;
+        const rp=current.rigParts;
+
+        // Decoupled right arm/wrist 6-DOF pose + sprint cadence + impact rebound
+        const sprintSwing=sprintBlend*Math.sin(phase)*.012;
+        rp.rightRig.position.set(
+          rp.rightBasePos[0]+p[0]+sprintSwing,
+          rp.rightBasePos[1]+p[1]+airOffset*.55+landDip*.65,
+          rp.rightBasePos[2]+p[2]+sec.reboundZ
+        );
+        rp.rightRig.rotation.set(
+          rp.rightBaseRot[0]+p[3]-sprintBlend*.08+landDip*1.6,
+          rp.rightBaseRot[1]+p[4]+sprintSwing*1.8,
+          rp.rightBaseRot[2]+p[5]+sec.reboundRoll
+        );
+
+        // Articulated thumb, index fulcrum, and staggered lower grip fingers
+        const thumb=p[13], idxCurl=p[14], lowCurl=p[15];
+        // At thumb=0, thumb hugs +X/+Y spine cleanly; at thumb=1, posts slightly inward as rollover barrel
+        rp.thumbProximal.rotation.set(-.14*thumb,.18*thumb-.06,.34*thumb);
+        rp.thumbDistal.rotation.set(.08*thumb,-.12*thumb,-.10*(1-thumb));
+
+        // idxCurl: 1 = wrapped grip, 0 = open clear, < 0 = straight Chaplin axle threading right through V-notch!
+        if(idxCurl<0){
+          const ext=Math.min(1,-idxCurl/.42);
+          rp.indexProximal.rotation.set(.32*ext,.10*ext,.68*ext);
+          rp.indexDistal.rotation.set(0,.06*ext,-.32*ext);
+        }else{
+          const idxOpen=1-idxCurl;
+          rp.indexProximal.rotation.set(.10*idxOpen,0,-.82*idxOpen);
+          rp.indexDistal.rotation.set(0,0,-.95*idxOpen);
+        }
+
+        // lowerCurl: 1 = clenched around handles, 0 = swung down-right completely outside blade/handle YZ plane
+        rp.lowerFingers.rotation.set(.06*(1-lowCurl),0,-1.18*(1-lowCurl));
+
+        // Smooth dynamic rotation fulcrum (grip / thumb barrel / V-choil Chaplin / CoM aerial)
+        const modeIdx=Math.max(0,Math.min(3,Math.round(p[11])));
+        const targetPiv=PIVOT_TABLE[modeIdx];
+        curPivX=ease(curPivX,targetPiv[0],dt,34);
+        curPivY=ease(curPivY,targetPiv[1],dt,34);
+        curPivZ=ease(curPivZ,targetPiv[2],dt,34);
+        rp.spinPivot.position.set(curPivX,curPivY+p[12],curPivZ-p[12]*.24);
+        rp.knifeCarrier.position.set(-curPivX,-curPivY,-curPivZ);
+        rp.spinPivot.rotation.set(p[8],p[9],p[10]);
+
+        // True serial balisong revolute joints + spring-driven T-latch
+        rp.safeJoint.rotation.x=p[6];
+        rp.biteJoint.rotation.x=p[7];
+        rp.latchPivot.rotation.x=-sec.latchAngle;
+
+        // Independent left tactical guard hand (tucked cleanly off-screen at leftPose = 0!)
+        const lp=T.MathUtils.clamp(p[16]+sprintBlend*.18,0,1);
+        rp.leftRig.position.set(
+          -.195+lp*.048-Math.sin(phase)*.004*walk,
+          -.325+lp*.142+airOffset*.4+landDip*.5,
+          -.075-lp*.045
+        );
+        rp.leftRig.rotation.set(.18+lp*.28,-.22+lp*.18,.24-lp*.22);
+
+        // Viewmodel-only tactile camera micro-kick (world crosshair stays 100% rock-steady!)
+        const kickTarget=p[17];
+        camKickPitch=ease(camKickPitch,kickTarget*.0065,dt,28);
+        camKickRoll=ease(camKickRoll,-kickTarget*.0085,dt,28);
+        camera.rotation.set(camKickPitch,0,camKickRoll);
+
+        current.updateTrail?.(sec.trailIntensity);
       }else if(id==='nepal'){
         // Kukri wrist-flip draw + heavy sweeping cleaver arc.
         mx=-drawArc*.055-slash*(heavy?.16:.21);
@@ -310,9 +456,10 @@ export function createViewModel(playMotionSound = () => {}) {
         mrz=drawArc*1.2+slash*(heavy?.73:-.69)-inspection*.84;
       }
     }
+    const bflyScale=id==='butterfly'?.65:1;
     rig.position.set(
-      idle*(offset+Math.sin(phase)*(.0014+walk*.005))+lower*.034+mx-(melee?0:inspection*.10)-swayX,
-      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003)-lower*.044+recoil*.003-draw*(melee?.17:.24)+my+inspection*.027+throwing*.14+swayY,
+      idle*(offset+Math.sin(phase)*(.0014+walk*.005*bflyScale))+lower*.034+mx-(melee?0:inspection*.10)-swayX,
+      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003*bflyScale)-lower*.044+recoil*.003-draw*(melee?.17:.24)+my+inspection*.027+throwing*.14+swayY+(id==='butterfly'?0:airOffset+landDip),
       T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*(aim>.6?.021:.043)+lower*.038+draw*.07+mz-throwing*.12);
     rig.rotation.set(
       .045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*(melee?.35:.52)+mrx+throwing*.85+swayY*1.4,
@@ -330,6 +477,14 @@ export function createViewModel(playMotionSound = () => {}) {
       else if(loading<0&&gesture>=.98)inspectT=0;
     },
     setTeam(team){sleeveBand.color.set(team===1?0xae4c3b:0x47788b);},
+    initEnv(renderer){
+      if(scene.environment||!renderer)return;
+      const pmrem=new T.PMREMGenerator(renderer);
+      pmrem.compileEquirectangularShader();
+      const raw=maritimeStudioEnv();
+      scene.environment=pmrem.fromEquirectangular(raw).texture;
+      raw.dispose();
+      pmrem.dispose();
+    },
     resize(value){aspect=value;camera.aspect=value;camera.updateProjectionMatrix();update(0);}};
 }
-

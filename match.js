@@ -1,6 +1,6 @@
 import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js?v=7';
 import * as T from './three.module.js';
-import {arsenal,primaries,melees,isMelee,loadout,skills} from './arsenal.js?v=17';
+import {arsenal,primaries,melees,isMelee,loadout,skills} from './arsenal.js?v=21';
 import {matchRules,matchDuration} from './match-rules.js';
 
 const clamp = T.MathUtils.clamp;
@@ -555,13 +555,21 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(d.melee){
       if(knifeMode)attempts++;
       const heavy=!!secondary;shotTimer=heavy?d.heavyCd:d.lightCd;camera.getWorldDirection(dir);
-      const reach=heavy?d.heavyReach:d.reach;const hit=actorHit(p,camera.position,dir,wallDistance(camera.position,dir,reach));
+      const reach=heavy?d.heavyReach:d.reach;
+      const wallDist=wallDistance(camera.position,dir,reach);
+      const hit=actorHit(p,camera.position,dir,wallDist);
+      let hitKind='air';
       if(hit){
+        hitKind='flesh';
         const rear=Math.cos(hit.unit.yaw-p.yaw)>.5;
         const baseDmg=heavy?d.heavyDmg:d.lightDmg;
         damage(p,hit.unit,baseDmg*(rear?1.8:1)*(hit.head?1.3:1),w.id,hit.head);
-      }else{const dist=wallDistance(camera.position,dir,reach);if(dist<reach)world.fx.impact(camera.position.clone().addScaledVector(dir,dist),dir.clone().negate());}
-      view.shoot(heavy?'heavy':'light');
+      }else if(wallDist<reach){
+        hitKind='wall';
+        world.fx.impact(camera.position.clone().addScaledVector(dir,wallDist),dir.clone().negate());
+        sfx('clang',w.id,p,{volume:.26});
+      }
+      view.shoot(heavy?'heavy':'light',hitKind);
       if(w.id!=='butterfly')sfx(heavy?'heavy':'light',w.id);
       p.shield=0;return;
     }
@@ -979,7 +987,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     for(const b of bots){if(state.phase==='playing'&&b.alive)advanceBot(b,dt);}
     animate(clock,true);
     const swayDecay=Math.exp(-dt*12);
-    view.update(dt,{alive:p.alive,moving:p.alive&&p.walking,aiming:state.aiming,reloading:loadTimer>0,swayX:lookSwayX,swayY:lookSwayY,strafe:Number(!!keys.right)-Number(!!keys.left)});
+    view.update(dt,{alive:p.alive,moving:p.alive&&p.walking,sprinting:state.sprinting,crouching:p.crouch,grounded,vy:jumpVel,aiming:state.aiming,reloading:loadTimer>0,swayX:lookSwayX,swayY:lookSwayY,strafe:Number(!!keys.right)-Number(!!keys.left)});
     lookSwayX*=swayDecay;lookSwayY*=swayDecay;
     for(const t of tracerPool){if(t.left>0){t.left-=dt;if(t.left<=0)t.m.visible=false;}}
     for(let i=effects.length-1;i>=0;i--){const e=effects[i];e.left-=dt;if(e.left<=0){scene.remove(e.m);effects.splice(i,1);}}
