@@ -1,3 +1,19 @@
+import {isMelee} from './arsenal.js?v=17';
+
+const butterflyAssets = {
+  latch: new URL('./assets/butterfly/mechanical-latch-light.wav', import.meta.url).href,
+  swish: new URL('./assets/butterfly/swish-hard.wav', import.meta.url).href
+};
+// External foley starts just before its catalogued contact or peak.
+const butterflySounds = {
+  butterflyAir: {asset: 'swish', offset: .042, mix: .34, pitch: 2050, ring: .045, duration: .12},
+  butterflySpin: {asset: 'swish', offset: .038, mix: .42, pitch: 2680, ring: .095, duration: .11},
+  butterflyTick: {asset: 'latch', offset: .049, mix: .40, pitch: 2520, ring: .16, duration: .065},
+  butterflyCatch: {asset: 'latch', offset: .047, mix: .68, pitch: 1460, ring: .28, duration: .095},
+  butterflySlash: {asset: 'swish', offset: .044, mix: .68, pitch: 1620, ring: .12, duration: .125},
+  butterflyThrust: {asset: 'swish', offset: .042, mix: .74, pitch: 980, ring: .16, duration: .155}
+};
+
 // Short, cached Web Audio samples with idle prewarming and classic CF kill cues.
 export function createDeckAudio() {
   let context, samples, master;
@@ -44,7 +60,7 @@ export function createDeckAudio() {
   // Classic CrossFire transport-ship style kill / headshot / multi-kill / knife / grenade stingers.
   function cfKillSound(headshot, multi = 1, weapon = '', first = false) {
     const tau = 2 * Math.PI;
-    const knife = weapon === 'knife' || weapon === 'nepal' || weapon === 'malay';
+    const knife = isMelee(weapon);
     const grenade = weapon === 'he';
     const steps = [0, 2, 4, 7, 9, 12, 14, 16];
     const semi = steps[Math.min(Math.max(1, multi) - 1, steps.length - 1)];
@@ -134,13 +150,21 @@ export function createDeckAudio() {
     const key = kind + weapon + (head ? 'Head' : '');
     if (samples[key]) return samples[key];
     const freq = {ak47: 94, m4a1: 118, mp5: 155, awm: 61, deagle: 83}[weapon] || 110;
-    const isBlade = weapon === 'knife' || weapon === 'nepal' || weapon === 'malay';
-    const duration = {sea: 3.2, gull: .62, step: .18, land: .23, jump: .14, death: .22, hurt: .12, scope: .075, timber: .15, clang: .19, dry: .06, shot: weapon === 'awm' ? .52 : .24, explode: .75, bolt: .34, reload: .42, bounce: .11, pulse: .21, hit: .09, equip: isBlade ? .26 : .14, light: isBlade ? .18 : .14, heavy: isBlade ? .28 : .18}[kind] || .14;
+    const isBlade = isMelee(weapon);
+    const motion = butterflySounds[kind];
+    const duration = motion?.duration ?? ({sea: 3.2, gull: .62, step: .18, land: .23, jump: .14, death: .22, hurt: .12, scope: .075, timber: .15, clang: .19, dry: .06, shot: weapon === 'awm' ? .52 : .24, explode: .75, bolt: .34, reload: .42, bounce: .11, pulse: .21, hit: .09, equip: isBlade ? .26 : .14, light: isBlade ? .18 : .14, heavy: isBlade ? .28 : .18}[kind] || .14);
     let seed = 3492, lp = 0;
     samples[key] = makeSample(duration, t => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       const white = seed / 2147483648 - 1;
       lp += .15 * (white - lp);
+      if (motion) {
+        const contact = motion.asset === 'latch';
+        const noise = (white - lp) * (contact ? .24 * Math.exp(-330 * t) : .23 * Math.sin(Math.PI * t / duration));
+        const phase = 2 * Math.PI * motion.pitch * t;
+        const metal = (Math.sin(phase) + .35 * Math.sin(phase * 1.87)) * motion.ring * Math.exp(-57 * t);
+        return noise + metal;
+      }
       if (kind === 'shot') {
         if (weapon === 'awm') {
           // Signature CS AWP heavy cannon crack + deep sub punch + deck reverb tail.
@@ -220,6 +244,7 @@ export function createDeckAudio() {
     () => sampleFor('clang'), () => sampleFor('timber'),
     () => sampleFor('equip', 'nepal'), () => sampleFor('equip', 'malay'), () => sampleFor('equip', 'knife'),
     () => sampleFor('light', 'nepal'), () => sampleFor('heavy', 'nepal'),
+    ...Object.keys(butterflySounds).map(kind => () => sampleFor(kind, 'butterfly')),
     () => sampleFor('sea'), () => sampleFor('hurt'), () => sampleFor('death')
   ];
 
@@ -249,6 +274,13 @@ export function createDeckAudio() {
       master.gain.value = volume;
       master.connect(context.destination);
       samples = {};
+      for (const [asset, url] of Object.entries(butterflyAssets)) {
+        fetch(url)
+          .then(response => response.ok ? response.arrayBuffer() : null)
+          .then(data => data && context.decodeAudioData(data))
+          .then(buffer => { if (buffer) samples[asset] = buffer; })
+          .catch(() => {}); // The synthesized layer remains available if the asset cannot be loaded.
+      }
       return true;
     } catch {
       return false;
@@ -261,7 +293,7 @@ export function createDeckAudio() {
     schedulePrewarm();
   }
 
-  function play(buffer, level = 1, pan = 0) {
+  function play(buffer, level = 1, pan = 0, offset = 0) {
     if (!enabled || context?.state !== 'running' || !buffer) return;
     if (level < .025) return;
     if (playing.size >= 40 && level < .35) return;
@@ -278,7 +310,7 @@ export function createDeckAudio() {
       source.disconnect(); gain.disconnect(); stereo?.disconnect();
       playing.delete(source);
     };
-    source.start();
+    source.start(0, offset);
   }
 
   function reset() {
@@ -331,7 +363,7 @@ export function createDeckAudio() {
     if (kind === 'kill' || kind === 'headshot') {
       const head = kind === 'headshot' || !!opts.head;
       const multi = Math.max(1, Math.min(8, Number(opts.multi) || 1));
-      const weapon = (opts.weapon === 'knife' || opts.weapon === 'nepal' || opts.weapon === 'malay' || opts.weapon === 'he') ? opts.weapon : '';
+      const weapon = isMelee(opts.weapon) || opts.weapon === 'he' ? opts.weapon : '';
       const first = !!opts.first;
       const key = 'kill_' + (head ? 'h' : 'b') + '_' + multi + '_' + weapon + '_' + (first ? 'f' : '');
       if (!samples[key]) samples[key] = cfKillSound(head, multi, weapon, first);
@@ -342,7 +374,10 @@ export function createDeckAudio() {
   function sfx({kind, weapon = '', volume: level = 1, pan = 0, head = false}) {
     if (!enabled || !samples) return;
     if (level < .025) return;
-    play(sampleFor(kind, weapon, head), level, Math.max(-1, Math.min(1, pan)));
+    const spread = Math.max(-1, Math.min(1, pan));
+    const motion = butterflySounds[kind];
+    if (motion) play(samples[motion.asset], level * motion.mix, spread, motion.offset);
+    play(sampleFor(kind, weapon, head), level, spread);
   }
 
   function setVolume(v) {

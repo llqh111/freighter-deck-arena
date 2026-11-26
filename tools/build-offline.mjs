@@ -16,22 +16,29 @@ try {
   else throw new Error('esbuild not found. Install it or set ESBUILD_PATH.');
 }
 
-const skyB64 = fs.readFileSync(path.join(root, 'freighter-sky.webp')).toString('base64');
-const skyDataUri = `"data:image/webp;base64,${skyB64}"`;
 const svgB64 = fs.readFileSync(path.join(root, 'mark.svg')).toString('base64');
 const svgDataUri = `data:image/svg+xml;base64,${svgB64}`;
+const inlineTypes = {
+  './freighter-sky.webp': 'image/webp',
+  './assets/butterfly/mechanical-latch-light.wav': 'audio/wav',
+  './assets/butterfly/swish-hard.wav': 'audio/wav'
+};
 
-const stripQueryAndInlineSky = {
+const offlineAssets = {
   name: 'freighter-offline',
   setup(build) {
     build.onResolve({filter: /\?v=\d+$/}, args => ({
       path: path.resolve(args.resolveDir, args.path.replace(/\?v=\d+$/, ''))
     }));
-    build.onLoad({filter: /world\.js$/}, async args => {
+    build.onLoad({filter: /(?:world|deck-audio)\.js$/}, async args => {
       let contents = await fs.promises.readFile(args.path, 'utf8');
       contents = contents.replace(
-        /new URL\(['"]\.\/freighter-sky\.webp['"]\s*,\s*import\.meta\.url\)\.href/,
-        skyDataUri
+        /new URL\(['"](\.\/[^'"]+)['"]\s*,\s*import\.meta\.url\)\.href/g,
+        (expression, asset) => {
+          if (!inlineTypes[asset]) return expression;
+          const base64 = fs.readFileSync(path.join(root, asset)).toString('base64');
+          return JSON.stringify(`data:${inlineTypes[asset]};base64,${base64}`);
+        }
       );
       return {contents, loader: 'js'};
     });
@@ -45,12 +52,13 @@ const result = await esbuild.build({
   minify: true,
   target: ['es2020'],
   write: false,
-  plugins: [stripQueryAndInlineSky]
+  plugins: [offlineAssets]
 });
 
 const bundleJs = result.outputFiles[0].text.replace(/<\/script>/gi, '<\\/script>');
 const css = fs.readFileSync(path.join(root, 'ui.css'), 'utf8');
-const license = fs.readFileSync(path.join(root, 'THREE-LICENSE.txt'), 'utf8').trim();
+const notices = ['THREE-LICENSE.txt', 'assets/butterfly/NOTICE.txt']
+  .map(file => fs.readFileSync(path.join(root, file), 'utf8').trim()).join('\n\n');
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
 html = html.replace(/<link rel="modulepreload"[^>]*>/g, '');
@@ -65,7 +73,7 @@ html = html.replace(
 );
 html = html.replace(
   /<\/body><\/html>\s*$/,
-  () => `<script type="text/plain" id="third-party-notices">\n${license}\n</script></body></html>`
+  () => `<script type="text/plain" id="third-party-notices">\n${notices}\n</script></body></html>`
 );
 
 const outPath = path.join(root, 'transport-ship.html');

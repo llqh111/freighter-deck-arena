@@ -1,4 +1,4 @@
-// Valorant-style Crosshair Studio: code parser/exporter + crisp symmetrical SVG renderer.
+// Crosshair Studio profile conversion and pixel-aligned drawing.
 const STORAGE_KEY = 'df-crosshair';
 
 export const VAL_COLORS = {
@@ -22,17 +22,22 @@ export const CROSSHAIR_PRESETS = [
 export const DEFAULT_CROSSHAIR = {...CROSSHAIR_PRESETS[0].cfg};
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const profileNumbers = ['c', 'h', 'o', 'd', 'z', '0b', '0l', '0t', '0o', '0a'];
 
 export function normalizeCrosshair(raw = {}) {
+  const number = key => {
+    const value = Number(raw[key] ?? DEFAULT_CROSSHAIR[key]);
+    return Number.isFinite(value) ? value : DEFAULT_CROSSHAIR[key];
+  };
   return {
     color: /^#[0-9a-fA-F]{6}$/.test(raw.color || '') ? raw.color.toLowerCase() : DEFAULT_CROSSHAIR.color,
-    length: clamp(Math.round(Number(raw.length ?? DEFAULT_CROSSHAIR.length)), 0, 12),
-    thickness: clamp(Math.round(Number(raw.thickness ?? DEFAULT_CROSSHAIR.thickness)), 1, 5),
-    offset: clamp(Math.round(Number(raw.offset ?? DEFAULT_CROSSHAIR.offset)), 0, 8),
+    length: clamp(Math.round(number('length')), 0, 12),
+    thickness: clamp(Math.round(number('thickness')), 1, 5),
+    offset: clamp(Math.round(number('offset')), 0, 8),
     outline: raw.outline !== undefined ? !!raw.outline : true,
     dot: !!raw.dot,
-    dotSize: clamp(Math.round(Number(raw.dotSize ?? 2)), 1, 5),
-    opacity: clamp(Number(raw.opacity ?? 1), .25, 1)
+    dotSize: clamp(Math.round(number('dotSize')), 1, 5),
+    opacity: clamp(number('opacity'), .25, 1)
   };
 }
 
@@ -54,34 +59,38 @@ export function saveCrosshair(cfg) {
 export function parseValorantCode(code) {
   const text = String(code || '').trim();
   if (!text || !text.includes(';')) return null;
-  const parts = text.split(';');
+  const parts = text.split(';').map(part => part.trim());
   // Focus on Primary profile section 'P' if present, otherwise parse all tokens.
   let start = parts.indexOf('P');
-  if (start < 0) start = 0; else start += 1;
-  const map = {};
-  for (let i = start; i + 1 < parts.length; i += 2) {
-    const k = parts[i];
+  if (start < 0) start = parts[0] === '0' ? 1 : 0; else start += 1;
+  const map = Object.create(null);
+  for (let i = start; i < parts.length; i += 2) {
+    const k = parts[i], value = parts[i + 1];
     if (k === 'A' || k === 'S') break; // Stop at ADS / Sniper section.
-    map[k] = parts[i + 1];
+    if (!k || !value) return null;
+    map[k] = value;
   }
-  if (!Object.keys(map).length) return null;
-
-  let color = '#ffffff';
-  if (map.u && /^[0-9a-fA-F]{6,8}$/.test(map.u)) {
-    color = '#' + map.u.slice(0, 6).toLowerCase();
-  } else if (map.c !== undefined && VAL_COLORS[Number(map.c)]) {
-    color = VAL_COLORS[Number(map.c)];
+  const numericFields = profileNumbers.filter(key => key in map);
+  if (!numericFields.length && !('u' in map)) return null;
+  for (const key of numericFields) {
+    const value = Number(map[key]);
+    if (!Number.isFinite(value)) return null;
+    map[key] = value;
   }
-  const showInner = map['0b'] === undefined ? true : Number(map['0b']) !== 0;
-  const length = showInner ? (map['0l'] !== undefined ? Number(map['0l']) : 4) : 0;
-  const thickness = map['0t'] !== undefined ? Number(map['0t']) : 2;
-  const offset = map['0o'] !== undefined ? Number(map['0o']) : 2;
-  const outline = map.h !== undefined ? Number(map.h) !== 0 : (map.o !== undefined ? Number(map.o) > 0 : true);
-  const dot = map.d !== undefined ? Number(map.d) !== 0 : false;
-  const dotSize = map.z !== undefined ? Number(map.z) : 2;
-  const opacity = map['0a'] !== undefined ? Number(map['0a']) : 1;
+  if ('u' in map && !/^(?:[0-9a-f]{6}|[0-9a-f]{8})$/i.test(map.u)) return null;
+  if ('c' in map && !(map.c in VAL_COLORS) && !(map.c === 8 && map.u)) return null;
 
-  return normalizeCrosshair({color, length, thickness, offset, outline, dot, dotSize, opacity});
+  const cfg = normalizeCrosshair({
+    color: map.u ? '#' + map.u.slice(0, 6) : VAL_COLORS[map.c],
+    length: map['0b'] === 0 ? 0 : (map['0l'] ?? 4),
+    thickness: map['0t'],
+    offset: map['0o'] ?? 2,
+    outline: map.h === undefined ? (map.o ?? 1) > 0 : map.h !== 0,
+    dot: !!map.d,
+    dotSize: map.z,
+    opacity: map['0a']
+  });
+  return cfg.length || cfg.dot ? cfg : null;
 }
 
 export function exportValorantCode(cfg) {
@@ -101,11 +110,9 @@ export function exportValorantCode(cfg) {
   return tokens.join(';');
 }
 
-// Render on an exact physical-pixel Canvas (DPR-aware) so arms and 1px outlines
-// are 100% symmetrical on 100%, 125%, 150%, 175%, and 200% Windows DPI scaling.
-export function buildCrosshairImage(cfg) {
+// Draw the sprite at its final physical-pixel size.
+function buildCrosshairSprite(cfg, dpr) {
   const c = normalizeCrosshair(cfg);
-  const dpr = Math.max(1, Number(globalThis.devicePixelRatio) || 1);
   const scale = v => Math.max(1, Math.round(v * dpr));
 
   const pt = scale(c.thickness);
@@ -172,25 +179,34 @@ export function buildCrosshairImage(cfg) {
     for (const [x, y, w, h] of rects) ctx.fillRect(x, y, w, h);
   }
 
-  const cssSize = physSize / dpr;
-  return {cssSize, physSize, dpr, url: `url("${canvas.toDataURL('image/png')}")`};
+  return canvas;
 }
 
-export function applyCrosshair(el, cfg, snapViewport = false) {
-  if (!el) return;
-  const {cssSize, physSize, dpr, url} = buildCrosshairImage(cfg);
-  el.style.width = cssSize + 'px';
-  el.style.height = cssSize + 'px';
-  el.style.backgroundImage = url;
-  el.style.backgroundSize = `${cssSize}px ${cssSize}px`;
-  if (snapViewport) {
-    // Snap element top-left to exact physical pixel boundary to prevent half-pixel blur/shift.
-    const leftPhys = Math.floor((innerWidth * dpr - physSize) / 2);
-    const topPhys = Math.floor((innerHeight * dpr - physSize) / 2);
-    el.style.left = (leftPhys / dpr) + 'px';
-    el.style.top = (topPhys / dpr) + 'px';
-    el.style.transform = 'none';
-  }
+export function drawViewportCrosshair(canvas, cfg, size) {
+  const dpr = devicePixelRatio || 1;
+  const scaledWidth = Math.round(innerWidth * dpr);
+  const scaledHeight = Math.round(innerHeight * dpr);
+  // A device-pixel box can still describe the previous size during a resize.
+  const width = Math.abs(size?.inlineSize - scaledWidth) <= 1 ? size.inlineSize : scaledWidth;
+  const height = Math.abs(size?.blockSize - scaledHeight) <= 1 ? size.blockSize : scaledHeight;
+  if (!width || !height) return;
+
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  const sprite = buildCrosshairSprite(cfg, dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(sprite, Math.floor((width - sprite.width) / 2), Math.floor((height - sprite.height) / 2));
+}
+
+export function applyCrosshair(el, cfg) {
+  const dpr = devicePixelRatio || 1;
+  const sprite = buildCrosshairSprite(cfg, dpr);
+  const cssSize = sprite.width / dpr + 'px';
+  el.style.width = cssSize;
+  el.style.height = cssSize;
+  el.style.backgroundImage = `url("${sprite.toDataURL('image/png')}")`;
+  el.style.backgroundSize = `${cssSize} ${cssSize}`;
 }
 
 export function studioMarkup(cfg) {
@@ -216,9 +232,9 @@ export function studioMarkup(cfg) {
       <button type="button" id="xhCopy" class="secondary">复制</button>
     </div>
     <div class="row"><span>颜色</span><div class="swatches">${swatches}<input type="color" id="xhColor" value="${c.color}" title="自定义颜色"></div></div>
-    <div class="row"><label for="xhLen">臂长</label><input type="range" id="xhLen" min="0" max="10" step="1" value="${c.length}"><output>${c.length}</output></div>
-    <div class="row"><label for="xhThick">粗细</label><input type="range" id="xhThick" min="1" max="4" step="1" value="${c.thickness}"><output>${c.thickness}</output></div>
-    <div class="row"><label for="xhOff">中空偏移</label><input type="range" id="xhOff" min="0" max="6" step="1" value="${c.offset}"><output>${c.offset}</output></div>
+    <div class="row"><label for="xhLen">臂长</label><input type="range" id="xhLen" min="0" max="12" step="1" value="${c.length}"><output>${c.length}</output></div>
+    <div class="row"><label for="xhThick">粗细</label><input type="range" id="xhThick" min="1" max="5" step="1" value="${c.thickness}"><output>${c.thickness}</output></div>
+    <div class="row"><label for="xhOff">中空偏移</label><input type="range" id="xhOff" min="0" max="8" step="1" value="${c.offset}"><output>${c.offset}</output></div>
     <div class="row"><label for="xhDotSize">中心点大小</label><input type="range" id="xhDotSize" min="1" max="5" step="1" value="${c.dotSize}"><output>${c.dotSize}</output></div>
     <div class="xhToggles">
       <button type="button" id="xhOutline" class="secondary" aria-pressed="${c.outline}">黑边描边：${c.outline ? '开' : '关'}</button>

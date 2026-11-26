@@ -1,11 +1,11 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=13';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=17';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=7';
-import {createMatch} from './match.js?v=13';
-import {createViewModel} from './viewmodel.js?v=13';
-import {isMelee,melees} from './arsenal.js?v=13';
-import {createDeckAudio} from './deck-audio.js?v=13';
-import {loadCrosshair,saveCrosshair,applyCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=14';
+import {createMatch} from './match.js?v=17';
+import {createViewModel} from './viewmodel.js?v=17';
+import {isMelee,melees} from './arsenal.js?v=17';
+import {createDeckAudio} from './deck-audio.js?v=17';
+import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -33,8 +33,27 @@ function showDialog(kind,sub,title,html){
   if(!panel.open)panel.showModal();
 }
 let crosshairCfg=loadCrosshair();
-applyCrosshair($('cross'),crosshairCfg,true);
-const prefs={team:0,size:6,goal:50,diff:'normal',primary:'ak47',melee:'nepal',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
+let crosshairViewport;
+function updateCrosshair(){drawViewportCrosshair($('cross'),crosshairCfg,crosshairViewport);}
+updateCrosshair();
+if(typeof ResizeObserver==='function'){
+  // The game viewport keeps its layout size while the HUD or the crosshair is hidden.
+  const observer=new ResizeObserver(([entry])=>{
+    crosshairViewport=entry.devicePixelContentBoxSize?.[0];
+    updateCrosshair();
+  });
+  try{observer.observe(canvas,{box:'device-pixel-content-box'});}
+  catch{observer.observe(canvas);}
+}
+function watchCrosshairScale(){
+  const resolution=matchMedia('(resolution: '+devicePixelRatio+'dppx)');
+  resolution.addEventListener('change',()=>{
+    updateCrosshair();
+    watchCrosshairScale();
+  },{once:true});
+}
+watchCrosshairScale();
+const prefs={mode:'tdm',team:0,size:6,goal:50,diff:'normal',primary:'ak47',melee:'nepal',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
   if(['ak47','m4a1','awm','mp5'].includes(saved.primary))prefs.primary=saved.primary;
@@ -42,8 +61,17 @@ try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   if(Number.isFinite(saved.vol))prefs.vol=T.MathUtils.clamp(saved.vol,0,1);if(Number.isFinite(saved.fov))prefs.fov=T.MathUtils.clamp(saved.fov,65,100);
 }catch{}
 function save(){try{localStorage.setItem('df-lobby',JSON.stringify(prefs));}catch{}}
-function summary(){$('statSize').innerHTML=prefs.size+' <em>VS</em> '+prefs.size;$('statGoal').textContent=prefs.goal;$('statTime').textContent=prefs.size===3?'05:00':'10:00';$('primaryName').textContent=names[prefs.primary]+' · '+names[prefs.melee];}
+function summary(){
+  const knife=prefs.mode==='knife', sz=knife?3:prefs.size;
+  const eyebrow=document.querySelector('.eyebrow');
+  if(eyebrow)eyebrow.innerHTML=knife?'<b></b>3v3 刀战 <span>/</span> KNIFE FIGHT':'<b></b>团队竞技 <span>/</span> TEAM DEATHMATCH';
+  $('statSize').innerHTML=sz+' <em>VS</em> '+sz;
+  $('statGoal').textContent=prefs.goal;
+  $('statTime').textContent=(knife||sz===3)?'05:00':'10:00';
+  $('primaryName').textContent=knife?('纯近战 · '+names[prefs.melee]):(names[prefs.primary]+' · '+names[prefs.melee]);
+}
 function applyPref(key){
+  if(key==='mode'&&prefs.mode==='knife')prefs.size=3;
   if(key==='tod')world?.setTime(prefs.tod);
   if(key==='quality'){world?.setQuality(prefs.quality);if(renderer&&view)resize();}
   if(renderer&&(key==='tod'||key==='quality'))renderer.shadowMap.needsUpdate=true;
@@ -51,18 +79,28 @@ function applyPref(key){
   if(key==='vol')deckAudio.setVolume(prefs.vol);
   frameDirty=true;save();summary();
 }
+function syncSetupLocks(){
+  const knife=prefs.mode==='knife';
+  for(const btn of panel.querySelectorAll('[data-pref=size]')){
+    const v=Number(btn.dataset.value);
+    btn.disabled=knife&&v!==3;
+    btn.setAttribute('aria-pressed',String((knife?3:prefs.size)===v));
+  }
+}
 function bindPrefs(){
   for(const btn of panel.querySelectorAll('[data-pref]'))btn.onclick=()=>{
     const key=btn.dataset.pref;prefs[key]=typeof prefs[key]==='number'?Number(btn.dataset.value):btn.dataset.value;
-    for(const peer of btn.parentElement.querySelectorAll('button'))peer.setAttribute('aria-pressed',String(peer===btn));applyPref(key);
+    for(const peer of btn.parentElement.querySelectorAll('button'))peer.setAttribute('aria-pressed',String(peer===btn));applyPref(key);syncSetupLocks();
   };
+  syncSetupLocks();
 }
 function armory(inGame=false){
   if(inGame){if(mode==='playing')match.pause();setMode('paused');release();}
-  showDialog(inGame?'loadout':'armory','LOADOUT','选择主武器与近战',
-    '<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary)+
-    '<div class="sectionTitle">近战武器 MELEE（滚轮下滚秒切刀 · F 键转刀检视）</div>'+meleeChoices(prefs.melee)+
-    '<p class="panelNote">副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。</p>');
+  const knife=(inGame?match?.state?.mode:prefs.mode)==='knife';
+  showDialog(inGame?'loadout':'armory','LOADOUT',knife?'选择近战武器（3v3 刀战）':'选择主武器与近战',
+    (knife?'':'<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary))+
+    '<div class="sectionTitle">近战武器 MELEE（'+(prefs.wheel==='val'?'上滚切刀 · ':'')+'F / Y 检视 · 蝴蝶刀 R 连转）</div>'+meleeChoices(prefs.melee)+
+    '<p class="panelNote">'+(knife?'当前为 3v3 刀战模式，全场仅使用近战武器。出生区内更换近战立即生效，离开出生区后在下次复活时领取。':'副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。')+'</p>');
   for(const b of panel.querySelectorAll('[data-weapon]'))b.onclick=()=>{
     prefs.primary=b.dataset.weapon;save();summary();
     for(const p of panel.querySelectorAll('[data-weapon]'))p.setAttribute('aria-pressed',String(p===b));
@@ -78,7 +116,7 @@ function crosshairStudio(){
   showDialog('crosshair','CROSSHAIR STUDIO','自定义准星工坊',studioMarkup(crosshairCfg));
   const sync=(cfg)=>{
     crosshairCfg=saveCrosshair(cfg);
-    applyCrosshair($('cross'),crosshairCfg,true);
+    updateCrosshair();
     for(const s of panel.querySelectorAll('.xhSample'))applyCrosshair(s,crosshairCfg);
     const codeInput=$('xhCode');if(codeInput&&document.activeElement!==codeInput)codeInput.value=exportValorantCode(crosshairCfg);
     $('xhColor').value=crosshairCfg.color;
@@ -105,7 +143,7 @@ function crosshairStudio(){
   $('xhDot').onclick=()=>sync({...crosshairCfg,dot:!crosshairCfg.dot});
   $('xhImport').onclick=()=>{
     const parsed=parseValorantCode($('xhCode').value);
-    if(!parsed){notify('准星代码格式无效，请粘贴完整的无畏契约准星代码。');return;}
+    if(!parsed){notify('未导入，已保留当前准星。请检查代码格式，工坊仅支持主准星的内线和中心点。');return;}
     sync(parsed);notify('已成功导入无畏契约准星代码！');
   };
   $('xhCopy').onclick=()=>{
@@ -113,8 +151,8 @@ function crosshairStudio(){
     navigator.clipboard?.writeText(code).then(()=>notify('已复制无畏契约准星代码')).catch(()=>notify('代码：'+code));
   };
 }
-function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['team','size','goal','diff','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
-const controlRows=()=>coarse?'<p class="panelNote">左侧摇杆移动，右侧拖动转向。轻点武器栏选择装备，暂停菜单可换装或查看战绩。</p>':[['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],['射击 / 瞄准或重击','鼠标左键 / 右键'],['滚轮切刀 / 快切','下滚秒切刀 · 上滚主枪 / Q'],['武器槽 / 转刀检视 / 换装','1–4 / F / B'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
+function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['mode','team','size','goal','diff','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
+const controlRows=()=>coarse?'<p class="panelNote">左侧摇杆移动，右侧拖动转向。轻点武器栏选择装备，暂停菜单可换装或查看战绩。</p>':[['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],['射击 / 瞄准或重击','鼠标左键 / 右键'],['快捷滚轮','下滚主枪 · 上滚切刀'],['快切','Q'],['武器槽 / 检视 / 换装','1–4 / F,Y / B'],['蝴蝶刀连转','F / R 连按'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
 function settings(){
   let ranges='';for(const [id,name,min,max,step,value] of [['sens','视角灵敏度',.2,3,.05,sensitivity],['fov','视野',65,100,1,prefs.fov],['vol','音量',0,1,.05,prefs.vol]])ranges+='<div class="row"><label for="'+id+'">'+name+'</label><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'"><output>'+value+'</output></div>';
   showDialog('settings','CONTROLS','设置与操作',ranges+selectors(prefs,['wheel','tod','quality'])+'<div class="row"><span>自定义准星</span><button id="openXhFromSet" class="secondary">打开准星工坊</button></div>'+controlRows()+'<div class="row"><span>游戏声音</span><button id="audioToggle" class="secondary">'+(sound?'开启':'关闭')+'</button></div>');
@@ -348,7 +386,7 @@ function hudEvent(type,data){
   if(type==='hud'){
     put('blue',String(data.score[0]).padStart(2,'0'));put('red',String(data.score[1]).padStart(2,'0'));
     put('hp',data.hp);put('ammo',isMelee(data.weapon)?'∞':data.ammo);put('reserve',data.reserve);
-    put('goalText','目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
+    put('goalText',(data.mode==='knife'?'3v3 刀战 · ':'')+'目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
     $('scopeOverlay').hidden=!data.zoom||!data.alive;
     $('adsOverlay').hidden=!data.aiming||!!data.zoom||!data.alive;
     put('aimName',data.aimName||'');$('aimName').style.color=data.aimTeam===data.team?'var(--ice)':'var(--red)';
@@ -403,7 +441,7 @@ for(const kind of ['keydown','keyup'])addEventListener(kind,e=>{
   if(down&&!e.repeat){
     if(/^Digit[1-4]$/.test(e.code))match.input('slot',Number(e.code.at(-1))-1);
     if(e.code==='KeyQ')match.input('last',true);
-    if(e.code==='KeyF')view.inspect();
+    if((e.code==='KeyY'||e.code==='KeyF')&&match.state.alive)view.inspect();
     if(e.code==='KeyB'){e.preventDefault();armory(true);return;}
   }
   if(keys[e.code]){e.preventDefault();match.input(keys[e.code],down);}
@@ -418,7 +456,7 @@ canvas.addEventListener('wheel',e=>{
   lastWheelAt=now;
   const dir=Math.sign(e.deltaY);
   if(!dir)return;
-  if(prefs.wheel==='val')match.input('wheelVal',dir);
+  if(prefs.wheel==='val')match.input('wheelQuick',dir);
   else match.input('cycle',dir);
 },{passive:false});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
@@ -494,7 +532,8 @@ for(const btn of document.querySelectorAll('[data-touch]')){
 function resize(){
   const w=innerWidth,h=innerHeight,aspect=w/h;
   renderer.setPixelRatio(Math.min(devicePixelRatio,prefs.quality==='low'?1:prefs.quality==='medium'?1.3:1.8));renderer.setSize(w,h,false);
-  for(const c of [camera,fly]){c.aspect=aspect;c.updateProjectionMatrix();}view.resize(aspect);applyCrosshair($('cross'),crosshairCfg,true);frameDirty=true;
+  for(const c of [camera,fly]){c.aspect=aspect;c.updateProjectionMatrix();}view.resize(aspect);
+  updateCrosshair();frameDirty=true;
 }
 function render(time){
   const t=time*.001,dt=Math.min(.08,Math.max(0,t-elapsed));elapsed=t;
@@ -557,7 +596,7 @@ async function init(){
   try{
     renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});renderer.autoClear=false;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-    world=buildWorld(scene);view=createViewModel();match=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov'])applyPref(key);setSound();resize();
+    world=buildWorld(scene);view=createViewModel(deckAudio.sfx);match=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov'])applyPref(key);setSound();resize();
     await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);
     $('deploy').disabled=false;$('deployLabel').textContent='开始对局';$('readyText').textContent='甲板就绪';addEventListener('resize',resize);

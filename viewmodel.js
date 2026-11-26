@@ -1,4 +1,6 @@
-import {buildArmory} from './armory-models.js?v=13';
+import {buildArmory} from './armory-models.js?v=17';
+import {isMelee} from './arsenal.js?v=17';
+import {createButterflyMotion} from './butterfly-motion.js?v=17';
 import * as T from './three.module.js';
 
 function brushedSurface(fabric = false) {
@@ -47,7 +49,7 @@ function bake(group) {
   }
 }
 
-export function createViewModel() {
+export function createViewModel(playMotionSound = () => {}) {
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(48, 1, .015, 5);
   const rig = new T.Group();
@@ -197,26 +199,39 @@ export function createViewModel() {
   let swayX=0,swayY=0,tilt=0;
   let aspect=1.7,draw=0,gesture=1,gestureDuration=.5,kind='',inspectT=1,loadDuration=1.45;
   const ease=(x,y,dt,rate)=>T.MathUtils.lerp(x,y,1-Math.exp(-rate*dt));
-  const isMeleeId=k=>k==='knife'||k==='nepal'||k==='malay';
+  const butterflyMotion=createButterflyMotion(kind=>playMotionSound({kind,weapon:'butterfly',volume:.70,pan:.14}));
   function equip(value) {
     const raw=String(value?.id || value || '').toLowerCase().replace(/[-_ ]/g,'');
     const next=({grenade:'he',deserteagle:'deagle',ak:'ak47',m4:'m4a1',kukri:'nepal',kris:'malay'})[raw]||raw;
     if(!arsenal[next])return;
     current.root.visible=false;id=next;current=arsenal[id];current.root.visible=true;
     current.root.position.set(0,0,0);draw=1;gesture=inspectT=1;loading=-1;reloadSignal=false;aim=0;recoil=spark=0;
+    butterflyMotion.reset();
+    if(id==='butterfly'){
+      draw=0;
+      butterflyMotion.draw();
+    }
     flash.visible=false;flash.position.set(0,id==='deagle'?.029:.010,current.muzzle??-.5);
   }
   function flourish(){
-    if(isMeleeId(id)&&gesture>=.85){draw=.88;inspectT=1;}
+    if(id==='butterfly')butterflyMotion.flourish();
+    else if(isMelee(id)&&gesture>=.85){draw=.88;inspectT=1;}
+  }
+  function fidget(){
+    if(id==='butterfly')butterflyMotion.fidget();
   }
   function reload(duration) {
-    if(id==='he'||isMeleeId(id)||loading>=0)return;
+    if(id==='he'||isMelee(id)||loading>=0)return;
     loadDuration=Number.isFinite(duration)?Math.max(.30,duration):({awm:3.0,deagle:1.8,mp5:2.0,ak47:2.35,m4a1:2.15})[id];
     loading=0;inspectT=1;
   }
   function shoot(action='primary'){
+    if(id==='butterfly'){
+      butterflyMotion.attack(action==='heavy'?'heavy':'light');
+      return;
+    }
     inspectT=1;gesture=0;kind=action;
-    if(isMeleeId(id)){
+    if(isMelee(id)){
       if(id==='malay')gestureDuration=action==='heavy'?.68:.26;
       else if(id==='nepal')gestureDuration=action==='heavy'?.78:.38;
       else gestureDuration=action==='heavy'?.74:.35;
@@ -229,7 +244,7 @@ export function createViewModel() {
   }
   function update(dt, values={}) {
     dt=Math.max(0,Math.min(dt,.1));
-    const melee=isMeleeId(id);
+    const melee=isMelee(id);
     if(values.reloading&&!reloadSignal)reload();reloadSignal=!!values.reloading;
     if(loading>=0){loading+=dt/loadDuration;if(loading>=1)loading=-1;}
     const t=Math.max(0,loading), lower=Math.sin(Math.PI*t);
@@ -265,7 +280,14 @@ export function createViewModel() {
     const drawArc=melee?Math.sin(Math.PI*draw):0;
     let mx=0,my=0,mz=0,mrx=0,mry=0,mrz=0;
     if(melee){
-      if(id==='nepal'){
+      if(id==='butterfly'){
+        if(values.alive===false)butterflyMotion.reset();
+        else butterflyMotion.update(dt);
+        const pose=butterflyMotion.pose;
+        mx=pose[0];my=pose[1];mz=pose[2];mrx=pose[3];mry=pose[4];mrz=pose[5];
+        for(let i=0;i<current.hinges.length;i++)current.hinges[i].rotation.x=pose[6+i];
+        if(current.knifePivot)current.knifePivot.rotation.set(pose[9],pose[10],pose[11]);
+      }else if(id==='nepal'){
         // Kukri wrist-flip draw + heavy sweeping cleaver arc.
         mx=-drawArc*.055-slash*(heavy?.16:.21);
         my=drawArc*.045+(heavy?Math.sin(Math.PI*Math.min(1,gesture*1.35))*.055-slash*.08:0);
@@ -302,8 +324,11 @@ export function createViewModel() {
     current.root.visible=!(id==='awm'&&values.aiming&&loading<0);
   }
   update(0);
-  return {scene,camera,update,equip,flourish,reload,shoot,
-    inspect(){if(loading<0&&gesture>=.98)inspectT=0;},
+  return {scene,camera,update,equip,flourish,fidget,reload,shoot,
+    inspect(){
+      if(id==='butterfly')butterflyMotion.inspect();
+      else if(loading<0&&gesture>=.98)inspectT=0;
+    },
     setTeam(team){sleeveBand.color.set(team===1?0xae4c3b:0x47788b);},
     resize(value){aspect=value;camera.aspect=value;camera.updateProjectionMatrix();update(0);}};
 }

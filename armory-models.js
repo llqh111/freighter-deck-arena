@@ -14,7 +14,7 @@ export function buildArmory(parts) {
     root.name=id;root.add(body,mag,action,hand);
     const model={root,body,mag,action,hand,muzzle:-.5,sight:.11,hipX:.21,hipY:-.18,hipZ:-.53,kick:1};
     setup(model);
-    arm(body,[.16,-.31,.43],[.092,-.153,.16],[.045,-.126,.11],false);
+    if(!model.hinges)arm(body,[.16,-.31,.43],[.092,-.153,.16],[.045,-.126,.11],false);
     for(const g of [body,mag,action,hand])bake(g);
     return guns[id]=model;
   }
@@ -153,6 +153,86 @@ export function buildArmory(parts) {
     ]);
     g.rotation.z=-.36;g.rotation.y=-.32;bake(g);
     arm(w.hand,[-.226,-.315,.285],[-.168,-.188,-.015],[-.142,-.154,-.045],true);
+  });
+  model('butterfly',w=>{
+    // CS-style curved tactical Butterfly Knife (Balisong) with skeletal cutout handles,
+    // swept clip-point blade, spine cutout, pivot hardware, and independent in-hand spin pivot.
+    w.hipX=.162;w.hipY=-.095;w.hipZ=-.465;
+    const hingeBase=new T.Group();
+    hingeBase.position.set(.022,-.042,-.042);
+    hingeBase.rotation.set(.32,.44,-.30);
+    w.body.add(hingeBase);
+    const knifePivot=new T.Group();
+    hingeBase.add(knifePivot);
+    const bladePivot=new T.Group(), gripPivot=new T.Group(), flipPivot=new T.Group();
+    gripPivot.position.y=-.017;
+    flipPivot.position.y=.017;
+    knifePivot.add(bladePivot,gripPivot,flipPivot);
+    w.knifePivot=knifePivot;
+    w.hinges=[bladePivot,gripPivot,flipPivot];
+
+    const darkSteel=paint(0x232a2f,.32,.68), handleInlay=paint(0x121619,.62,.30);
+    const chamfer=paint(0x9ca9b0,.24,.78), csBlade=paint(0x7c8a92,.22,.78), csEdge=paint(0xe6eeef,.14,.88);
+
+    // Curved ergonomic CS handles: safe handle (lower) and bite handle (upper).
+    const safeShape=[[.008,.011],[.044,.013],[.096,.009],[.148,.000],[.165,-.006],[.163,-.016],[.142,-.021],[.088,-.014],[.036,-.011],[.004,-.008]];
+    const biteShape=[[.008,.008],[.036,.011],[.088,.014],[.142,.021],[.163,.016],[.165,.006],[.148,.000],[.096,-.009],[.044,-.013],[.004,-.011]];
+    const buildHandle=(handle,shape,sign,hasLatch)=>{
+      profile(handle,darkSteel,.025,shape);
+      // Chamfered metallic rail trim along outer spine of the curved handle.
+      for(const side of [-1,1]){
+        profile(handle,chamfer,.0022,[
+          [.024,sign*.008],[.082,sign*.012],[.144,sign*.017],[.148,sign*.012],[.082,sign*.008],[.024,sign*.004]
+        ],side*.0132);
+        // Signature CS skeletal circular/oval weight-reduction ports along the handle.
+        for(let i=0;i<4;i++){
+          const z=.040+i*.028;
+          const y=sign*(.001+i*.0024);
+          tube(handle,handleInlay,[side*.0125,y,z],[side*.0142,y,z],.0062-i*.0004,.0062-i*.0004,10);
+          tube(handle,chamfer,[side*.0122,y,z],[side*.0132,y,z],.0074-i*.0004,.0074-i*.0004,10);
+        }
+      }
+      // Pivot barrel & hex torx screw.
+      tube(handle,chamfer,[-.0155,0,0],[.0155,0,0],.0092,.0092,12);
+      tube(handle,darkSteel,[-.0165,0,0],[.0165,0,0],.0052,.0052,6);
+      // Tail spacer & optional T-latch on bite handle.
+      box(handle,chamfer,0,sign*.006,.157,.024,.012,.010);
+      if(hasLatch){
+        tube(handle,chamfer,[0,sign*.007,.162],[0,sign*.005,.180],.0042,.0036,8);
+        box(handle,darkSteel,0,sign*.005,.181,.015,.009,.007);
+      }
+    };
+    buildHandle(gripPivot,safeShape,-1,false);
+    buildHandle(flipPivot,biteShape,1,true);
+
+    // Swept CS curved clip-point blade with concave swedge, spine cutout & honed edge.
+    profile(bladePivot,csBlade,.0075,[
+      [.020,-.009],[.012,.011],[-.022,.017],[-.086,.022],[-.158,.021],[-.204,.011],[-.256,-.004],
+      [-.218,-.019],[-.150,-.024],[-.078,-.021],[-.032,-.014],[-.014,-.017]
+    ]);
+    // Razor-bright honed cutting edge along lower curved belly to tip.
+    profile(bladePivot,csEdge,.0084,[
+      [-.256,-.004],[-.218,-.019],[-.150,-.024],[-.078,-.021],[-.036,-.015],
+      [-.044,-.010],[-.082,-.014],[-.148,-.016],[-.210,-.012]
+    ]);
+    // Top swedge bevel highlight.
+    profile(bladePivot,chamfer,.0084,[
+      [-.152,.020],[-.204,.011],[-.256,-.004],[-.202,.005],[-.150,.014]
+    ]);
+    // Iconic CS oval/teardrop blade spine cutout (recessed dark window with chamfer rim).
+    for(const side of [-1,1]){
+      profile(bladePivot,handleInlay,.0018,[
+        [-.068,.012],[-.132,.013],[-.146,.008],[-.130,.003],[-.068,.004],[-.056,.008]
+      ],side*.0042);
+    }
+    // Tang block & twin tang pins.
+    box(bladePivot,darkSteel,0,0,-.006,.014,.024,.024);
+    tube(bladePivot,chamfer,[-.012,.013,-.008],[.012,.013,-.008],.0032,.0032,8);
+    tube(bladePivot,chamfer,[-.012,-.013,-.008],[.012,-.013,-.008],.0032,.0032,8);
+
+    for(const part of w.hinges)bake(part);
+    arm(w.body,[.178,-.315,.425],[.078,-.130,.095],[.050,-.106,.048],false);
+    arm(w.hand,[-.245,-.335,.31],[-.188,-.205,.012],[-.162,-.170,-.022],true);
   });
   model('he',w=>{
     w.hipX=.133;w.hipZ=-.38;w.hipY=-.136;

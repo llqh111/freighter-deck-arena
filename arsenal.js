@@ -1,6 +1,6 @@
 // Distances are scene units, times in seconds. Each inventory owns its ammunition.
 export const primaries=['ak47','m4a1','awm','mp5'];
-export const melees=['knife','nepal','malay'];
+export const melees=['knife','nepal','malay','butterfly'];
 export const isMelee=id=>melees.includes(id);
 const gun=(mag,reserve,reload,rpm,damage,head,armor,power,base,moving,bloom,recoil,speed=1)=>({
   mag,reserve,reload,interval:60/rpm,damage,head,armor,power,base,moving,bloom,recoil,speed
@@ -17,11 +17,13 @@ export const arsenal={
   knife:blade(1.08,.84,54,105,.37,.86,2.05,1.80,.13),
   nepal:blade(1.10,.90,68,135,.43,.90,2.20,2.18,.11),
   malay:blade(1.12,.88,52,118,.29,.80,2.35,2.42,.10),
+  butterfly:blade(1.11,.86,57,116,.33,.77,2.13,2.05,.22),
   he:{mag:1,reserve:0,speed:1,armor:.75}
 };
-export function loadout(primary,melee='nepal'){
+export function loadout(primary,melee='nepal',knifeOnly=false){
   const m=melees.includes(melee)?melee:'nepal';
-  return [primary,'deagle',m,'he'].map(id=>({id,ammo:arsenal[id].mag,max:arsenal[id].mag,reserve:arsenal[id].reserve}));
+  const ids=knifeOnly?[m]:[primary,'deagle',m,'he'];
+  return ids.map(id=>({id,ammo:arsenal[id].mag,max:arsenal[id].mag,reserve:arsenal[id].reserve}));
 }
 export const skills={
   easy:{response:.65,miss:.88,sight:31,fov:1.60,head:.07,strafe:.13},

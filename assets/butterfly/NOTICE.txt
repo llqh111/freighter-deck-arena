@@ -1,0 +1,9 @@
+Butterfly knife foley
+Wyzowl, SFX Kit · CC0 1.0 Universal
+Upstream revision: 92780e7ab0cdfb557497a988089c47f46e8c7412
+https://github.com/wyzowl/sfx-kit/tree/92780e7ab0cdfb557497a988089c47f46e8c7412
+https://creativecommons.org/publicdomain/zero/1.0/
+
+mechanical-latch-light.wav from sounds/mechanical/
+swish-hard.wav from sounds/swishes-and-zips/
+The WAV files are unchanged. Playback uses cue offsets and mixes them with synthesized metal transients.
