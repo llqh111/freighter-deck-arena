@@ -1,11 +1,12 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=17';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=18';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=7';
-import {createMatch} from './match.js?v=17';
+import {createMatch} from './match.js?v=18';
 import {createViewModel} from './viewmodel.js?v=17';
 import {isMelee,melees} from './arsenal.js?v=17';
 import {createDeckAudio} from './deck-audio.js?v=17';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
+import {matchRules,matchDuration} from './match-rules.js';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -53,25 +54,33 @@ function watchCrosshairScale(){
   },{once:true});
 }
 watchCrosshairScale();
-const prefs={mode:'tdm',team:0,size:6,goal:50,diff:'normal',primary:'ak47',melee:'nepal',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
+const prefs={mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',primary:'ak47',melee:'nepal',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
   if(['ak47','m4a1','awm','mp5'].includes(saved.primary))prefs.primary=saved.primary;
   if(melees.includes(saved.melee))prefs.melee=saved.melee;
   if(Number.isFinite(saved.vol))prefs.vol=T.MathUtils.clamp(saved.vol,0,1);if(Number.isFinite(saved.fov))prefs.fov=T.MathUtils.clamp(saved.fov,65,100);
 }catch{}
+const openMode=new URLSearchParams(location.search).get('mode');
+if(openMode==='knife'||openMode==='tdm')prefs.mode=openMode;
 function save(){try{localStorage.setItem('df-lobby',JSON.stringify(prefs));}catch{}}
+const roundGoal=()=>prefs.mode==='knife'?prefs.knifeGoal:prefs.goal;
+const clockText=seconds=>[Math.floor(seconds/60),seconds%60].map(v=>String(v).padStart(2,'0')).join(':');
 function summary(){
-  const knife=prefs.mode==='knife', sz=knife?3:prefs.size;
+  const knife=prefs.mode==='knife', sz=knife?matchRules.knife.size:prefs.size;
   const eyebrow=document.querySelector('.eyebrow');
   if(eyebrow)eyebrow.innerHTML=knife?'<b></b>3v3 刀战 <span>/</span> KNIFE FIGHT':'<b></b>团队竞技 <span>/</span> TEAM DEATHMATCH';
+  $('modeIntro').textContent=knife?'和队友在货柜间近身交锋，抢先达到目标击杀数。':'选择阵营与装备，从中央货柜区或舷侧管道登上对方甲板。';
   $('statSize').innerHTML=sz+' <em>VS</em> '+sz;
-  $('statGoal').textContent=prefs.goal;
-  $('statTime').textContent=(knife||sz===3)?'05:00':'10:00';
+  $('statGoal').textContent=roundGoal();
+  $('statTime').textContent=clockText(matchDuration(prefs.mode,sz));
   $('primaryName').textContent=knife?('纯近战 · '+names[prefs.melee]):(names[prefs.primary]+' · '+names[prefs.melee]);
+  for(const btn of $('modePick').querySelectorAll('[data-pref=mode]')){
+    btn.setAttribute('aria-pressed',String(btn.dataset.value===prefs.mode));
+  }
+  if(!$('deploy').disabled)put('deployLabel',knife?'开始刀战':'开始对局');
 }
 function applyPref(key){
-  if(key==='mode'&&prefs.mode==='knife')prefs.size=3;
   if(key==='tod')world?.setTime(prefs.tod);
   if(key==='quality'){world?.setQuality(prefs.quality);if(renderer&&view)resize();}
   if(renderer&&(key==='tod'||key==='quality'))renderer.shadowMap.needsUpdate=true;
@@ -81,14 +90,13 @@ function applyPref(key){
 }
 function syncSetupLocks(){
   const knife=prefs.mode==='knife';
-  for(const btn of panel.querySelectorAll('[data-pref=size]')){
-    const v=Number(btn.dataset.value);
-    btn.disabled=knife&&v!==3;
-    btn.setAttribute('aria-pressed',String((knife?3:prefs.size)===v));
+  for(const key of ['size','goal','knifeGoal']){
+    const group=panel.querySelector('[data-pref='+key+']')?.closest('fieldset');
+    if(group)group.hidden=key==='knifeGoal'?!knife:knife;
   }
 }
-function bindPrefs(){
-  for(const btn of panel.querySelectorAll('[data-pref]'))btn.onclick=()=>{
+function bindPrefs(container=panel){
+  for(const btn of container.querySelectorAll('[data-pref]'))btn.onclick=()=>{
     const key=btn.dataset.pref;prefs[key]=typeof prefs[key]==='number'?Number(btn.dataset.value):btn.dataset.value;
     for(const peer of btn.parentElement.querySelectorAll('button'))peer.setAttribute('aria-pressed',String(peer===btn));applyPref(key);syncSetupLocks();
   };
@@ -99,7 +107,7 @@ function armory(inGame=false){
   const knife=(inGame?match?.state?.mode:prefs.mode)==='knife';
   showDialog(inGame?'loadout':'armory','LOADOUT',knife?'选择近战武器（3v3 刀战）':'选择主武器与近战',
     (knife?'':'<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary))+
-    '<div class="sectionTitle">近战武器 MELEE（'+(prefs.wheel==='val'?'上滚切刀 · ':'')+'F / Y 检视 · 蝴蝶刀 R 连转）</div>'+meleeChoices(prefs.melee)+
+    '<div class="sectionTitle">近战武器 MELEE（Y 检视 · 蝴蝶刀 R 连转）</div>'+meleeChoices(prefs.melee)+
     '<p class="panelNote">'+(knife?'当前为 3v3 刀战模式，全场仅使用近战武器。出生区内更换近战立即生效，离开出生区后在下次复活时领取。':'副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。')+'</p>');
   for(const b of panel.querySelectorAll('[data-weapon]'))b.onclick=()=>{
     prefs.primary=b.dataset.weapon;save();summary();
@@ -151,8 +159,13 @@ function crosshairStudio(){
     navigator.clipboard?.writeText(code).then(()=>notify('已复制无畏契约准星代码')).catch(()=>notify('代码：'+code));
   };
 }
-function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['mode','team','size','goal','diff','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
-const controlRows=()=>coarse?'<p class="panelNote">左侧摇杆移动，右侧拖动转向。轻点武器栏选择装备，暂停菜单可换装或查看战绩。</p>':[['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],['射击 / 瞄准或重击','鼠标左键 / 右键'],['快捷滚轮','下滚主枪 · 上滚切刀'],['快切','Q'],['武器槽 / 检视 / 换装','1–4 / F,Y / B'],['蝴蝶刀连转','F / R 连按'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
+function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['mode','team','size','goal','knifeGoal','diff','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
+function controlRows(){
+  if(coarse)return '<p class="panelNote">左侧摇杆移动，右侧拖动转向。暂停菜单可换装或查看战绩。</p>';
+  const knife=prefs.mode==='knife';
+  const combat=knife?[['轻击 / 重击','鼠标左键 / 右键'],['快捷滚轮','上滚甩刀 · 下滚检视']]:[['射击 / 瞄准或重击','鼠标左键 / 右键'],['快捷滚轮','下滚主枪 · 上滚切刀'],['武器槽 / 快切 / 换弹','1–4 / Q / R']];
+  return [['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],...combat,['检视 / 换装','Y / B'],['蝴蝶刀连转','R 连按'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
+}
 function settings(){
   let ranges='';for(const [id,name,min,max,step,value] of [['sens','视角灵敏度',.2,3,.05,sensitivity],['fov','视野',65,100,1,prefs.fov],['vol','音量',0,1,.05,prefs.vol]])ranges+='<div class="row"><label for="'+id+'">'+name+'</label><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'"><output>'+value+'</output></div>';
   showDialog('settings','CONTROLS','设置与操作',ranges+selectors(prefs,['wheel','tod','quality'])+'<div class="row"><span>自定义准星</span><button id="openXhFromSet" class="secondary">打开准星工坊</button></div>'+controlRows()+'<div class="row"><span>游戏声音</span><button id="audioToggle" class="secondary">'+(sound?'开启':'关闭')+'</button></div>');
@@ -166,6 +179,7 @@ function settings(){
   }
   $('audioToggle').onclick=()=>{sound=!sound;setSound();$('audioToggle').textContent=sound?'开启':'关闭';};
 }
+$('modePick').innerHTML=selectors(prefs,['mode']);bindPrefs($('modePick'));
 $('battleSetup').onclick=setup;$('armory').onclick=()=>armory(false);$('openCrosshair').onclick=crosshairStudio;summary();
 $('controls').onclick=$('options').onclick=settings;
 const mapCache=new WeakMap();
@@ -224,13 +238,14 @@ function lock(){
 }
 function release(){if(document.pointerLockElement)document.exitPointerLock();}
 function closePanel(){if(panel.open)panel.close();dialogKind='';}
-function start(){clearAnnouncement();deckAudio.reset();closePanel();$('feed').replaceChildren();$('notice').hidden=true;setMode('playing');setSound();match.start(prefs);match.input('fov',prefs.fov);canvas.focus();lock();}
+function start(){clearAnnouncement();deckAudio.reset();closePanel();$('feed').replaceChildren();$('notice').hidden=true;setMode('playing');setSound();match.start({...prefs,goal:roundGoal()});match.input('fov',prefs.fov);canvas.focus();lock();}
 function resume(){closePanel();setMode('playing');match.resume();canvas.focus();lock();}
 function toMenu(){closePanel();release();setMode('menu');drawMap($('chart'),null,true);}
 function pauseUI(){
   if(mode!=='playing'&&mode!=='paused')return;
   match.pause();setMode('paused');release();
-  showDialog('pause','MATCH PAUSED','对局已暂停','<div class="actions"><button id="resume" class="primary">继续对局</button><button id="inLoadout" class="secondary">更换主武器/近战</button><button id="inCrosshair" class="secondary">自定义准星</button><button id="inBoard" class="secondary">查看战绩</button><button id="inSettings" class="secondary">设置与操作</button><button id="leave" class="secondary">返回甲板首页</button></div>');
+  const swapLabel=match.state.mode==='knife'?'更换近战武器':'更换主武器/近战';
+  showDialog('pause','MATCH PAUSED','对局已暂停','<div class="actions"><button id="resume" class="primary">继续对局</button><button id="inLoadout" class="secondary">'+swapLabel+'</button><button id="inCrosshair" class="secondary">自定义准星</button><button id="inBoard" class="secondary">查看战绩</button><button id="inSettings" class="secondary">设置与操作</button><button id="leave" class="secondary">返回甲板首页</button></div>');
   $('inLoadout').onclick=()=>armory(true);$('inCrosshair').onclick=crosshairStudio;$('inBoard').onclick=()=>showDialog('board','SCOREBOARD','团队战绩',board(match.state));$('resume').onclick=resume;$('inSettings').onclick=settings;$('leave').onclick=toMenu;
 }
 function dismiss(){if(dialogKind==='loadout'){resume();return;}if(dialogKind==='end'){toMenu();return;}if(dialogKind==='pause'){resume();return;}closePanel();if(mode==='paused')pauseUI();}
@@ -380,10 +395,25 @@ function friendTags(state){
   }
   for(let i=idx;i<group.children.length;i++)if(!group.children[i].hidden)group.children[i].hidden=true;
 }
+function syncCombatHud(mode){
+  const touch=$('touch');
+  if(touch.dataset.rules===mode)return;
+  touch.dataset.rules=mode;
+  const knife=mode==='knife';
+  $('ammo').parentElement.hidden=knife;
+  touch.querySelector('[data-touch=cycle]').hidden=knife;
+  touch.querySelector('[data-touch=reload]').textContent=knife?'检视':'换弹';
+  touch.querySelector('[data-touch=aim]').textContent=knife?'重击':'瞄准';
+  for(const button of touch.querySelectorAll('[data-touch=fire]')){
+    button.textContent=knife?'轻击':'开火';
+    if(button.classList.contains('leftTrigger'))button.setAttribute('aria-label',knife?'左侧轻击':'左侧开火');
+  }
+}
 function hudEvent(type,data){
   if(type==='sfx'){deckAudio.sfx(data);return;}
 
   if(type==='hud'){
+    syncCombatHud(data.mode);
     put('blue',String(data.score[0]).padStart(2,'0'));put('red',String(data.score[1]).padStart(2,'0'));
     put('hp',data.hp);put('ammo',isMelee(data.weapon)?'∞':data.ammo);put('reserve',data.reserve);
     put('goalText',(data.mode==='knife'?'3v3 刀战 · ':'')+'目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
@@ -396,7 +426,7 @@ function hudEvent(type,data){
     if(key!==rackKey){rackKey=key;$('slotRack').innerHTML=data.inventory.map((w,i)=>'<button data-slot="'+i+'" class="'+(data.slot===i?'selected':'')+'" aria-label="'+names[w.id]+'"><b>'+(i+1)+'</b>'+weaponIcon(w.id)+'</button>').join('');}
     if(!$('roster').hidden){const html=board(data);if(html!==boardKey){boardKey=html;$('roster').innerHTML=html;}}
     if(lastBearing!==null)$('bearing').style.transform='translate(-50%,-50%) rotate('+(data.player.yaw-lastBearing)+'rad)';
-    const s=Math.ceil(data.remaining);put('clock',[Math.floor(s/60),s%60].map(v=>String(v).padStart(2,'0')).join(':'));
+    put('clock',clockText(Math.ceil(data.remaining)));
     if(data.hp!==lastHpPct){lastHpPct=data.hp;hpBarFill.style.width=data.hp+'%';}
     const lowAmmo=data.alive&&data.maxAmmo>1&&data.ammo<=Math.max(1,Math.ceil(data.maxAmmo*.25));
     ammoBox?.classList.toggle('lowammo',lowAmmo);
@@ -427,7 +457,9 @@ function hudEvent(type,data){
     setMode('ended');release();const [b,r]=data.score;
     const win=data.score[data.team]>data.score[1-data.team];
     const mvp=[...data.scoreboard].sort((a,b)=>(b.kills*2-b.deaths+b.headshots)-(a.kills*2-a.deaths+a.headshots))[0];
-    showDialog('end','MATCH RESULT',b===r?'双方平局':win?'我方胜利':'对方胜利','<div class="result"><span>'+b+'</span> · <b>'+r+'</b></div><div class="row">MVP <b>'+mvp.name+' · '+mvp.kills+' 击杀</b></div><p class="panelNote">你的战绩　'+data.kills+' 击杀 · '+data.deaths+' 阵亡 · '+data.headshots+' 爆头 · 命中率 '+data.accuracy+'%</p>'+board(data)+'<div class="actions"><button id="again" class="primary">再来一局</button><button id="home" class="secondary">返回首页</button></div>');$('again').onclick=start;$('home').onclick=toMenu;
+    const knife=data.mode==='knife';
+    const accuracy=knife?'挥刀命中 '+data.hits+' / '+data.attempts+'（'+data.accuracy+'%）':data.headshots+' 爆头 · 命中率 '+data.accuracy+'%';
+    showDialog('end',knife?'3v3 刀战 · 对局结算':'MATCH RESULT',b===r?'双方平局':win?'我方胜利':'对方胜利','<div class="result"><span>'+b+'</span> · <b>'+r+'</b></div><div class="row">MVP <b>'+mvp.name+' · '+mvp.kills+' 击杀</b></div><p class="panelNote">你的战绩　'+data.kills+' 击杀 · '+data.deaths+' 阵亡 · '+accuracy+'</p>'+board(data)+'<div class="actions"><button id="again" class="primary">再来一局</button><button id="home" class="secondary">返回首页</button></div>');$('again').onclick=start;$('home').onclick=toMenu;
   }
 }
 const keys={KeyW:'forward',KeyS:'back',KeyA:'left',KeyD:'right',Space:'jump',ShiftLeft:'walk',ShiftRight:'walk',KeyX:'sprint',KeyC:'crouch',ArrowLeft:'left',ArrowRight:'right',KeyR:'reload',ArrowUp:'forward',ArrowDown:'back'};
@@ -520,6 +552,10 @@ for(const btn of document.querySelectorAll('[data-touch]')){
   const action=btn.dataset.touch;
   btn.onpointerdown=e=>{
     btn.setPointerCapture(e.pointerId);
+    if(action==='reload'&&match.state.mode==='knife'){
+      if(match.state.alive)view.inspect();
+      return;
+    }
     if(action==='crouch'){mobileCrouch=!mobileCrouch;match.input('crouch',mobileCrouch);btn.setAttribute('aria-pressed',String(mobileCrouch));return;}
     if(action==='fire')fireFingers.add(e.pointerId);
     match.input(action,action==='cycle'?1:true);
@@ -599,7 +635,7 @@ async function init(){
     world=buildWorld(scene);view=createViewModel(deckAudio.sfx);match=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov'])applyPref(key);setSound();resize();
     await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);
-    $('deploy').disabled=false;$('deployLabel').textContent='开始对局';$('readyText').textContent='甲板就绪';addEventListener('resize',resize);
+    $('deploy').disabled=false;summary();$('readyText').textContent='甲板就绪';addEventListener('resize',resize);
   }catch(e){console.error(e);$('deployLabel').textContent='无法载入';$('readyText').textContent='3D 场景未能启动';notify('无法启动 3D 画面。请在开启硬件加速的 Chrome 或 Edge 中打开。');}
 }
 init();

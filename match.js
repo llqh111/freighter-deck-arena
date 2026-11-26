@@ -1,6 +1,7 @@
 import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js?v=7';
 import * as T from './three.module.js';
 import {arsenal,primaries,melees,isMelee,loadout,skills} from './arsenal.js?v=17';
+import {matchRules,matchDuration} from './match-rules.js';
 
 const clamp = T.MathUtils.clamp;
 const EYE=1.60,RADIUS=.32,ROUND=600,GOAL=50;
@@ -45,25 +46,28 @@ function createSquad(scene,bots,knifeMode=false){
     part('box',root,'#293334',0,1.623,-.152,.202,.055,.037);
     part('ell',root,armor,0,1.702,-.006,.326,.233,.30);
     part('box',root,cloth,0,1.675,-.10,.288,.048,.16);
+    const strikeArm=knifeMode?joint(.237,1.326,-.06):null;
     for(const side of [-1,1]){
-      part('ell',root,cloth,side*.237,1.326,-.06,.183,.285,.20,-.56);
-      part('box',root,band,side*.285,1.335,-.06,.065,.076,.15);
-      part('ell',root,cloth,side*.192,1.233,-.201,.15,.274,.16,-1.07);
-      part('ell',root,dark,side*.124,1.218,-.305,.115,.126,.136);
+      const arm=side===1&&strikeArm?strikeArm:root;
+      const {x,y,z}=arm.position;
+      part('ell',arm,cloth,side*.237-x,1.326-y,-.06-z,.183,.285,.20,-.56);
+      part('box',arm,band,side*.285-x,1.335-y,-.06-z,.065,.076,.15);
+      part('ell',arm,cloth,side*.192-x,1.233-y,-.201-z,.15,.274,.16,-1.07);
+      part('ell',arm,dark,side*.124-x,1.218-y,-.305-z,.115,.126,.136);
     }
-    let weapon=null;
     if(knifeMode){
-      weapon=joint(.124,1.218,-.305);
-      part('box',weapon,'#242a2d',0,.01,-.03,.032,.038,.12,-.15);
-      part('box',weapon,'#cfd8dc',0,.045,-.17,.014,.052,.24,-.12);
-      part('box',weapon,'#eef4f6',0,.025,-.18,.010,.016,.22,-.12);
+      const grip=new T.Group();
+      grip.position.set(-.113,-.108,-.245);strikeArm.add(grip);
+      part('box',grip,'#242a2d',0,.01,-.03,.032,.038,.12,-.15);
+      part('box',grip,'#cfd8dc',0,.045,-.17,.014,.052,.24,-.12);
+      part('box',grip,'#eef4f6',0,.025,-.18,.010,.016,.22,-.12);
     }else{
       part('box',root,'#1f272a',.095,1.264,-.34,.080,.093,.39);
       part('box',root,'#313537',.095,1.261,-.567,.043,.047,.20);
       part('box',root,dark,.095,1.172,-.321,.056,.139,.082,-.2);
       part('box',root,dark,.095,1.327,-.323,.054,.052,.097);
     }
-    bot.rig={root,legs,weapon};
+    bot.rig={root,legs,strikeArm};
   }
   for(const [type,g] of Object.entries(geometry)){
     const parts=allParts.filter(p=>p.type===type);
@@ -77,7 +81,7 @@ function createSquad(scene,bots,knifeMode=false){
     for(const b of bots){
       const dying=!b.alive&&b.deathT<1.1;
       if(!b.alive&&!dying)continue;
-      const {root,legs,weapon}=b.rig;
+      const {root,legs,strikeArm}=b.rig;
       if(dying){
         const fall=Math.min(1,b.deathT/.36);
         const ease=1-(1-fall)*(1-fall);
@@ -85,14 +89,19 @@ function createSquad(scene,bots,knifeMode=false){
         root.rotation.set(-ease*1.48,b.yaw,ease*.22,'YXZ');
         root.scale.y=1;
         legs.forEach(leg=>{leg.rotation.x=ease*.25;});
-        if(weapon)weapon.rotation.set(0,0,0);
+        if(strikeArm)strikeArm.rotation.set(0,0,0);
       }else{
         root.position.set(b.x,b.y + (b.walking?.018*Math.abs(Math.sin(t*10+b.id)):0),b.z);
         root.rotation.set(0,b.yaw,0,'YXZ');root.scale.y=b.crouch?.75:1;
         legs.forEach((leg,i)=>{leg.rotation.x=b.walking?Math.sin(t*10+b.id+i*Math.PI)*.51:0;});
-        if(weapon){
-          const sw=b.swingT>0?Math.sin(Math.min(1,b.swingT/.28)*Math.PI):0;
-          weapon.rotation.set(-sw*1.25,sw*.55,sw*.35);
+        if(strikeArm){
+          let arc=0;
+          if(b.strike)arc=clamp(1-(b.strike.at-t)/b.strike.windup,0,1)*.92;
+          else if(b.swingT>0){
+            const progress=1-b.swingT/.28;
+            arc=progress<.28?T.MathUtils.lerp(.92,-1.30,progress/.28):-1.30*(1-progress)/.72;
+          }
+          strikeArm.rotation.set(arc,arc*.35,-arc*.2);
         }
       }
       root.updateMatrixWorld(true);
@@ -285,7 +294,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   let pitch=0,jumpVel=0,grounded=true,loadTimer=0,loadDuration=1,shotTimer=0,hudTimer=0,clock=0,bob=0;
   let camY=EYE,bobAmp=0,recoilFollow=.43,shake=0,lookSwayX=0,lookSwayY=0;
   let fireTap=false,altTap=false,restoreZoom=0;
-  let baseFov=camera.fov,lastSlot=0,semiLatch=false,shots=0,hits=0,scopeTime=0;
+  let baseFov=camera.fov,lastSlot=0,semiLatch=false,attempts=0,hits=0,scopeTime=0;
   const eyeHeight=a=>a.crouch?1.07:EYE;
   const active=a=>a.inventory[a.slot];
   function sfx(kind,weapon,a=p,extra={}){
@@ -296,7 +305,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
   function hud(){
     const w=active(p);
     const reloadProgress=loadTimer>0&&loadDuration>0?clamp(1-loadTimer/loadDuration,0,1):0;
-    Object.assign(state,{hp:Math.ceil(p.hp),armor:Math.ceil(p.armor),alive:p.alive,respawnIn:Math.max(0,p.respawn),reloading:loadTimer>0,reloadProgress,weapon:w.id,ammo:w.ammo,maxAmmo:w.max,reserve:w.reserve,inventory:p.inventory,slot:p.slot,protect:p.shield,kills:p.kills,deaths:p.deaths,headshots:p.headshots,accuracy:shots?Math.round(hits/shots*100):0,crouching:p.crouch});
+    Object.assign(state,{hp:Math.ceil(p.hp),armor:Math.ceil(p.armor),alive:p.alive,respawnIn:Math.max(0,p.respawn),reloading:loadTimer>0,reloadProgress,weapon:w.id,ammo:w.ammo,maxAmmo:w.max,reserve:w.reserve,inventory:p.inventory,slot:p.slot,protect:p.shield,kills:p.kills,deaths:p.deaths,headshots:p.headshots,attempts,hits,accuracy:attempts?Math.round(hits/attempts*100):0,crouching:p.crouch});
     state.scoreboard=state.rows=units.map(({name,team,kills,deaths,headshots,alive,id})=>({name,team,kills,deaths,headshots,alive,isPlayer:id===0}));
     state.aimName='';state.aimTeam=null;
     if(p.alive){
@@ -310,6 +319,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     const role=a===p?'player':knifeMode?'duelist':a.primary==='awm'?'sniper':a.primary==='mp5'?'flanker':(a.team===p.team&&a.id===1)?'wingman':'rifle';
     const lane=a.id%3-1;
     Object.assign(a,{x:spot.x,y:0,z:spot.z,yaw:a.team?Math.PI:0,hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary,a===p?melee:(a.melee||'knife'),knifeMode),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0,swingT:0});
+    a.strike=null;
     if(a===p){
       pitch=jumpVel=bob=loadTimer=0;grounded=true;shotTimer=.12;lastSlot=0;semiLatch=false;
       restoreZoom=0;state.zoom=0;state.aiming=false;state.killedBy='';camY=EYE;bobAmp=0;recoilFollow=.43;shake=0;lookSwayX=lookSwayY=0;
@@ -430,7 +440,10 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
       if(b===p){state.killedBy=a===b?'自己的手雷':a.name;state.zoom=0;state.aiming=false;loadTimer=0;clearKeys();}
       emit('feed',{killer:a.name,victim:b.name,weapon:id,team:a.team,head,wall,first});
     }
-    if(a===p&&a!==b){sfx('hit',id,p,{head});emit('hit',{kill,head,wall,first,weapon:id,victim:b.name,multi:kill?a.multi:0});}
+    if(a===p&&a!==b){
+      if(knifeMode&&isMelee(id))hits++;
+      sfx('hit',id,p,{head});emit('hit',{kill,head,wall,first,weapon:id,victim:b.name,multi:kill?a.multi:0});
+    }
     if(state.score[a.team]>=state.target)finish();
   }
   function shot(a,direction,id){
@@ -540,6 +553,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(shotTimer>0||loadTimer){if(shotTimer>.3||loadTimer)fireTap=altTap=false;return;}
     fireTap=altTap=false;
     if(d.melee){
+      if(knifeMode)attempts++;
       const heavy=!!secondary;shotTimer=heavy?d.heavyCd:d.lightCd;camera.getWorldDirection(dir);
       const reach=heavy?d.heavyReach:d.reach;const hit=actorHit(p,camera.position,dir,wallDistance(camera.position,dir,reach));
       if(hit){
@@ -557,7 +571,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     if(w.id==='he'){toss(p,dir);shotTimer=.65;hud();return;}
     const deviation=spreadOffset(state.spread);
     rot.set(pitch+p.burst.pitch+deviation.y,p.yaw+p.burst.yaw+deviation.x,0,'YXZ');
-    dir.set(0,0,-1).applyEuler(rot);shots++;shot(p,dir,w.id);
+    dir.set(0,0,-1).applyEuler(rot);attempts++;shot(p,dir,w.id);
     const adsRate=state.aiming&&['ak47','m4a1','mp5'].includes(w.id)?.90:1;
     shotTimer=d.interval/adsRate+(previous>0?Math.max(-dt,shotTimer):0);
     recordShot(p.burst,d,clock,state.aiming,p.crouch);
@@ -644,6 +658,24 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     }
     return b.holdPos;
   }
+  function resolveBotStrike(b){
+    if(!b.strike||clock<b.strike.at)return;
+    const {foe,heavy}=b.strike;
+    b.strike=null;
+    b.swingT=.28;
+    b.shield=0;
+    b.radarT=.9;
+    const {id}=active(b),def=arsenal[id];
+    sfx(heavy?'heavy':'light',id,b);
+    const reach=heavy?def.heavyReach:def.reach;
+    const distance=Math.hypot(foe.x-b.x,foe.z-b.z);
+    const facing=Math.abs(wrapAngle(b.yaw-angleTo(b,foe)));
+    if(!foe.alive||foe.shield>0||distance>reach||Math.abs(b.y-foe.y)>.75||facing>.55||!visible(b,foe))return;
+    const rear=Math.cos(foe.yaw-b.yaw)>.5;
+    const head=Math.random()<skill.head*.8;
+    const damageAmount=heavy?def.heavyDmg:def.lightDmg;
+    damage(b,foe,damageAmount*(rear?1.8:1)*(head?1.3:1),id,head);
+  }
   function advanceBot(b,dt){
     const wNow=active(b);
     recoverBurst(b.burst,arsenal[wNow.id],clock,dt);
@@ -657,6 +689,10 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     const enemies=units.filter(a=>a.alive && a.team!==b.team);
     if(b.walking){b.stepIn=(b.stepIn??0)-dt;if(b.stepIn<=0){sfx('step','',b);b.stepIn=.43;}}
     b.think-=dt;b.shot-=dt;b.swingT=Math.max(0,(b.swingT||0)-dt);b.walking=false;
+    if(knifeMode){
+      resolveBotStrike(b);
+      if(state.phase!=='playing')return;
+    }
     const turnSpeed=5.8+(1-skill.response)*7.5;
     // Soft separation so teammates do not clump or body-block the player.
     let sepX=0,sepZ=0;
@@ -727,10 +763,10 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
       if(knifeMode){
         b.crouch=false;
         if(clock>=b.strafeAt){b.strafeDir*=-1;b.strafeAt=clock+.42+Math.random()*.7;}
-        const speed=3.65*def.speed*(b.tag>0?.65:1);
+        const speed=3.65*def.speed*(b.strike?.35:b.tag>0?.65:1);
         const fwdX=-Math.sin(b.yaw),fwdZ=-Math.cos(b.yaw);
         const sideX=Math.cos(b.yaw)*b.strafeDir,sideZ=-Math.sin(b.yaw)*b.strafeDir;
-        const baitBack=b.shot>.16&&range<def.reach*1.2;
+        const baitBack=!b.strike&&b.shot>.16&&range<def.reach*1.2;
         const lungeIn=range>(def.heavyReach*.78)&&!baitBack;
         const strafeW=(.45+skill.strafe*.85)*(range<4.5?1.15:.65);
         let mx=sideX*speed*strafeW*.65,mz=sideZ*speed*strafeW*.65;
@@ -743,17 +779,13 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
         const moved=Math.hypot(b.x-oldX,b.z-oldZ);
         b.walking=moved>dt*.2;
         if(moved<dt*.12){b.strafeDir*=-1;b.strafeAt=clock+.35;}
-        if(aligned&&b.shot<=0&&foe.shield<=0){
+        if(aligned&&!b.strike&&b.shot<=0&&foe.shield<=0&&Math.abs(b.y-foe.y)<=.75){
           const wantHeavy=range<=def.heavyReach&&(foe.hp>def.lightDmg&&Math.random()<(.42+skill.head*.65));
           const atkReach=wantHeavy?def.heavyReach:def.reach;
           if(range<=atkReach){
-            const rear=Math.cos(foe.yaw-b.yaw)>.5;
-            const head=Math.random()<skill.head*.8;
-            const baseDmg=wantHeavy?def.heavyDmg:def.lightDmg;
-            damage(b,foe,baseDmg*(rear?1.8:1)*(head?1.3:1),w.id,head);
-            sfx(wantHeavy?'heavy':'light',w.id,b);
-            b.swingT=.28;b.shield=0;b.radarT=.9;
-            b.shot=(wantHeavy?def.heavyCd:def.lightCd)+skill.response*(.28+Math.random()*.42);
+            const windup=wantHeavy?.22+skill.response*.22:.11+skill.response*.17;
+            b.strike={foe,heavy:wantHeavy,windup,at:clock+windup};
+            b.shot=windup+(wantHeavy?def.heavyCd:def.lightCd)+skill.response*(.28+Math.random()*.42);
           }
         }
         return;
@@ -852,15 +884,17 @@ export function createMatch({scene,camera,world,view,emit=()=>{}}){
     p.team=opts.team===1?1:0;state.team=p.team;primary=primaries.includes(opts.primary)?opts.primary:'ak47';
     melee=melees.includes(opts.melee)?opts.melee:'nepal';
     knifeMode=opts.mode==='knife';state.mode=knifeMode?'knife':'tdm';
-    const size=knifeMode?3:([3,4,6,8].includes(opts.size)?opts.size:6);skill=skills[opts.diff]||skills.normal;
-    state.target=[30,50,100].includes(opts.goal)?opts.goal:50;
+    const rules=matchRules[state.mode];
+    const size=!knifeMode&&[3,4,6,8].includes(opts.size)?opts.size:rules.size;
+    skill=skills[opts.diff]||skills.normal;
+    state.target=rules.goals.includes(opts.goal)?opts.goal:rules.goal;
     const names=['北辰','回声','夜航','长风','白鲸','赤隼','远山','银翼','苍鹭','天狼','灰狐','海燕','青锋','岩雀','信标'];
     for(let i=1;i<size*2;i++){
       const b={id:i,name:names[i-1],team:i<size?p.team:1-p.team,primary:primaries[(i+1)%4],melee:melees[(i+1)%melees.length]};
       bots.push(b);units.push(b);
     }
-    animate=createSquad(scene,bots,knifeMode);state.phase='playing';state.score=[0,0];state.remaining=(knifeMode||size===3)?300:600;firstBlood=true;
-    shots=hits=clock=0;for(const a of units){a.kills=a.headshots=a.deaths=0;a.lastAttacker=null;respawn(a,true);}
+    animate=createSquad(scene,bots,knifeMode);state.phase='playing';state.score=[0,0];state.remaining=matchDuration(state.mode,size);firstBlood=true;
+    attempts=hits=clock=0;for(const a of units){a.kills=a.headshots=a.deaths=0;a.lastAttacker=null;respawn(a,true);}
     view.setTeam(p.team);state.grounded=true;state.sprinting=false;animate(0,true);hud();
   }
   function pause(){if(state.phase==='playing'){state.phase='paused';clearKeys();state.aiming=false;hud();}}

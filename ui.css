@@ -85,3 +85,15 @@
 #callout.multi #killBadge{filter:drop-shadow(0 0 16px rgba(255,78,48,.88)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
 #callout.first #killBadge{filter:drop-shadow(0 0 14px rgba(102,224,255,.85)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
 #callout.knife #killBadge{filter:drop-shadow(0 0 14px rgba(136,255,220,.82)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
+
+#modePick{margin-top:12px;max-width:248px}
+#modePick .choice{margin:0}
+#modePick legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+#modePick button{background:#15232bd9;padding:8px 10px}
+#modePick [aria-pressed=true]{background:#38382c}
+#modePick+.stats{margin-top:17px}
+@media(max-height:570px){
+  #modePick{margin-top:7px}
+  #modePick button{padding:5px 9px}
+  #modePick+.stats{margin-top:11px}
+}
