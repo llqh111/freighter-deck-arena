@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {createSquad} from './match.js?v=34';
+import {createSquad} from './match.js?v=39';
 
 export function createDuelClient({scene,camera,view,world,send,emit}){
   let actors=[],animate,target,sequence=0,pending=[];

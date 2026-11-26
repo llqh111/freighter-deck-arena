@@ -1,6 +1,6 @@
 import {buildArmory} from './armory-models.js?v=33';
 import {isMelee} from './arsenal.js?v=27';
-import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=13';
+import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=14';
 import {createButterflyMotion} from './butterfly-motion.js?v=23';
 import * as T from './three.module.js';
 

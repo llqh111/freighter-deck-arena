@@ -1,12 +1,12 @@
 import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=28';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=23';
-import {createMatch} from './match.js?v=38';
-import {createViewModel} from './viewmodel.js?v=38';
+import {createMatch} from './match.js?v=39';
+import {createViewModel} from './viewmodel.js?v=39';
 import {isMelee,melees} from './arsenal.js?v=27';
 import {createDeckAudio} from './deck-audio.js?v=29';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
-import {createDuelClient} from './duel-client.js?v=34';
+import {createDuelClient} from './duel-client.js?v=35';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
 
@@ -539,15 +539,18 @@ for(const kind of ['keydown','keyup'])addEventListener(kind,e=>{
     if(/^Digit[1-4]$/.test(e.code))match.input('slot',Number(e.code.at(-1))-1);
     if(e.code==='KeyQ')match.input('last',true);
     if((e.code==='KeyY'||e.code==='KeyF')&&match.state.alive)view.inspect();
-    if((e.code==='F8'||e.code==='KeyG')&&view?.isKarambitActive?.()){
+    // Debug toggles are F-key only:字母别名（G/T）会紧邻 Y/R 把玩键，实战中极易误触。
+    // 慢动作被误开时 update() 的 dt 全局缩放，攻击动画会被拉长到 1.8s 而 shotTimer 仍是实时，
+    // 等于当场把出刀判定打歪——所以这两个键不允许出现在正常玩法的按键路径上。
+    if(e.code==='F8'&&view?.isKarambitActive?.()){
       e.preventDefault();
       view.karambitConfig.showGizmos=!view.karambitConfig.showGizmos;
-      notify('爪刀 Debug 面板与 Gizmos：'+(view.karambitConfig.showGizmos?'开启（F8/G 切换）':'关闭'));
+      notify('爪刀 Debug 面板与 Gizmos：'+(view.karambitConfig.showGizmos?'开启（F8 切换）':'关闭'));
     }
-    if((e.code==='F9'||e.code==='KeyT')&&view?.isKarambitActive?.()){
+    if(e.code==='F9'&&view?.isKarambitActive?.()){
       e.preventDefault();
       view.karambitConfig.slowMo=!view.karambitConfig.slowMo;
-      notify('爪刀动作倍率：'+(view.karambitConfig.slowMo?'0.2x 慢动作（F9/T 切换）':'1.0x 正常速度'));
+      notify('爪刀动作倍率：'+(view.karambitConfig.slowMo?'0.2x 慢动作（F9 切换）':'1.0x 正常速度'));
     }
     if(e.code==='BracketLeft'&&view?.isKarambitActive?.()&&view.karambitConfig.showGizmos){
       e.preventDefault();view.stepKarambit(-1/60);
@@ -734,9 +737,10 @@ function buildKarambitDebugPanel(){
       <button id="kdPlay" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">暂停(P)</button>
       <button id="kdPrev" style="padding:3px 6px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">-1f [</button>
       <button id="kdNext" style="padding:3px 6px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">+1f ]</button>
-      <button id="kdSlow" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">0.2x(T)</button>
+      <button id="kdSlow" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">0.2x(F9)</button>
       <button id="kdLoop" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">持续循环</button>
       <button id="kdTrail" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">刀光:开</button>
+      <label style="display:flex;align-items:center;gap:3px;padding:3px 6px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;">检视速率<input id="kdSpeed" type="number" min="0.5" max="1.25" step="0.01" value="1.15" style="width:44px;background:#0d1a22;color:#ffd24c;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;font:inherit;"></label>
     </div>
     <div style="border-top:1px solid rgba(0,245,255,.22);padding-top:6px;">
       <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
@@ -757,7 +761,7 @@ function buildKarambitDebugPanel(){
   for(const ev of ['mousedown','pointerdown','click','wheel'])el.addEventListener(ev,e=>e.stopPropagation());
   document.body.append(el);
   const q=id=>el.querySelector('#'+id);
-  const refs={el,telemetry:q('kdTelemetry'),scrub:q('kdScrub'),timeTxt:q('kdTimeTxt'),play:q('kdPlay'),prev:q('kdPrev'),next:q('kdNext'),slow:q('kdSlow'),loop:q('kdLoop'),trail:q('kdTrail'),kfSel:q('kdKfSel'),spin:q('kdSpin'),fing:q('kdFing'),ax:q('kdAx'),ay:q('kdAy'),ry:q('kdRy'),rz:q('kdRz'),wx:q('kdWx'),wz:q('kdWz')};
+  const refs={el,telemetry:q('kdTelemetry'),scrub:q('kdScrub'),timeTxt:q('kdTimeTxt'),play:q('kdPlay'),prev:q('kdPrev'),next:q('kdNext'),slow:q('kdSlow'),loop:q('kdLoop'),trail:q('kdTrail'),speed:q('kdSpeed'),kfSel:q('kdKfSel'),spin:q('kdSpin'),fing:q('kdFing'),ax:q('kdAx'),ay:q('kdAy'),ry:q('kdRy'),rz:q('kdRz'),wx:q('kdWx'),wz:q('kdWz')};
   const kfs=view.karambitKeyframes;
   kfs.forEach((kf,idx)=>{
     const opt=document.createElement('option');
@@ -792,6 +796,7 @@ function buildKarambitDebugPanel(){
   refs.slow.onclick=()=>{view.karambitConfig.slowMo=!view.karambitConfig.slowMo;};
   refs.loop.onclick=()=>{view.karambitConfig.loopMode=view.karambitConfig.loopMode==='loop'?'single':'loop';};
   refs.trail.onclick=()=>{view.karambitConfig.showTrail=!view.karambitConfig.showTrail;};
+  refs.speed.oninput=()=>{view.karambitConfig.inspectSpeed=T.MathUtils.clamp(Number(refs.speed.value)||1,.5,1.25);};
   return refs;
 }
 function updateKarambitDebugBadge(){
@@ -804,12 +809,13 @@ function updateKarambitDebugBadge(){
   karambitDebugEl.hidden=false;
   kdRefs.telemetry.textContent=
     `State:${st.state} | ${st.phase}\n`+
-    `t:${st.loopTime.toFixed(2)}s (Ref ${st.refTime.toFixed(2)}s) | Loop#${st.cycles} | ${st.timeScale}x\n`+
+    `t:${st.loopTime.toFixed(2)}s (Ref ${st.refTime.toFixed(2)}s) | Loop#${st.cycles} | ${st.timeScale}x | 检视 ${st.inspectSpeed}x\n`+
     `Spin:${st.unwrappedSpinDeg.toFixed(1)}° (${(st.unwrappedSpinDeg/360).toFixed(2)}圈) | ω:${st.spinVelDegS}°/s`;
   if(document.activeElement!==kdRefs.scrub){
     kdRefs.scrub.max=String(st.loopDuration);
     kdRefs.scrub.value=String(st.loopTime);
   }
+  if(document.activeElement!==kdRefs.speed)kdRefs.speed.value=String(st.inspectSpeed);
   kdRefs.timeTxt.textContent=st.loopTime.toFixed(2)+'s';
   kdRefs.play.textContent=st.paused?'继续(P)':'暂停(P)';
   kdRefs.slow.textContent=cfg.slowMo?'0.2x:开':'0.2x:关';

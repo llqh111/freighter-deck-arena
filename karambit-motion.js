@@ -28,6 +28,18 @@ const EASINGS = {
 export const KARAMBIT_INSPECT_CONFIG = {
   introDur: 0.16,         // Smooth C1 launch from Idle -> Phase 1
   outroDur: 0.38,         // Outro natural catch -> Idle
+  // Inspect-only tempo. Scales intro + loop + outro together, so the whole 检视 reads as one
+  // continuous tempo instead of "slow in / fast middle / slow out". Script-time (the durations
+  // above) stays untouched, so the seamless 2.40s -> 0.14s wrap and every C1 tangent survive
+  // exactly as designed. Does NOT touch attacks / draw / holster: their contact frames must stay
+  // locked to karambitContactTime or the hit would land off-pose.
+  // 实测（60fps 逐步模拟，见 tools 验证输出）：
+  //   1.00x → 稳态循环 2.267s，峰值 28.0°/帧
+  //   1.15x → 稳态循环 1.967s，峰值 32.2°/帧   ← 当前值
+  //   1.25x → 稳态循环 1.817s，峰值 35.0°/帧   ← 快速旋转段开始出阶梯感，别越过
+  // 峰值永远落在「连续快转·前臂呼吸」段。刀光拖尾默认开启会填满扫描弧，关掉拖尾做审计时会
+  // 更容易看出阶梯，所以上限压在 1.25；若还想更快，改 keyframe 的快速段而不是继续拉这个系数。
+  inspectSpeed: 1.15,
   loopMode: 'loop',       // 'loop' (continuous complex flourish + fast spin) | 'single' (play 1 cycle then Outro)
   loopWrapTime: 0.14,     // 2.40s wraps seamlessly to 0.14s (exact pose, tangent & -3 turns!)
   slowMo: false,          // 0.2x slow-motion toggle
@@ -726,10 +738,15 @@ export function createKarambitMotion(emit = () => {}) {
     let dt = Math.max(0, Math.min(rawDt, 0.1)) * scale;
     if (dt === 0 && state === 'idle') { compose(0); return; }
 
+    // Inspect-only tempo multiplier (see KARAMBIT_INSPECT_CONFIG.inspectSpeed). idt is the script
+    // clock; compose() below still runs on real dt so the inertialization spring settles in real time.
+    const inspecting = state === 'inspectIntro' || state === 'inspectLoop' || state === 'inspectOutro';
+    const idt = inspecting ? dt * T.MathUtils.clamp(cfg.inspectSpeed || 1, 0.25, 3) : dt;
+
     prevRawPose.set(raw);
 
     if (state === 'inspectIntro') {
-      introClock += dt;
+      introClock += idt;
       const done = evalIntro(introClock);
       if (done) {
         const carry = Math.max(0, introClock - Math.max(0.04, cfg.introDur));
@@ -737,10 +754,10 @@ export function createKarambitMotion(emit = () => {}) {
         loopTime = carry;
         lastKfIdx = evalKeyframesAt(loopTime);
       }
-      if (dt > 1e-6) for (let j = 0; j < pose.length; j++) velocity[j] = (raw[j] - prevRawPose[j]) / dt;
+      if (idt > 1e-6) for (let j = 0; j < pose.length; j++) velocity[j] = (raw[j] - prevRawPose[j]) / idt;
     } else if (state === 'inspectLoop') {
       const maxT = loopDuration();
-      loopTime += dt;
+      loopTime += idt;
       if (loopTime >= maxT) {
         if (cfg.loopMode === 'single') {
           loopTime = maxT;
@@ -766,11 +783,11 @@ export function createKarambitMotion(emit = () => {}) {
         else if (kfIdx === 3) emit('karambitCatch', .66);
         else if (kfIdx === 12 || kfIdx === 13) emit('karambitRing', .56);
       }
-      if (dt > 1e-6) for (let j = 0; j < pose.length; j++) velocity[j] = (raw[j] - prevRawPose[j]) / dt;
+      if (idt > 1e-6) for (let j = 0; j < pose.length; j++) velocity[j] = (raw[j] - prevRawPose[j]) / idt;
     } else if (state === 'inspectOutro') {
-      outroTime += dt;
+      outroTime += idt;
       const done = evalOutro(outroTime);
-      if (dt > 1e-6) for (let j = 0; j < pose.length; j++) velocity[j] = (raw[j] - prevRawPose[j]) / dt;
+      if (idt > 1e-6) for (let j = 0; j < pose.length; j++) velocity[j] = (raw[j] - prevRawPose[j]) / idt;
       if (done) {
         state = 'idle'; phaseLabel = 'IDLE';
         raw.fill(0); velocity.fill(0); rawFingers.fill(0);
@@ -857,6 +874,7 @@ export function createKarambitMotion(emit = () => {}) {
         spinVelDegS: Math.round(curSpinVelDegS),
         paused: KARAMBIT_INSPECT_CONFIG.paused,
         timeScale: KARAMBIT_INSPECT_CONFIG.slowMo ? KARAMBIT_INSPECT_CONFIG.slowMoScale : 1,
+        inspectSpeed: KARAMBIT_INSPECT_CONFIG.inspectSpeed,
         loopMode: KARAMBIT_INSPECT_CONFIG.loopMode,
         showGizmos: KARAMBIT_INSPECT_CONFIG.showGizmos,
         showTrail: KARAMBIT_INSPECT_CONFIG.showTrail
