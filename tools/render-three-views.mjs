@@ -68,16 +68,16 @@ for (const s of sortedSide) {
 }
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="980" height="700" viewBox="0 0 980 700" style="background:#14181d;font-family:Consolas,Microsoft YaHei,sans-serif">
-  <text x="220" y="28" fill="#f6e5c0" font-size="16" font-weight="bold" text-anchor="middle">俯视图 TOP VIEW (X-Z) · 28.8m × 51.2m</text>
+  <text x="220" y="28" fill="#f6e5c0" font-size="16" font-weight="bold" text-anchor="middle">俯视图 TOP VIEW (X-Z) · ${bw.toFixed(1)}m × ${bd.toFixed(1)}m</text>
   ${topSvg}
-  <text x="670" y="60" fill="#f6e5c0" font-size="16" font-weight="bold" text-anchor="middle">正视图 FRONT VIEW (X-Y · 含中门对狙缝与双侧小金字塔)</text>
+  <text x="670" y="60" fill="#f6e5c0" font-size="16" font-weight="bold" text-anchor="middle">正视图 FRONT VIEW (X-Y · 中门对狙缝与跳攀金字塔高台)</text>
   ${frontSvg}
-  <text x="670" y="330" fill="#f6e5c0" font-size="16" font-weight="bold" text-anchor="middle">侧视图 SIDE VIEW (Z-Y · 含封闭石室顶盖、中路残垣与侧翼回廊)</text>
+  <text x="670" y="330" fill="#f6e5c0" font-size="16" font-weight="bold" text-anchor="middle">侧视图 SIDE VIEW (Z-Y · 封闭墓室、中路石柱与双向地面侧道)</text>
   ${sideSvg}
   <g transform="translate(460,555)" font-size="12" fill="#d8d2c5">
-    <rect x="0" y="0" width="14" height="14" fill="#7d6a54"/><text x="20" y="12">砂岩石墙/立柱 (不可穿)</text>
-    <rect x="190" y="0" width="14" height="14" fill="#e2b86b"/><text x="210" y="12">可行走台阶/高台 (≤0.20m)</text>
-    <rect x="0" y="24" width="14" height="14" fill="#9e6b3b"/><text x="20" y="36">可穿箱木箱 (wood)</text>
+    <rect x="0" y="0" width="14" height="14" fill="#7d6a54"/><text x="20" y="12">纯石质掩体/石柱 (不可穿)</text>
+    <rect x="190" y="0" width="14" height="14" fill="#e2b86b"/><text x="210" y="12">跳箱身法高台/金字塔 (需跳跃/蹲跳)</text>
+    <rect x="0" y="24" width="14" height="14" fill="#9e6b3b"/><text x="20" y="36">极少可穿木箱 (wood)</text>
     <circle cx="197" cy="31" r="5" fill="#66d0f5"/><text x="210" y="36">保卫者出生点 (+Z)</text>
     <circle cx="0" cy="55" r="5" fill="#ff6b57"/><text x="20" y="60">潜伏者出生点 (-Z)</text>
     <line x1="190" y1="55" x2="215" y2="55" stroke="#ff4757" stroke-width="2" stroke-dasharray="4 3"/><text x="222" y="60">中门对狙贯通视线</text>

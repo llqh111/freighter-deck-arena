@@ -1,5 +1,5 @@
 import {buildWorld} from './world.js?v=25';
-import {buildPyramidWorld} from './pyramid-world.js?v=1';
+import {buildPyramidWorld} from './pyramid-world.js?v=3';
 
 export const maps={
   ship:{
@@ -17,10 +17,10 @@ export const maps={
     id:'pyramid',
     name:'新金字塔',
     eng:'NEW PYRAMID',
-    intro:'穿越封闭埃及石室三门洞，卡住中路对狙石缝、登顶双侧阶梯金字塔或沿回廊绕后突袭。',
+    intro:'经典 CF 风格纯石质神殿对称竞技场：封闭三门墓室、中路对狙石缝、双向地面侧道与跳箱身法高台。',
     mapTitle:'神殿平面图',
     radarLabel:'战术雷达',
-    legend:['保卫者石室','潜伏者石室','侧翼回廊方向'],
+    legend:['保卫者墓室','潜伏者墓室','侧翼通道方向'],
     readyText:'神殿就绪',
     build:buildPyramidWorld
   }

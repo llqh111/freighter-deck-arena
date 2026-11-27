@@ -24,15 +24,15 @@ function sandGrain(c, w, h, seed, count) {
   const r = randomSource(seed);
   for (let i = 0; i < count; i++) {
     const x = r() * w, y = r() * h;
-    c.fillStyle = r() > .45 ? 'rgba(84,56,28,.12)' : 'rgba(255,241,206,.13)';
+    c.fillStyle = r() > .45 ? 'rgba(84,56,28,.13)' : 'rgba(255,241,206,.14)';
     c.fillRect(x, y, .7 + r() * 2.2, .7 + r() * 2.2);
   }
 }
 
-// Egyptian sandstone masonry with optional carved hieroglyphic frieze & turquoise/gold accents.
+// Egyptian sandstone masonry with optional carved hieroglyphic frieze, Eye of Horus & turquoise/gold inlays.
 function sandstoneSkin(seed, carved, textures) {
   const w = 512, h = 512, c = sheet(w, h), r = randomSource(seed);
-  c.fillStyle = carved ? '#c8ab7c' : '#d5ba8b';
+  c.fillStyle = carved ? '#caa978' : '#d6ba89';
   c.fillRect(0, 0, w, h);
 
   const rows = 8, rowH = h / rows;
@@ -41,48 +41,137 @@ function sandstoneSkin(seed, carved, textures) {
     const cols = 4, colW = w / cols, offset = (row % 2) * (colW * .5);
     for (let col = -1; col <= cols; col++) {
       const x = col * colW + offset;
-      const shade = Math.floor((r() - .5) * 20);
-      c.fillStyle = `rgb(${210 + shade},${180 + shade},${132 + Math.floor(shade * .75)})`;
+      const shade = Math.floor((r() - .5) * 22);
+      c.fillStyle = `rgb(${212 + shade},${180 + shade},${130 + Math.floor(shade * .72)})`;
       c.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
-      c.fillStyle = 'rgba(255,245,218,.22)';
-      c.fillRect(x + 2, y + 2, colW - 4, 2);
-      c.fillStyle = 'rgba(88,60,32,.38)';
-      c.fillRect(x, y, colW, 2);
-      c.fillRect(x, y, 2, rowH);
+      // Warm sunlit top bevel
+      c.fillStyle = 'rgba(255,245,216,.24)';
+      c.fillRect(x + 2, y + 2, colW - 4, 2.5);
+      // Deep mortar groove
+      c.fillStyle = 'rgba(82,54,28,.42)';
+      c.fillRect(x, y, colW, 2.2);
+      c.fillRect(x, y, 2.2, rowH);
     }
   }
+
+  // Subtle desert weathering gradient (darker sand-eroded base, warm top)
+  const weather = c.createLinearGradient(0, 0, 0, h);
+  weather.addColorStop(0, 'rgba(255,244,214,.08)');
+  weather.addColorStop(.72, 'rgba(120,86,44,.02)');
+  weather.addColorStop(1, 'rgba(92,64,32,.24)');
+  c.fillStyle = weather;
+  c.fillRect(0, 0, w, h);
 
   if (carved) {
-    // Upper frieze band (hieroglyphic cartouches + turquoise inlays)
-    c.fillStyle = 'rgba(104,74,38,.48)';
-    c.fillRect(0, 42, w, 6);
-    c.fillRect(0, 118, w, 6);
-    c.fillStyle = '#8f6938';
-    for (let x = 14; x < w; x += 48) {
-      c.fillRect(x, 56, 22, 52);
-      c.fillStyle = '#c8ab7c';
-      c.fillRect(x + 4, 62, 14, 14);
-      // Ankh / scarab motif
-      c.fillStyle = '#386f72';
-      c.fillRect(x + 8, 82, 6, 18);
-      c.fillRect(x + 5, 86, 12, 4);
+    // Upper royal frieze band (hieroglyphic cartouches + turquoise & gold inlays)
+    c.fillStyle = 'rgba(98,68,34,.52)';
+    c.fillRect(0, 38, w, 6);
+    c.fillRect(0, 120, w, 6);
+    c.fillStyle = '#336b6e';
+    c.fillRect(0, 44, w, 4);
+    c.fillRect(0, 116, w, 4);
+
+    for (let x = 12; x < w; x += 48) {
+      // Cartouche frame
+      c.fillStyle = '#8b6535';
+      c.fillRect(x, 54, 24, 56);
+      c.fillStyle = '#cca976';
+      c.fillRect(x + 3, 57, 18, 50);
+      // Sun disk & Ankh / Scarab glyph
       c.fillStyle = '#d4a64a';
-      c.fillRect(x + 9, 66, 4, 6);
-      c.fillStyle = '#8f6938';
+      c.fillRect(x + 9, 62, 6, 6);
+      c.fillStyle = '#2f6a6d';
+      c.fillRect(x + 10, 74, 4, 24);
+      c.fillRect(x + 6, 80, 12, 4);
+      c.fillStyle = '#7e5528';
+      c.fillRect(x + 7, 100, 10, 3);
     }
+
+    // Mid-height geometric lotus border
+    c.fillStyle = 'rgba(104,74,38,.36)';
+    c.fillRect(0, 242, w, 4);
+    c.fillRect(0, 272, w, 4);
+    for (let x = 8; x < w; x += 32) {
+      c.fillStyle = x % 64 === 8 ? 'rgba(47,106,109,.44)' : 'rgba(212,166,74,.42)';
+      c.fillRect(x, 248, 16, 22);
+    }
+
     // Lower weathered relief band
-    c.fillStyle = 'rgba(92,62,32,.32)';
-    c.fillRect(0, 340, w, 5);
-    c.fillRect(0, 410, w, 5);
-    for (let x = 20; x < w; x += 64) {
-      c.fillStyle = 'rgba(130,92,48,.34)';
-      c.fillRect(x, 355, 28, 44);
-      c.fillStyle = 'rgba(56,111,114,.35)';
-      c.fillRect(x + 8, 365, 12, 24);
+    c.fillStyle = 'rgba(92,62,32,.34)';
+    c.fillRect(0, 344, w, 5);
+    c.fillRect(0, 416, w, 5);
+    for (let x = 18; x < w; x += 64) {
+      c.fillStyle = 'rgba(130,92,48,.36)';
+      c.fillRect(x, 358, 30, 48);
+      c.fillStyle = 'rgba(52,107,110,.38)';
+      c.fillRect(x + 8, 368, 14, 26);
+      c.fillStyle = 'rgba(212,166,74,.38)';
+      c.fillRect(x + 12, 374, 6, 12);
     }
   }
 
-  sandGrain(c, w, h, seed + 17, 4800);
+  sandGrain(c, w, h, seed + 17, 5400);
+  return canvasMap(c, textures);
+}
+
+// Dedicated Egyptian Tomb Mural texture for spawn chambers & giant mid columns
+function muralSkin(accentHex, textures) {
+  const w = 512, h = 256, c = sheet(w, h);
+  c.fillStyle = '#bfa06e';
+  c.fillRect(0, 0, w, h);
+
+  // Outer carved gold & lapis frame
+  c.strokeStyle = '#6c4d28';
+  c.lineWidth = 14;
+  c.strokeRect(7, 7, w - 14, h - 14);
+  c.strokeStyle = '#d4a64a';
+  c.lineWidth = 5;
+  c.strokeRect(16, 16, w - 32, h - 32);
+
+  // Inner colored frieze backdrop
+  c.fillStyle = accentHex;
+  c.globalAlpha = 0.28;
+  c.fillRect(22, 22, w - 44, h - 44);
+  c.globalAlpha = 1;
+
+  // Central Winged Sun-Disk (iconic CF Egypt temple motif)
+  const cx = w / 2, cy = 88;
+  c.fillStyle = '#d4a64a';
+  c.beginPath();
+  c.arc(cx, cy, 24, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = '#6b4a20';
+  c.lineWidth = 3;
+  c.stroke();
+
+  // Symmetrical feathered wings
+  for (const s of [-1, 1]) {
+    for (let row = 0; row < 3; row++) {
+      c.fillStyle = row === 1 ? '#2f6a6d' : '#d4a64a';
+      c.beginPath();
+      c.moveTo(cx + s * 28, cy - 14 + row * 10);
+      c.lineTo(cx + s * (168 - row * 18), cy - 26 + row * 14);
+      c.lineTo(cx + s * (152 - row * 20), cy - 14 + row * 14);
+      c.lineTo(cx + s * 28, cy - 4 + row * 10);
+      c.closePath();
+      c.fill();
+    }
+  }
+
+  // Lower hieroglyphic columns & twin stylized Anubis/Pharaoh guardian silhouettes
+  c.fillStyle = '#5a3d1e';
+  c.fillRect(28, 134, w - 56, 4);
+  for (let x = 44; x < w - 44; x += 36) {
+    c.fillStyle = x % 72 === 44 ? '#785226' : '#2f6a6d';
+    c.fillRect(x, 148, 14, 14);
+    c.fillStyle = '#d4a64a';
+    c.fillRect(x + 4, 168, 6, 26);
+    c.fillRect(x, 174, 14, 4);
+    c.fillStyle = '#6a4822';
+    c.fillRect(x + 2, 202, 10, 18);
+  }
+
+  sandGrain(c, w, h, 409, 2600);
   return canvasMap(c, textures);
 }
 
@@ -126,47 +215,52 @@ function courtyardSkin(blocks, textures) {
   c.fillStyle = '#d3b786';
   c.fillRect(0, 0, w, h);
 
+  // Temple sandstone flagstone slabs
   const tw = 64, th = 64;
   for (let y = 0; y < h; y += th) {
     for (let x = 0; x < w; x += tw) {
-      const v = Math.floor((r() - .5) * 18);
-      c.fillStyle = `rgb(${210 + v},${180 + v},${132 + Math.floor(v * .72)})`;
+      const v = Math.floor((r() - .5) * 20);
+      c.fillStyle = `rgb(${210 + v},${180 + v},${131 + Math.floor(v * .72)})`;
       c.fillRect(x + 1, y + 1, tw - 2, th - 2);
-      c.fillStyle = 'rgba(110,80,46,.24)';
+      c.fillStyle = 'rgba(110,80,46,.26)';
       c.fillRect(x, y, tw, 1.5);
       c.fillRect(x, y, 1.5, th);
     }
   }
 
-  // Sand drifts & wind streaks across the temple courtyard
-  for (let i = 0; i < 10500; i++) {
-    c.fillStyle = r() > .42 ? 'rgba(238,214,168,.17)' : 'rgba(112,82,48,.10)';
-    c.fillRect(r() * w, r() * h, 1 + r() * 16, 1 + r() * 3);
+  // Wind-blown golden sand drifts & streaks across the temple courtyard
+  for (let i = 0; i < 12000; i++) {
+    c.fillStyle = r() > .40 ? 'rgba(240,217,170,.19)' : 'rgba(112,82,48,.10)';
+    c.fillRect(r() * w, r() * h, 1 + r() * 18, 1 + r() * 3.2);
   }
 
   // Central cross-courtyard ceremonial paving (iconic mid-sniper lane marker)
   c.fillStyle = 'rgba(155,112,58,.24)';
-  c.fillRect(w / 2 - 46, 220, 92, h - 440);
-  c.fillRect(140, h / 2 - 42, w - 280, 84);
+  c.fillRect(w / 2 - 48, 210, 96, h - 420);
+  c.fillRect(110, h / 2 - 42, w - 220, 84);
+  // Subtle turquoise/gold trim along the center sniper runner
+  c.fillStyle = 'rgba(47,106,109,.22)';
+  c.fillRect(w / 2 - 50, 210, 4, h - 420);
+  c.fillRect(w / 2 + 46, 210, 4, h - 420);
 
   // Team spawn chamber stone trim
-  c.fillStyle = 'rgba(46,102,134,.36)';
-  c.fillRect(42, h - 245, w - 84, 8);
-  c.fillStyle = 'rgba(156,70,50,.36)';
-  c.fillRect(42, 237, w - 84, 8);
+  c.fillStyle = 'rgba(46,102,134,.38)';
+  c.fillRect(36, h - 255, w - 72, 8);
+  c.fillStyle = 'rgba(156,70,50,.38)';
+  c.fillRect(36, 247, w - 72, 8);
 
-  const sx = w / 30, sz = h / 54;
+  const sx = w / 29, sz = h / 47;
   for (const b of blocks.filter(b => b.bottom === 0)) {
     const yaw = b.yaw || 0, cos = Math.cos(yaw), sin = Math.sin(yaw);
     const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, e]) => {
       const dx = a * b.w * .5, dz = e * b.d * .5;
-      return [(b.x + dx * cos + dz * sin + 15) * sx, (b.z + dz * cos - dx * sin + 27) * sz];
+      return [(b.x + dx * cos + dz * sin + 14.5) * sx, (b.z + dz * cos - dx * sin + 23.5) * sz];
     });
-    c.shadowColor = 'rgba(65,45,22,.40)';
+    c.shadowColor = 'rgba(65,45,22,.42)';
     c.shadowBlur = 10;
     c.shadowOffsetX = 3;
     c.shadowOffsetY = 4;
-    c.fillStyle = 'rgba(85,62,36,.20)';
+    c.fillStyle = 'rgba(85,62,36,.22)';
     c.beginPath();
     pts.forEach(([px, py], i) => (i ? c.lineTo(px, py) : c.moveTo(px, py)));
     c.closePath();
@@ -177,14 +271,18 @@ function courtyardSkin(blocks, textures) {
 }
 
 /**
- * CF「新金字塔 (Egypt 2.0)」1:1 风格团队竞技地图
+ * CF「新金字塔 (Egypt 2.0 / 团队竞技·金字塔)」1:1 复刻版
  *
- * 核心还原特征：
- * 1. 南北封闭古埃及壁画出生石室（含顶盖、法老石棺祭坛、火盆），正墙开左/中/右 3 门洞防堵家。
- * 2. 正中贯穿南北的标志性「中门对狙石缝」（Mid Sniper Slit）与中央风化矮墙 + 双巨型壁画石柱。
- * 3. 中场左右对称两座可攀爬「阶梯小金字塔」（每级高差 0.20m <= 0.22m），兼顾立体高台与中路视野。
- * 4. 两侧「Egypt 2.0 防堵家采光回廊暗道」（vents）与家前双侧狙击高台/石墩掩体。
- * 5. 对称可穿箱补给木箱（material: 'wood'）与远景吉萨大金字塔群 + 狮身人面像轮廓。
+ * 核心 1:1 还原设计：
+ * 1. 紧凑 28.0m × 46.0m 绝对对称古埃及神殿庭院，还原高密度中路对狙与开局手雷交火节奏。
+ * 2. 南北封闭古埃及墓室出生点（顶盖、法老石棺祭坛、埃及神殿壁画、火盆暖光），正墙开左/中/右 3 宽门洞防堵家。
+ * 3. 中路经典「风化矮墙 + 双巨型莲花柱头壁画石柱 + 中门对狙石缝」，纯石质不可穿掩体为主，全图仅 1 对可穿木箱。
+ * 4. CF 版「跳箱身法门槛」立体高点：
+ *    - 家前左右狙击高台（高 1.56m，无自动台阶）：支持「一步蹲跳 C+Space」直上，或借 0.82m 垫脚石块「二段跳箱 Space×2」；
+ *    - 中场左右 3 级跳攀阶梯小金字塔（每级高差 0.56m > 0.22m STEP，顶高 1.68m）：需连续跳跃登顶掌控全场；
+ *    - 侧道转角跳箱偷袭石台（0.78m -> 1.50m）：提供非常规架枪位。
+ * 5. 两侧完全落地（y=0）的「双向地面石柱侧道」+ 隔墙标志性「墙洞窗口」(y=1.14..2.35m，可穿射/投雷/对枪)，
+ *    彻底移除运输船式单向高架管道。
  */
 export function buildPyramidWorld(scene) {
   const headless = !scene;
@@ -204,6 +302,8 @@ export function buildPyramidWorld(scene) {
   const stoneTex = headless ? null : sandstoneSkin(101, false, textures);
   const carvedTex = headless ? null : sandstoneSkin(205, true, textures);
   const woodTex = headless ? null : crateSkin(textures);
+  const muralBlueTex = headless ? null : muralSkin('#285570', textures);
+  const muralRedTex = headless ? null : muralSkin('#853c2e', textures);
 
   function mat(col, opts = {}) {
     if (typeof col !== 'string') return col;
@@ -245,13 +345,17 @@ export function buildPyramidWorld(scene) {
   if (woodMat) materials.set('__wood__', woodMat);
   const goldMat = headless ? null : new T.MeshStandardMaterial({color: '#d4a64a', roughness: .34, metalness: .68});
   if (goldMat) materials.set('__gold__', goldMat);
+  const muralBlueMat = headless ? null : new T.MeshStandardMaterial({map: muralBlueTex, roughness: .82, metalness: .08});
+  if (muralBlueMat) materials.set('__muralBlue__', muralBlueMat);
+  const muralRedMat = headless ? null : new T.MeshStandardMaterial({map: muralRedTex, roughness: .82, metalness: .08});
+  if (muralRedMat) materials.set('__muralRed__', muralRedMat);
 
   const darkBronze = '#4a3828';
   const sandLight = '#dfc494';
   const sandMid = '#cfa870';
   const sandDark = '#9a784c';
   const tombStone = '#b59262';
-  const tealTrim = '#36696b';
+  const tealTrim = '#2f6a6d';
 
   function crate(x, z, w, d = w, base = 0, h = w, yaw = 0) {
     const rot = yaw ? new T.Quaternion().setFromAxisAngle(axis, yaw) : null;
@@ -259,8 +363,9 @@ export function buildPyramidWorld(scene) {
     solid(x, z, w, d, base, base + h, yaw ? {yaw, material: 'wood'} : {material: 'wood'});
   }
 
-  function obelisk(x, z, w = 1.25, h = 4.2) {
+  function obelisk(x, z, w = 1.05, h = 3.9) {
     block(x, z, w, w, 0, h, sandMid, {material: 'stone'}, {carved: true});
+    put(x, 0.16, z, w + 0.24, 0.32, w + 0.24, sandDark);
     if (!headless) {
       const capGeo = new T.ConeGeometry(w * .707, w * .92, 4);
       geometries.push(capGeo);
@@ -274,220 +379,236 @@ export function buildPyramidWorld(scene) {
   }
 
   // =========================================================================
-  // 1. 中央交火区：经典十字矮墙 + 双巨型壁画石柱 + 中门对狙石缝 (Mid Sniper Slit)
+  // 1. 中央交火区：经典风化矮墙 + 双巨型莲花柱头壁画石柱 + 中门对狙石缝 (纯石质不可穿)
   // =========================================================================
-  // 正中央 (0, 0) 标志性风化低矮石墙：高 1.04m（蹲下完全隐蔽，站立可卡爆头线对枪）
-  block(0, 0, 2.8, 0.96, 0, 1.04, sandMid, {material: 'stone'}, {carved: true});
-  put(0, 1.08, 0, 2.94, 0.10, 1.06, sandDark);
+  // 正中央 (0, 0) 标志性风化低矮石墙：高 1.24m（略高于蹲姿身高 1.22m，蹲下完全隐藏头顶躲狙，站立 1.60m 精准卡爆头线，手雷可越墙高抛）
+  block(0, 0, 3.0, 0.96, 0, 1.24, sandMid, {material: 'stone'}, {carved: true});
+  put(0, 1.28, 0, 3.16, 0.10, 1.08, sandDark);
+  put(0, 0.10, 0, 3.14, 0.20, 1.08, sandDark);
 
-  // 中央左右双巨型神殿壁画方柱（x = ±3.85, z = 0），与中央矮墙之间各留 1.7m 通道
+  // 中央左右双巨型神殿莲花柱头壁画方柱（x = ±3.8, z = 0），与中央矮墙留出 1.58m 对枪通道
   for (const side of [-1, 1]) {
-    block(side * 3.85, 0, 1.48, 1.48, 0, 4.5, sandMid, {material: 'stone'}, {carved: true});
-    put(side * 3.85, 4.68, 0, 1.82, 0.36, 1.82, sandDark);
-    put(side * 3.85, 0.18, 0, 1.76, 0.36, 1.76, sandDark);
+    const cx = side * 3.8;
+    block(cx, 0, 1.44, 1.44, 0, 4.6, sandMid, {material: 'stone'}, {carved: true});
+    // 阶梯柱础
+    put(cx, 0.16, 0, 1.78, 0.32, 1.78, sandDark);
+    put(cx, 0.38, 0, 1.62, 0.16, 1.62, sandLight);
+    // 绿松石 + 黄金颈圈饰带
+    put(cx, 4.02, 0, 1.52, 0.16, 1.52, tealTrim, null, {noMap: true, roughness: .6});
+    put(cx, 4.18, 0, 1.56, 0.12, 1.56, '#d4a64a', null, {noMap: true, metal: .6, rough: .38});
+    // 外展莲花柱头（纯视觉装饰，增强埃及神殿宏伟轮廓）
+    put(cx, 4.46, 0, 1.76, 0.32, 1.76, sandLight, null, {carved: true});
+    put(cx, 4.78, 0, 1.98, 0.32, 1.98, sandDark);
   }
 
-  // 经典中门对狙石缝挡墙（z = ±7.2）：两墙相距 2.6m（x ∈ [-1.3, 1.3] 形成贯穿全图对狙石缝）
+  // 经典中门对狙石缝挡墙（z = ±6.6）：两墙内缘 x = ±1.4 夹出 2.8m 贯穿全图对狙石缝
   for (const sign of [-1, 1]) {
     for (const side of [-1, 1]) {
-      block(side * 2.55, sign * 7.2, 2.5, 1.05, 0, 3.15, sandLight, {material: 'stone'}, {carved: true});
-      put(side * 2.55, 3.28, sign * 7.2, 2.68, 0.24, 1.22, sandDark);
-      // 挡墙外侧附带低矮石墩（蹲姿卡点对枪）
-      block(side * 4.35, sign * 7.2, 1.05, 0.95, 0, 1.12, sandMid, {material: 'stone'});
+      block(side * 2.85, sign * 6.6, 2.9, 1.05, 0, 3.10, sandLight, {material: 'stone'}, {carved: true});
+      put(side * 2.85, 3.22, sign * 6.6, 3.06, 0.24, 1.22, sandDark);
+      // 挡墙外侧附带低矮石墩（CF 经典闪身卡点对枪）
+      block(side * 4.95, sign * 6.6, 1.10, 0.96, 0, 1.08, sandMid, {material: 'stone'});
+      put(side * 4.95, 1.12, sign * 6.6, 1.18, 0.08, 1.04, sandDark);
     }
-    // 对狙石缝上方横跨神殿飞翼门楣（高度 3.15~3.85，不影响视野且增强纵深构图）
-    put(0, 3.50, sign * 7.2, 7.6, 0.70, 1.15, sandMid, null, {carved: true});
-    put(0, 3.50, sign * 6.58, 2.1, 0.34, 0.08, '#d4a64a', null, {noMap: true, metal: .65, rough: .35});
+    // 飞翼太阳盘神殿门楣（纯视觉，不挡高抛手雷弧线）
+    put(0, 3.48, sign * 6.6, 8.7, 0.72, 1.18, sandMid, null, {carved: true});
+    put(0, 3.90, sign * 6.6, 9.0, 0.18, 1.32, sandDark);
+    put(0, 3.48, sign * 5.98, 2.6, 0.36, 0.08, '#d4a64a', null, {noMap: true, metal: .65, rough: .35});
+    put(0, 3.48, sign * 5.95, 0.56, 0.44, 0.10, tealTrim, null, {noMap: true, roughness: .5});
+
+    // 中路前压纯石质方形掩体（回归 CF 纯石质刚枪与躲雷手感）
+    block(sign * 4.6, sign * 3.2, 1.30, 1.20, 0, 1.24, sandMid, {material: 'stone'}, {carved: true});
+    block(-sign * 4.6, sign * 3.2, 1.30, 1.20, 0, 1.24, sandMid, {material: 'stone'}, {carved: true});
   }
 
   // =========================================================================
-  // 2. 中场左右对称「阶梯小金字塔」(x = ±8.2, z = 0)
-  // 5 级同心台阶，每级高差 0.20m (<= 0.22m STEP)，踏面深 0.45m，顶层高 1.00m
+  // 2. 中场左右对称「CF 跳攀阶梯小金字塔」(x = ±7.55, z = 0)
+  // 3 级跳箱台阶，每级高差 0.56m (> 0.22m STEP)，需连续跳跃 (Space) 或蹲跳 (C+Space) 登顶 (1.68m)
   // =========================================================================
-  const miniTiers = 5;
-  const miniRise = 0.20;
-  const miniTread = 0.45;
-  const miniTop = 1.40;
+  const miniTiers = [
+    {size: 3.90, bot: 0.00, top: 0.56, col: sandLight, carved: false},
+    {size: 2.70, bot: 0.56, top: 1.12, col: sandMid, carved: false},
+    {size: 1.56, bot: 1.12, top: 1.68, col: sandLight, carved: true},
+  ];
   for (const side of [-1, 1]) {
-    const px = side * 8.2;
-    for (let i = 0; i < miniTiers; i++) {
-      const level = i + 1;
-      const sz = miniTop + (miniTiers - level) * (miniTread * 2); // 底座 5.0m -> 顶层 1.4m
-      block(px, 0, sz, sz, i * miniRise, level * miniRise, i % 2 === 0 ? sandLight : sandMid, {walkSurface: true, material: 'stone'}, {carved: i === miniTiers - 1});
+    const px = side * 7.55;
+    for (const tier of miniTiers) {
+      block(px, 0, tier.size, tier.size, tier.bot, tier.top, tier.col, {walkSurface: true, material: 'stone'}, {carved: tier.carved});
+      // 每级台阶边缘浅金镶边，强化跳点高度辨识
+      put(px, tier.top - 0.03, 0, tier.size + 0.04, 0.05, tier.size + 0.04, sandDark);
     }
-    // 金字塔顶中心装饰矮方尖碑（0.52m 宽，留出环绕站立空间）
-    block(px, 0, 0.52, 0.52, 1.00, 1.55, sandDark, {material: 'stone'});
-    if (!headless) {
-      const tipGeo = new T.ConeGeometry(0.36, 0.44, 4);
-      geometries.push(tipGeo);
-      const tip = new T.Mesh(tipGeo, goldMat);
-      tip.position.set(px, 1.55 + 0.22, 0);
-      tip.rotation.y = Math.PI / 4;
-      tip.castShadow = true;
-      scene.add(tip);
-    }
+    // 顶层金色祭坛台面饰边（保持中心 1.56×1.56 完整可站立，不卡脚）
+    put(px, 1.71, 0, 1.62, 0.06, 1.62, '#d4a64a', null, {noMap: true, metal: .55, rough: .42});
   }
 
   // =========================================================================
-  // 3. 对称可穿箱木箱掩体 (material: 'wood') 与边路砂岩断墙/方尖碑
-  // =========================================================================
-  for (const sign of [-1, 1]) {
-    // 中路前压斜角可穿箱木箱
-    crate(sign * 5.2, sign * 3.9, 1.38, 1.38, 0, 1.32);
-    crate(-sign * 5.2, sign * 3.9, 1.38, 1.38, 0, 1.32);
-
-    // 庭院中段斜置木箱（可穿射对枪）
-    crate(sign * 4.1, sign * 12.6, 1.50, 1.36, 0, 1.38, sign * 0.28);
-    crate(-sign * 4.1, sign * 12.6, 1.42, 1.42, 0, 1.32);
-
-    // 边路转角单/双层木箱（靠近侧道出口）
-    crate(sign * 9.8, -sign * 8.4, 1.35, 1.35, 0, 1.28);
-    crate(sign * 9.8, -sign * 9.75, 1.02, 1.02, 0, 0.96);
-
-    // 家门口经典「②号点」石墩掩体（卡中门/边路过点狙）
-    for (const side of [-1, 1]) {
-      block(side * 5.0, sign * 17.3, 1.55, 1.10, 0, 1.32, sandMid, {material: 'stone'}, {carved: true});
-    }
-
-    // 外庭院方尖碑（视觉地标 + 侧翼硬掩体）
-    obelisk(sign * 9.8, sign * 14.8, 1.18, 4.1);
-    obelisk(-sign * 9.8, sign * 14.8, 1.18, 4.1);
-  }
-
-  // =========================================================================
-  // 4. 家前左右狙击高台（x = ±7.8, z = ±12.2，4 级 0.20m 台阶升至 0.80m）
+  // 3. 家前左右「CF 跳箱狙击高台」(x = ±7.3, z = ±11.4，高 1.56m，无自动台阶)
+  // 两种上台身法：
+  //   ① 一步蹲跳 (C + Space，起跳高度 ~1.96m) 直接登顶 1.56m 主高台
+  //   ② 二段跳箱 (Space 连跳)：先跳上 0.82m 垫脚石块，再跳上 1.56m 主高台
   // =========================================================================
   for (const sign of [-1, 1]) {
     for (const side of [-1, 1]) {
-      const dx = side * 7.8;
-      const dz = sign * 12.2;
-      block(dx, dz, 2.2, 2.2, 0, 0.80, sandMid, {walkSurface: true, material: 'stone'}, {carved: true});
-      // 4 级台阶从己方一侧平稳登上（每级 0.20m <= 0.22m）
-      for (let s = 0; s < 4; s++) {
-        block(dx, dz + sign * (1.35 + (3 - s) * 0.48), 1.9, 0.48, 0, (s + 1) * 0.20, s % 2 ? sandLight : sandMid, {walkSurface: true, material: 'stone'});
-      }
-      // 高台前沿半身石护墙（狙击手可露出上半身架边路与中场）
-      block(dx, dz - sign * 0.98, 2.2, 0.24, 0.80, 1.48, sandDark, {material: 'stone'});
+      const dx = side * 7.3;
+      const dz = sign * 11.4;
+      // 1.56m 高主狙击石台（纯石质不可穿）
+      block(dx, dz, 2.4, 2.2, 0, 1.56, sandMid, {walkSurface: true, material: 'stone'}, {carved: true});
+      put(dx, 1.53, dz, 2.48, 0.08, 2.28, sandDark);
+      // 高台前沿 0.80m 半身石护墙（顶高 2.36m：站立露头胸架中路/边路，下蹲可掩体躲狙）
+      block(dx, dz - sign * 0.98, 2.4, 0.24, 1.56, 2.36, sandDark, {material: 'stone'});
+      put(dx, 2.40, dz - sign * 0.98, 2.52, 0.08, 0.30, '#d4a64a', null, {noMap: true, metal: .5, rough: .45});
+      // 己方侧 0.82m 垫脚跳箱石块（二段跳箱身法门槛）
+      block(dx, dz + sign * 1.75, 1.20, 1.15, 0, 0.82, sandLight, {walkSurface: true, material: 'stone'});
+      put(dx, 0.80, dz + sign * 1.75, 1.24, 0.05, 1.19, '#d4a64a', null, {noMap: true, metal: .45, rough: .48});
     }
   }
 
   // =========================================================================
-  // 5. 两侧「Egypt 2.0 防堵家采光回廊暗道」(vents)
-  // vents[0] 供 Team 1 (x = -12.9), vents[1] 供 Team 0 (x = +12.9)
+  // 4. 两侧「双向地面石柱侧道」+ 隔墙标志性「CF 墙洞窗口」(x ∈ [±10.9, ±14.0], y = 0)
+  // 彻底移除运输船式单向高架管道，还原 CF 金字塔双向地面侧道 + 墙洞对枪 + 跳箱偷袭石台
   // =========================================================================
-  for (const sign of [-1, 1]) {
-    const x = sign * 12.9;
-    const entryZ = sign * 17.6;
-    const rise = 0.18;
-    const run = 0.50;
-    const steps = 6;
-    const platH = steps * rise; // 1.08m
-    const stairEnd = 17.6 - steps * run; // 14.6
-    const exitAbs = 5.4;
-    const exitZ = -sign * exitAbs;
-    const galleryLen = stairEnd + exitAbs; // 20.0m
-    const centerZ = sign * ((stairEnd - exitAbs) / 2);
+  for (const side of [-1, 1]) {
+    const colX = side * 10.65;
+    for (const sign of [-1, 1]) {
+      // 中段隔墙 z ∈ [±2.4, ±6.8]：在 z = ±4.6 处开设 1.8m 宽标志性「CF 墙洞窗口」(y = 1.14..2.35m)
+      // 两侧实体石柱（z ∈ [±2.4, ±3.7] 与 [±5.5, ±6.8]）
+      block(colX, sign * 3.05, 0.50, 1.30, 0, 3.40, sandLight, {material: 'stone'}, {carved: true});
+      block(colX, sign * 6.15, 0.50, 1.30, 0, 3.40, sandLight, {material: 'stone'}, {carved: true});
+      // 墙洞下窗台 (0..1.22m，蹲姿完全隐蔽、站姿 1.60m 穿窗对枪/投雷) 与上过梁 (2.35..3.40m)
+      block(colX, sign * 4.60, 0.50, 1.80, 0, 1.22, sandMid, {material: 'stone'}, {carved: true});
+      block(colX, sign * 4.60, 0.50, 1.80, 2.35, 3.40, sandLight, {material: 'stone'}, {carved: true});
+      put(colX, 1.24, sign * 4.60, 0.62, 0.08, 1.84, sandDark);
+      put(colX, 2.34, sign * 4.60, 0.62, 0.08, 1.84, '#d4a64a', null, {noMap: true, metal: .48, rough: .46});
+      put(colX, 3.54, sign * 4.60, 0.72, 0.28, 4.56, sandDark);
 
-    vents.push({entry: {x, z: sign * 18.2}, exit: {x, z: exitZ}});
+      // 后段隔墙 z ∈ [±9.8, ±13.8]
+      block(colX, sign * 11.8, 0.50, 4.0, 0, 3.40, sandLight, {material: 'stone'}, {carved: true});
+      put(colX, 3.54, sign * 11.8, 0.72, 0.28, 4.16, sandDark);
+      // 侧翼拱门顶梁（纯视觉，不挡通行与手雷）
+      put(colX, 3.42, sign * 8.3, 0.58, 0.46, 3.1, sandDark);
 
-    // 入口缓步台阶
-    for (let i = 1; i <= steps; i++) {
-      const z = sign * (17.6 - (i - 0.5) * run);
-      block(x, z, 2.30, run, 0, i * rise, i % 2 ? sandLight : sandMid, {walkSurface: true, material: 'stone'});
+      // 双向侧道中段纯石质矮掩体（1.22m 蹲姿完全隐蔽，闪身对枪，内侧留 1.6m 宽通道）
+      block(side * 12.85, sign * 3.8, 1.25, 1.05, 0, 1.22, sandMid, {material: 'stone'}, {carved: true});
+
+      // 侧道转角「跳箱偷袭石台」：0.78m 垫脚石 -> 1.50m 高架枪石块（支持二段跳或 C+Space 一步蹲跳）
+      block(side * 13.15, sign * 8.3, 1.25, 1.25, 0, 1.50, sandMid, {walkSurface: true, material: 'stone'}, {carved: true});
+      block(side * 13.15, sign * 9.55, 1.05, 1.05, 0, 0.78, sandLight, {walkSurface: true, material: 'stone'});
+      put(side * 13.15, 0.76, sign * 9.55, 1.09, 0.05, 1.09, '#d4a64a', null, {noMap: true, metal: .45, rough: .48});
     }
-
-    // 抬高回廊通道地面
-    block(x, centerZ, 2.40, galleryLen, 0, platH, sandMid, {walkSurface: true, material: 'stone'});
-
-    // 回廊内侧立柱与低矮胸墙（留出埃及神殿采光柱廊，防止死闷感）
-    const ceiling = platH + 2.35;
-    const innerX = x - sign * 1.15;
-    block(innerX, centerZ, 0.24, galleryLen, platH, platH + 1.05, sandLight, {material: 'stone'}, {carved: true});
-    // 顶部檐口与采光石柱
-    block(innerX, centerZ, 0.26, galleryLen, ceiling - 0.35, ceiling, sandDark, {material: 'stone'});
-    for (let zOff = -exitAbs + 1.2; zOff <= stairEnd - 1.2; zOff += 3.2) {
-      block(innerX, sign * zOff, 0.36, 0.42, platH + 1.05, ceiling - 0.35, sandMid, {material: 'stone'});
-      // 廊顶采光横梁
-      put(x, ceiling + 0.12, sign * zOff, 2.65, 0.26, 0.90, sandDark);
-    }
-
-    // 出口处阶梯木箱，方便上下与压制敌方侧翼
-    const dropZ = exitZ - sign * 1.05;
-    crate(x - sign * 0.42, dropZ, 1.08, 1.08, 0, 0.72);
+    // 中场拱门顶梁（z = 0 处双向连通小金字塔与侧道）
+    put(colX, 3.42, 0, 0.58, 0.48, 4.9, sandDark);
   }
 
+  // Ground-level side corridor flank waypoints for AI flankers & tactical map indicators
+  vents.push({entry: {x: -11.8, z: -15.0}, exit: {x: -11.8, z: 9.0}});
+  vents.push({entry: {x: 11.8, z: 15.0}, exit: {x: 11.8, z: -9.0}});
+
   // =========================================================================
-  // 6. 南北封闭古埃及壁画出生石室（含顶盖、3 门洞正墙、法老石棺祭坛）
-  // Team 0: z ∈ [20.2, 25.6] | Team 1: z ∈ [-25.6, -20.2]
+  // 5. 家前石墩掩体、外庭院方尖碑 & 极少木箱穿点（全图仅 1 对可穿木箱）
   // =========================================================================
   for (const sign of [-1, 1]) {
-    const wallZ = sign * 20.0;
+    // 家门口经典「②号点」纯石质石墩掩体（不可穿，稳健卡中门/过点狙）
+    for (const side of [-1, 1]) {
+      block(side * 4.5, sign * 14.4, 1.55, 1.08, 0, 1.32, sandMid, {material: 'stone'}, {carved: true});
+      put(side * 4.5, 1.36, sign * 14.4, 1.65, 0.08, 1.16, sandDark);
+    }
+
+    // 侧道入口外侧装饰方尖碑（纯石质硬掩体 + 视觉地标，不堵三门洞）
+    obelisk(sign * 13.2, sign * 15.6, 1.05, 3.9);
+    obelisk(-sign * 13.2, sign * 15.6, 1.05, 3.9);
+  }
+
+  // 全图仅保留 1 对对称可穿射木箱 (material: 'wood')，位于中路-侧翼过渡斜角，极少穿点
+  crate(4.2, 10.6, 1.32, 1.32, 0, 1.28, 0.22);
+  crate(-4.2, -10.6, 1.32, 1.32, 0, 1.28, -0.22);
+
+  // =========================================================================
+  // 6. 南北封闭古埃及墓室出生点（壁画、法老石棺祭坛、顶盖、3 宽门洞防堵家）
+  // Team 0: z ∈ [17.8, 22.8] | Team 1: z ∈ [-22.8, -17.8]
+  // =========================================================================
+  for (const sign of [-1, 1]) {
+    const wallZ = sign * 17.4;
     const chamberRoofY = 3.85;
+    const teamMuralMat = sign > 0 ? muralBlueMat : muralRedMat;
 
-    // 出生石室前墙：开 3 个宽敞门洞——左门 [-11.0, -7.8]、中门 [-2.2, 2.2]、右门 [7.8, 11.0]
-    // 左外柱段 [-14.4, -11.0] 与右外柱段 [11.0, 14.4]
+    // 墓室前墙：开 3 个门洞防堵家，同时加宽实墙遮蔽确保出生点零暴露——左门 [-12.4, -9.8]、中门 [-1.6, 1.6]、右门 [9.8, 12.4]
     for (const side of [-1, 1]) {
-      block(side * 12.7, wallZ, 3.4, 0.85, 0, chamberRoofY, tombStone, {material: 'stone'}, {carved: true});
-      // 中左墙 [-7.8, -2.2] 与中右墙 [2.2, 7.8]
-      block(side * 5.0, wallZ, 5.6, 0.85, 0, chamberRoofY, tombStone, {material: 'stone'}, {carved: true});
+      // 外柱段 [-14.0, -12.4] 与 [12.4, 14.0]
+      block(side * 13.2, wallZ, 1.6, 0.85, 0, chamberRoofY, tombStone, {material: 'stone'}, {carved: true});
+      // 中左实墙 [-9.8, -1.6] 与中右实墙 [1.6, 9.8]（8.2m 宽实墙彻底遮蔽 8 个出生点）
+      block(side * 5.7, wallZ, 8.2, 0.85, 0, chamberRoofY, tombStone, {material: 'stone'}, {carved: true});
+      // 墓室正门外侧塔门浮雕立柱装饰
+      put(side * 1.85, 1.92, wallZ - sign * 0.48, 0.56, 3.84, 0.24, sandDark);
+      put(side * 9.55, 1.92, wallZ - sign * 0.48, 0.52, 3.84, 0.22, sandDark);
     }
-    // 三门上方门楣横梁（底高 3.05m，顶部与石室屋顶平齐）
-    put(0, 3.45, wallZ, 28.8, 0.80, 0.96, sandDark, null, {carved: true});
+    // 三门上方门楣横梁（底高 3.05m，顶部与墓室屋顶平齐）
+    put(0, 3.45, wallZ, 28.0, 0.80, 0.96, sandDark, null, {carved: true});
     // 中门埃及飞翼太阳盘装饰 + 阵营徽章
-    put(0, 3.42, wallZ - sign * 0.50, 3.8, 0.42, 0.10, sign > 0 ? '#2b5e7c' : '#8e3f2f', null, {noMap: true});
-    put(0, 3.42, wallZ - sign * 0.56, 1.1, 0.48, 0.12, '#d4a64a', null, {noMap: true, metal: .65, rough: .35});
+    put(0, 3.44, wallZ - sign * 0.50, 4.2, 0.44, 0.10, sign > 0 ? '#2b5e7c' : '#8e3f2f', null, {noMap: true});
+    put(0, 3.44, wallZ - sign * 0.56, 1.2, 0.50, 0.12, '#d4a64a', null, {noMap: true, metal: .65, rough: .35});
 
-    // 出生石室顶盖（z ∈ [19.8, 26.0]），营造古埃及封闭墓室氛围
-    block(0, sign * 22.9, 28.8, 6.2, chamberRoofY, chamberRoofY + 0.55, sandDark, {material: 'stone'});
-    // 石室顶外沿女儿墙齿垛装饰
+    // 封闭墓室顶盖（z ∈ [17.2, 23.4]），营造古埃及法老陵墓氛围
+    block(0, sign * 20.3, 28.0, 6.2, chamberRoofY, chamberRoofY + 0.55, sandDark, {material: 'stone'});
+    // 墓室顶外沿女儿墙齿垛装饰
     for (let x = -12.6; x <= 12.6; x += 2.8) {
-      put(x, chamberRoofY + 0.82, sign * 19.95, 1.4, 0.54, 0.42, sandMid);
+      put(x, chamberRoofY + 0.82, sign * 17.35, 1.4, 0.54, 0.42, sandMid);
     }
 
-    // 石室内后墙中央「法老石棺祭坛」（z = ±24.85，不影响 8 个出生点）
-    block(0, sign * 24.85, 2.6, 1.15, 0, 0.88, sandDark, {material: 'stone'}, {carved: true});
-    put(0, 0.96, sign * 24.85, 2.3, 0.16, 0.95, '#d4a64a', null, {noMap: true, metal: .55, rough: .42});
-    // 石室内阵营壁画与边框
-    put(0, 2.35, sign * 25.55, 6.2, 1.45, 0.08, sign > 0 ? '#285570' : '#853c2e', null, {noMap: true});
-    put(0, 2.35, sign * 25.50, 6.4, 0.14, 0.12, '#d4a64a', null, {noMap: true, metal: .62, rough: .38});
+    // 墓室内后墙中央「法老石棺祭坛」（z = ±22.15，不阻挡 8 个出生点）
+    block(0, sign * 22.15, 2.8, 1.15, 0, 0.32, sandDark, {material: 'stone'});
+    block(0, sign * 22.15, 2.3, 0.92, 0.32, 0.92, tombStone, {material: 'stone'}, {carved: true});
+    // 金色法老石棺盖板与徽饰
+    put(0, 0.98, sign * 22.15, 2.15, 0.14, 0.82, '#d4a64a', null, {noMap: true, metal: .62, rough: .38});
+    put(0, 1.07, sign * 22.15, 0.42, 0.08, 0.66, tealTrim, null, {noMap: true, roughness: .45});
+
+    // 墓室内巨幅古埃及神殿壁画（使用专用壁画纹理 muralSkin）
+    if (!headless) {
+      const muralGeo = new T.PlaneGeometry(7.2, 2.1);
+      geometries.push(muralGeo);
+      const muralMesh = new T.Mesh(muralGeo, teamMuralMat);
+      muralMesh.position.set(0, 2.42, sign * 22.92);
+      if (sign > 0) muralMesh.rotation.y = Math.PI;
+      scene.add(muralMesh);
+    }
 
     // 外围神殿围墙
-    block(0, sign * 26.0, 29.8, 0.8, 0, 5.4, sandLight, {material: 'stone'}, {carved: true});
-    put(0, 5.58, sign * 26.0, 30.2, 0.36, 1.02, sandDark);
-    block(sign * 14.75, 0, 0.7, 52.8, 0, 5.0, sandLight, {material: 'stone'}, {carved: true});
-    put(sign * 14.75, 5.18, 0, 0.92, 0.36, 53.0, sandDark);
-    for (let z = -22.5; z <= 22.5; z += 6.4) {
-      put(sign * 14.98, 2.55, z, 0.65, 5.3, 1.15, sandDark);
+    block(0, sign * 23.4, 29.0, 0.8, 0, 5.4, sandLight, {material: 'stone'}, {carved: true});
+    put(0, 5.58, sign * 23.4, 29.4, 0.36, 1.02, sandDark);
+    block(sign * 14.35, 0, 0.7, 47.6, 0, 5.0, sandLight, {material: 'stone'}, {carved: true});
+    put(sign * 14.35, 5.18, 0, 0.92, 0.36, 47.8, sandDark);
+    for (let z = -20.0; z <= 20.0; z += 5.7) {
+      put(sign * 14.58, 2.55, z, 0.65, 5.3, 1.15, sandDark);
     }
   }
 
   // =========================================================================
-  // 7. 出生点 (每队 8 个，位于封闭石室内，无碰撞重叠) & AI 战术点
+  // 7. 出生点 (每队 8 个，全部位于 8.2m 宽墓室实墙后方，杜绝出生即在枪线上) & AI 战术点
+  // 墓室前实墙覆盖 x ∈ [-9.8, -1.6] 与 [1.6, 9.8]，所有出生点均深藏实墙掩体后
   // =========================================================================
   const team0Spawns = [];
   const team1Spawns = [];
-  for (const zOff of [21.9, 23.6]) {
-    for (const x of [-9.0, -3.5, 3.5, 9.0]) {
+  for (const zOff of [19.4, 21.1]) {
+    for (const x of [-6.8, -4.8, 4.8, 6.8]) {
       team0Spawns.push({x, z: zOff, y: 0, yaw: 0});
       team1Spawns.push({x, z: -zOff, y: 0, yaw: Math.PI});
     }
   }
   const spawns = [team0Spawns, team1Spawns];
 
-  const bounds = {minX: -14.4, maxX: 14.4, minZ: -25.6, maxZ: 25.6};
+  const bounds = {minX: -14.0, maxX: 14.0, minZ: -23.0, maxZ: 23.0};
   const ai = {
-    lanes: [-8.2, 0, 8.2],
-    spawnZoneZ: [18.5, -18.5],
+    lanes: [-11.8, 0, 11.8],
+    spawnZoneZ: [16.2, -16.2],
     snipers: [
       [
-        {x: 0, z: 14.2, yaw: 0},          // 中门前庭对狙位（不堵石室门洞）
-        {x: -7.8, z: 12.2, yaw: 0.14},    // 左翼高台架枪位
-        {x: 7.8, z: 12.2, yaw: -0.14},    // 右翼高台架枪位
+        {x: 0, z: 12.6, yaw: 0},          // 中门前庭经典对狙位
+        {x: -4.5, z: 15.6, yaw: 0.12},    // 左翼石墩②号点架枪位
+        {x: 11.8, z: 13.6, yaw: -0.05},   // 右翼地面侧道架枪位
       ],
       [
-        {x: 0, z: -14.2, yaw: Math.PI},
-        {x: 7.8, z: -12.2, yaw: Math.PI + 0.14},
-        {x: -7.8, z: -12.2, yaw: Math.PI - 0.14},
+        {x: 0, z: -12.6, yaw: Math.PI},
+        {x: 4.5, z: -15.6, yaw: Math.PI + 0.12},
+        {x: -11.8, z: -13.6, yaw: Math.PI - 0.05},
       ],
     ],
   };
@@ -497,9 +618,9 @@ export function buildPyramidWorld(scene) {
   }
 
   // =========================================================================
-  // 8. 3D 渲染环境：庭院铺地、荒漠沙丘、吉萨大金字塔群、狮身人面像轮廓、火盆与天空
+  // 8. 3D 渲染环境：庭院铺地、荒漠沙丘、吉萨大金字塔群、狮身人面像、黄沙微粒、火盆与天空
   // =========================================================================
-  const floorGeo = new T.PlaneGeometry(30, 54);
+  const floorGeo = new T.PlaneGeometry(29, 47);
   const floorMat = new T.MeshStandardMaterial({map: courtyardSkin(solids, textures), roughness: .94});
   geometries.push(floorGeo);
   materials.set('__floor__', floorMat);
@@ -513,7 +634,7 @@ export function buildPyramidWorld(scene) {
   const posAttr = desertGeo.attributes.position;
   for (let i = 0; i < posAttr.count; i++) {
     const px = posAttr.getX(i), pz = posAttr.getY(i);
-    if (Math.hypot(px, pz) > 36) {
+    if (Math.hypot(px, pz) > 34) {
       const wave = Math.sin(px * .034) * Math.cos(pz * .028) * 3.4 + Math.sin((px + pz) * .017) * 2.5;
       posAttr.setZ(i, wave);
     }
@@ -528,9 +649,11 @@ export function buildPyramidWorld(scene) {
   desert.receiveShadow = true;
   scene.add(desert);
 
-  // 远景吉萨大金字塔群
+  // 远景吉萨大金字塔群（含石灰岩顶冠层次）
   const bgPyrMat = new T.MeshStandardMaterial({color: '#caa56e', roughness: .95});
+  const bgPyrCapMat = new T.MeshStandardMaterial({color: '#e5cfa2', roughness: .88});
   materials.set('__bgPyr__', bgPyrMat);
+  materials.set('__bgPyrCap__', bgPyrCapMat);
   for (const [px, pz, rad, ht] of [[-86, -118, 62, 52], [86, -106, 48, 40], [98, 92, 52, 44], [-96, 98, 40, 34]]) {
     const pGeo = new T.ConeGeometry(rad, ht, 4);
     geometries.push(pGeo);
@@ -538,6 +661,13 @@ export function buildPyramidWorld(scene) {
     pMesh.position.set(px, ht * .5 - 0.5, pz);
     pMesh.rotation.y = Math.PI / 4;
     scene.add(pMesh);
+
+    const capGeo = new T.ConeGeometry(rad * .22, ht * .22, 4);
+    geometries.push(capGeo);
+    const capMesh = new T.Mesh(capGeo, bgPyrCapMat);
+    capMesh.position.set(px, ht * .89 - 0.5, pz);
+    capMesh.rotation.y = Math.PI / 4;
+    scene.add(capMesh);
   }
 
   // 远景标志性狮身人面像（Sphinx）剪影体块（位于东侧荒漠地平线）
@@ -546,25 +676,29 @@ export function buildPyramidWorld(scene) {
   put(62, 13.0, -9, 10.6, 5.5, 4.2, '#b9925c'); // Nemes headdress wings
   put(62, 2.2, -3, 3.2, 4.4, 12, '#c29c64');    // Front paws
 
-  // 石室门口与庭院火盆（动态火焰）
+  // 墓室门口与石棺两侧火盆（动态火焰）
   const brazierFlames = [];
   const flameGeo = new T.ConeGeometry(0.22, 0.62, 6);
   const flameMat = new T.MeshBasicMaterial({color: '#ff9b38'});
   geometries.push(flameGeo);
   materials.set('__flame__', flameMat);
-  for (const sx of [-2.85, 2.85]) {
-    for (const sz of [-18.9, 18.9]) {
-      put(sx, 0.72, sz, 0.72, 1.44, 0.72, darkBronze, null, {noMap: true, metal: .45, rough: .55});
-      put(sx, 1.50, sz, 0.88, 0.20, 0.88, '#b88c46', null, {noMap: true, metal: .5, rough: .45});
-      const fl = new T.Mesh(flameGeo, flameMat);
-      fl.position.set(sx, 1.88, sz);
-      scene.add(fl);
-      brazierFlames.push(fl);
-    }
+  const brazierCoords = [
+    [-2.95, -16.45], [2.95, -16.45],
+    [-2.95, 16.45], [2.95, 16.45],
+    [-2.05, -22.15], [2.05, -22.15],
+    [-2.05, 22.15], [2.05, 22.15],
+  ];
+  for (const [sx, sz] of brazierCoords) {
+    put(sx, 0.72, sz, 0.68, 1.44, 0.68, darkBronze, null, {noMap: true, metal: .45, rough: .55});
+    put(sx, 1.50, sz, 0.84, 0.20, 0.84, '#b88c46', null, {noMap: true, metal: .5, rough: .45});
+    const fl = new T.Mesh(flameGeo, flameMat);
+    fl.position.set(sx, 1.88, sz);
+    scene.add(fl);
+    brazierFlames.push(fl);
   }
-  // 出生石室内火光补光
-  for (const sz of [-23.0, 23.0]) {
-    const torchLight = new T.PointLight(0xffb45c, 4.5, 16, 1.4);
+  // 封闭墓室内暖金火光补光
+  for (const sz of [-20.4, 20.4]) {
+    const torchLight = new T.PointLight(0xffb45c, 5.0, 18, 1.35);
     torchLight.position.set(0, 3.1, sz);
     scene.add(torchLight);
   }
@@ -579,22 +713,39 @@ export function buildPyramidWorld(scene) {
     scene.add(mesh);
   }
 
+  // 飘浮黄沙微粒（还原 CF 新金字塔沙漠风沙氛围）
+  const dustCount = 220;
+  const dustPositions = new Float32Array(dustCount * 3);
+  const dustRng = randomSource(907);
+  for (let i = 0; i < dustCount; i++) {
+    dustPositions[i * 3] = (dustRng() - 0.5) * 30;
+    dustPositions[i * 3 + 1] = 0.4 + dustRng() * 5.6;
+    dustPositions[i * 3 + 2] = (dustRng() - 0.5) * 46;
+  }
+  const dustGeo = new T.BufferGeometry();
+  dustGeo.setAttribute('position', new T.BufferAttribute(dustPositions, 3));
+  const dustMat = new T.PointsMaterial({color: '#f2d7a4', size: 0.09, transparent: true, opacity: 0.45, depthWrite: false});
+  geometries.push(dustGeo);
+  materials.set('__dust__', dustMat);
+  const dustPoints = new T.Points(dustGeo, dustMat);
+  scene.add(dustPoints);
+
   // 光照与天空穹顶
   const sky = new T.Color('#d4c7b0');
-  scene.fog = new T.FogExp2(sky, 0.0048);
+  scene.fog = new T.FogExp2(sky, 0.0046);
   scene.background = sky;
 
-  const sun = new T.DirectionalLight(0xffe7bd, 2.3);
+  const sun = new T.DirectionalLight(0xffe7bd, 2.35);
   sun.position.set(-40, 44, -44);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, {left: -36, right: 36, top: 36, bottom: -36, near: 10, far: 130});
+  Object.assign(sun.shadow.camera, {left: -34, right: 34, top: 34, bottom: -34, near: 10, far: 130});
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -0.00025;
   sun.shadow.normalBias = 0.035;
   scene.add(sun);
 
-  const hemi = new T.HemisphereLight(0xe8f3ff, 0xc9a576, 1.22);
+  const hemi = new T.HemisphereLight(0xe8f3ff, 0xc9a576, 1.24);
   scene.add(hemi);
 
   const dusk = {value: 0};
@@ -654,15 +805,16 @@ export function buildPyramidWorld(scene) {
     const late = mode === 'dusk';
     dusk.value = late ? 1 : 0;
     sun.color.set(late ? '#ff9352' : '#ffe7bd');
-    sun.intensity = late ? 1.80 : 2.30;
+    sun.intensity = late ? 1.80 : 2.35;
     sun.position.set(-40, late ? 18 : 44, -44);
     sun.shadow.needsUpdate = true;
     hemi.color.set(late ? '#b09cc4' : '#e8f3ff');
     hemi.groundColor.set(late ? '#805a46' : '#c9a576');
-    hemi.intensity = late ? 1.05 : 1.22;
+    hemi.intensity = late ? 1.05 : 1.24;
     sky.set(late ? '#c78462' : '#d4c7b0');
     scene.fog.color.copy(sky);
-    scene.fog.density = late ? 0.0072 : 0.0048;
+    scene.fog.density = late ? 0.0070 : 0.0046;
+    dustMat.color.set(late ? '#f0a672' : '#f2d7a4');
   }
 
   function setQuality(level) {
@@ -675,6 +827,7 @@ export function buildPyramidWorld(scene) {
     }
     sun.shadow.needsUpdate = true;
     fx.setQuality(level);
+    dustPoints.visible = level !== 'low';
     birds.forEach(({body}, i) => {
       body.visible = i < (level === 'low' ? 2 : level === 'medium' ? 4 : 6);
     });
@@ -692,10 +845,22 @@ export function buildPyramidWorld(scene) {
       fl.scale.set(s, 0.85 + Math.cos(timeSeconds * 15 + idx) * 0.22, s);
       fl.rotation.y = timeSeconds * 2.5 + idx;
     });
+    if (dustPoints.visible) {
+      const pos = dustGeo.attributes.position.array;
+      for (let i = 0; i < dustCount; i++) {
+        let x = pos[i * 3] + dt * 1.15;
+        let z = pos[i * 3 + 2] + dt * 0.42;
+        if (x > 15) x = -15;
+        if (z > 23) z = -23;
+        pos[i * 3] = x;
+        pos[i * 3 + 2] = z;
+      }
+      dustGeo.attributes.position.needsUpdate = true;
+    }
     birds.forEach(({body, wings}, i) => {
       if (!body.visible) return;
       const t = timeSeconds * 0.075 + i * 1.3;
-      body.position.set(Math.cos(t) * (17 + i * 1.4), 14 + i * 0.65 + Math.sin(t * 2) * 0.6, Math.sin(t) * (24 + i * 0.8));
+      body.position.set(Math.cos(t) * (17 + i * 1.4), 14 + i * 0.65 + Math.sin(t * 2) * 0.6, Math.sin(t) * (22 + i * 0.8));
       body.rotation.y = -t;
       const flap = 0.14 + Math.sin(timeSeconds * 4.5 + i) * 0.34;
       wings[0].rotation.z = -flap;
@@ -735,7 +900,7 @@ export function buildPyramidWorld(scene) {
     solids,
     vents,
     ai,
-    menuCamera: {pos: [14.0, 10.5, 19.2], lookAt: [0, 1.8, -2.5]},
+    menuCamera: {pos: [13.2, 9.8, 17.6], lookAt: [0, 1.8, -2.0]},
     fx,
     setTime,
     setQuality,
