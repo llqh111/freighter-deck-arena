@@ -120,3 +120,11 @@ button[data-pref=butterflyFinish][data-value=violet-tide]::before{background:lin
 @media(max-width:600px),(max-height:500px){#respawn{top:64px;right:9px;width:min(254px,calc(100vw - 26px));max-height:66svh}}
 
 #hud:has(#respawn:not([hidden])) #feed{visibility:hidden}
+
+#mapPick{margin-top:12px;max-width:min(300px,100%)}
+#mapPick .choice{margin:0}
+#mapPick legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+#mapPick button{background:#15232bd9;padding:8px 7px;white-space:nowrap}
+#mapPick [aria-pressed=true]{background:#38382c}
+#mapPick+#modePick{margin-top:8px}
+@media(max-height:570px){#mapPick{margin-top:7px}#mapPick button{padding:5px 9px}}

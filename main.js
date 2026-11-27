@@ -1,6 +1,6 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=34';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=36';
 import * as T from './three.module.js';
-import {buildWorld} from './world.js?v=25';
+import {maps} from './maps.js?v=2';
 import {createMatch} from './match.js?v=49';
 import {createViewModel} from './viewmodel.js?v=55';
 import {isMelee,melees} from './arsenal.js?v=30';
@@ -95,37 +95,62 @@ function watchCrosshairScale(){
   },{once:true});
 }
 watchCrosshairScale();
-const prefs={mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',m9Finish:'fade',karambitFinish:'hardened',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
+const prefs={map:'ship',mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',m9Finish:'fade',karambitFinish:'hardened',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
   if(['ak47','m4a1','awm','mp5'].includes(saved.primary))prefs.primary=saved.primary;
   if(melees.includes(saved.melee))prefs.melee=saved.melee;
   if(Number.isFinite(saved.vol))prefs.vol=T.MathUtils.clamp(saved.vol,0,1);if(Number.isFinite(saved.fov))prefs.fov=T.MathUtils.clamp(saved.fov,65,100);
 }catch{}
-const openMode=new URLSearchParams(location.search).get('mode');
+const params=new URLSearchParams(location.search);
+const openMode=params.get('mode'),openMap=params.get('map');
+if(Object.hasOwn(maps,openMap))prefs.map=openMap;
 if(invited)prefs.mode='duel';
 else if(Object.hasOwn(matchRules,openMode))prefs.mode=openMode;
+const currentMap=()=>maps[prefs.map]||maps.ship;
 function save(){try{localStorage.setItem('df-lobby',JSON.stringify(prefs));}catch{}}
 const roundGoal=()=>prefs.mode==='duel'?matchRules.duel.goal:prefs.mode==='knife'?prefs.knifeGoal:prefs.goal;
 const clockText=seconds=>[Math.floor(seconds/60),seconds%60].map(v=>String(v).padStart(2,'0')).join(':');
 const botPrimaryLabel=()=>prefs.botPrimary==='mirror'?'镜像你的武器':prefs.botPrimary==='random'||!names[prefs.botPrimary]?'每局随机武器':names[prefs.botPrimary];
 function summary(){
+  const m=currentMap();
   const knife=prefs.mode==='knife',duel=prefs.mode==='duel';
   const sz=prefs.mode==='tdm'?prefs.size:matchRules[prefs.mode].size;
   const eyebrow=document.querySelector('.eyebrow');
   if(eyebrow)eyebrow.innerHTML=duel?'<b></b>单挑 1v1 <span>/</span> DUEL':knife?'<b></b>3v3 刀战 <span>/</span> KNIFE FIGHT':'<b></b>团队竞技 <span>/</span> TEAM DEATHMATCH';
-  $('modeIntro').textContent=duel?'单挑一名电脑对手（'+botPrimaryLabel()+'），或开房邀请好友。':knife?'和队友在货柜间近身交锋，抢先达到目标击杀数。':'选择阵营与装备，从中央货柜区或舷侧管道登上对方甲板。';
+  put('mapTitle',m.name);put('mapEng',m.eng);
+  $('modeIntro').textContent=duel?'单挑一名电脑对手（'+botPrimaryLabel()+'），或开房邀请好友。':knife?'和队友近身交锋，抢先达到目标击杀数。':m.intro;
+  const mapName=document.querySelector('.map-name');if(mapName)mapName.textContent=m.mapTitle;
+  const radarLabel=document.querySelector('#radarBox span');if(radarLabel)radarLabel.textContent=m.radarLabel;
   $('statSize').innerHTML=sz+' <em>VS</em> '+sz;
   $('statSize').nextElementSibling.textContent=duel?'单挑人数':'人机对抗';
   $('statGoal').textContent=roundGoal();
   $('statTime').textContent=clockText(matchDuration(prefs.mode,sz));
   $('primaryName').textContent=knife?('纯近战 · '+names[prefs.melee]):(names[prefs.primary]+' · '+names[prefs.melee]);
+  for(const btn of $('mapPick').querySelectorAll('[data-pref=map]')){
+    btn.setAttribute('aria-pressed',String(btn.dataset.value===prefs.map));
+  }
   for(const btn of $('modePick').querySelectorAll('[data-pref=mode]')){
     btn.setAttribute('aria-pressed',String(btn.dataset.value===prefs.mode));
   }
   if(!$('deploy').disabled)put('deployLabel',duel?'开始单挑':knife?'开始刀战':'开始对局');
 }
+function switchMap(mapId){
+  const m=maps[mapId]||maps.ship;
+  if(!renderer||world?.id===m.id)return;
+  localMatch?.clearScene();
+  world?.dispose?.();
+  scene.clear();
+  world=m.build(scene);
+  match=localMatch=createMatch({scene,camera,world,view,emit:hudEvent});
+  world.setQuality(prefs.quality);world.setTime(prefs.tod);
+  match.input('fov',prefs.fov);
+  renderer.shadowMap.needsUpdate=true;
+  drawMap($('chart'),null,true);
+  put('readyText',m.readyText);
+}
 function applyPref(key){
+  if(key==='map')switchMap(prefs.map);
   if(key==='tod')world?.setTime(prefs.tod);
   if(key==='quality'){world?.setQuality(prefs.quality);if(renderer&&view)resize();}
   if(renderer&&(key==='tod'||key==='quality'))renderer.shadowMap.needsUpdate=true;
@@ -213,7 +238,7 @@ function crosshairStudio(){
     navigator.clipboard?.writeText(code).then(()=>notify('已复制无畏契约准星代码')).catch(()=>notify('代码：'+code));
   };
 }
-function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['mode','team','size','goal','knifeGoal','diff','botPrimary','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
+function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['map','mode','team','size','goal','knifeGoal','diff','botPrimary','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
 function controlRows(){
   if(coarse)return '<p class="panelNote">左侧摇杆移动，右侧拖动转向。暂停菜单可换装或查看战绩。</p>';
   const knife=prefs.mode==='knife';
@@ -233,13 +258,14 @@ function settings(){
   }
   $('audioToggle').onclick=()=>{sound=!sound;setSound();$('audioToggle').textContent=sound?'开启':'关闭';};
 }
+$('mapPick').innerHTML=selectors(prefs,['map']);bindPrefs($('mapPick'));
 $('modePick').innerHTML=selectors(prefs,['mode']);bindPrefs($('modePick'));
 $('battleSetup').onclick=setup;$('armory').onclick=()=>armory(false);$('openCrosshair').onclick=crosshairStudio;summary();
 $('controls').onclick=$('options').onclick=settings;
 const mapCache=new WeakMap();
 function staticMapLayer(target,horizontal){
   const w=target.width,h=target.height,cached=mapCache.get(target);
-  if(cached&&cached.w===w&&cached.h===h&&cached.horizontal===horizontal)return cached;
+  if(cached&&cached.world===world&&cached.w===w&&cached.h===h&&cached.horizontal===horizontal)return cached;
   const off=document.createElement('canvas');off.width=w;off.height=h;
   const ctx=off.getContext('2d'),b=world.bounds,m=8,dx=b.maxX-b.minX,dz=b.maxZ-b.minZ;
   const sc=Math.min((w-2*m)/(horizontal?dz:dx),(h-2*m)/(horizontal?dx:dz));
@@ -263,7 +289,7 @@ function staticMapLayer(target,horizontal){
     ctx.beginPath();ctx.moveTo(length,0);ctx.lineTo(length-1.5,-.82);ctx.lineTo(length-1.5,.82);ctx.closePath();ctx.fill();ctx.restore();
   }
   ctx.restore();
-  const entry={w,h,horizontal,sc,layer:off};mapCache.set(target,entry);return entry;
+  const entry={world,w,h,horizontal,sc,layer:off};mapCache.set(target,entry);return entry;
 }
 function drawMap(target,state=null,horizontal=false){
   if(!world||!target)return;
@@ -275,7 +301,7 @@ function drawMap(target,state=null,horizontal=false){
   if(state.alive){const p=state.player;ctx.translate(p.x,p.z);ctx.rotate(-p.yaw);ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,9.5,-Math.PI/2-.52,-Math.PI/2+.52);ctx.closePath();ctx.fillStyle='rgba(255,206,100,.14)';ctx.fill();ctx.beginPath();ctx.moveTo(0,-1.55);ctx.lineTo(.95,.90);ctx.lineTo(0,.55);ctx.lineTo(-.95,.90);ctx.closePath();ctx.fillStyle='#ffce64';ctx.fill();}
   ctx.restore();
 }
-$('openMap').onclick=()=>{if(!world)return;showDialog('map','DECK PLAN','甲板平面图','<canvas width="760" height="390" class="fullchart" id="fullChart"></canvas><div class="legend"><span><b style="color:var(--ice)">■</b>保卫者舱室</span><span><b style="color:var(--red)">■</b>潜伏者舱室</span><span><b style="color:var(--gold)">➤</b>管道出口方向</span></div>');drawMap($('fullChart'),null,true);};
+$('openMap').onclick=()=>{if(!world)return;const m=currentMap();showDialog('map','TACTICAL PLAN',m.mapTitle,'<canvas width="760" height="390" class="fullchart" id="fullChart"></canvas><div class="legend"><span><b style="color:var(--ice)">■</b>'+m.legend[0]+'</span><span><b style="color:var(--red)">■</b>'+m.legend[1]+'</span><span><b style="color:var(--gold)">➤</b>'+m.legend[2]+'</span></div>');drawMap($('fullChart'),null,true);};
 function notify(msg){$('notice').hidden=false;$('notice').textContent=msg;clearTimeout(notify.timer);notify.timer=setTimeout(()=>{$('notice').hidden=true;},4200);}
 function lock(){
   if(coarse||document.pointerLockElement===canvas)return;
@@ -718,7 +744,8 @@ function render(time){
   world.update(t,dt);
   if(mode==='menu'){
     const drift=Math.sin(t*.07)*.6;
-    fly.position.set(19+drift,11.3,28.8);fly.lookAt(-1.9,2.0,-6.3);
+    const mc=world.menuCamera||{pos:[19,11.3,28.8],lookAt:[-1.9,2.0,-6.3]};
+    fly.position.set(mc.pos[0]+drift,mc.pos[1],mc.pos[2]);fly.lookAt(...mc.lookAt);
     renderer.clear();renderer.render(scene,fly);
   }else{
     if(mode==='playing'){
@@ -880,7 +907,7 @@ async function init(){
     renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});renderer.autoClear=false;
     renderer.toneMapping=T.AgXToneMapping;renderer.toneMappingExposure=1.06;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-    world=buildWorld(scene);view=createViewModel(deckAudio.sfx);view.initEnv?.(renderer);
+    world=currentMap().build(scene);view=createViewModel(deckAudio.sfx);view.initEnv?.(renderer);
     const dbgParam=new URLSearchParams(location.search).get('debug');
     if(dbgParam==='karambit'||dbgParam==='karambit-notrail')view.karambitConfig.showGizmos=true;
     if(dbgParam==='karambit-notrail')view.karambitConfig.showTrail=false;
@@ -900,7 +927,7 @@ async function init(){
     await view.ready;
     await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);
-    $('deploy').disabled=false;summary();$('readyText').textContent='甲板就绪';addEventListener('resize',resize);
+    $('deploy').disabled=false;summary();$('readyText').textContent=currentMap().readyText;addEventListener('resize',resize);
     if(invited)duelRoom.open(true);
   }catch(e){console.error(e);$('deployLabel').textContent='无法载入';$('readyText').textContent='3D 场景未能启动';notify('无法启动 3D 画面。请在开启硬件加速的 Chrome 或 Edge 中打开。');}
 }

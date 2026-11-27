@@ -312,7 +312,16 @@ export function buildWorld(scene) {
     for(const y of [1.23,1.64])put(x,y,0,.065,.07,51.9,rail);
   }
   const bounds={minX:-11.96,maxX:11.96,minZ:-25.65,maxZ:25.65};
-  if(headless)return {solids,vents,bounds,spawns};
+  const ai={
+    lanes:[-7,0,7],
+    snipers:[
+      [{x:0,z:18.7,yaw:0},{x:-7.8,z:13.5,yaw:0},{x:7.8,z:12.5,yaw:0}],
+      [{x:0,z:-18.7,yaw:Math.PI},{x:7.8,z:-13.5,yaw:Math.PI},{x:-7.8,z:-12.5,yaw:Math.PI}]
+    ],
+    spawnZoneZ:[20,-20]
+  };
+  const menuCamera={pos:[19,11.3,28.8],lookAt:[-1.9,2.0,-6.3]};
+  if(headless)return {id:'ship',solids,vents,bounds,spawns,ai};
   const dk=new T.Mesh(new T.PlaneGeometry(25,53),new T.MeshStandardMaterial({map:deckSkin(solids),roughness:.92}));
   dk.rotation.x=-Math.PI/2; dk.receiveShadow=true;scene.add(dk);
   const sky=new T.Color('#a7bab8');scene.fog=new T.FogExp2(sky,.0063);scene.background=sky;
@@ -497,7 +506,12 @@ export function buildWorld(scene) {
   }
   setTime('day');
   let lastTime=0;
-  return {solids,vents,bounds,spawns,fx,setTime,setQuality,
+  return {id:'ship',solids,vents,bounds,spawns,ai,menuCamera,fx,setTime,setQuality,
+    dispose(){
+      for(const m of materials.values())m.dispose();
+      for(const s of skins){s.side?.dispose();s.door?.dispose();}
+      cube.dispose();steelMap?.dispose();timber.map?.dispose();tarp.map?.dispose();
+    },
     update(timeSeconds,dt){
       dt=Number.isFinite(dt)?dt:Math.max(0,Math.min(.06,timeSeconds-lastTime));lastTime=timeSeconds;
       water.material.uniforms.time.value=timeSeconds;fx.update(dt);
