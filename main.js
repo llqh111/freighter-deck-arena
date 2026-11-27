@@ -1,14 +1,14 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=38';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=39';
 import * as T from './three.module.js';
 import {maps} from './maps.js?v=2';
-import {createMatch} from './match.js?v=54';
+import {createMatch} from './match.js?v=55';
 import {createViewModel} from './viewmodel.js?v=64';
-import {isMelee,melees} from './arsenal.js?v=30';
-import {createDeckAudio} from './deck-audio.js?v=34';
+import {isMelee,melees} from './arsenal.js?v=31';
+import {createDeckAudio} from './deck-audio.js?v=35';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
 import {createDuelClient} from './duel-client.js?v=42';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
-import {matchRules,matchDuration} from './match-rules.js?v=23';
+import {matchRules,matchDuration} from './match-rules.js?v=24';
 import {loadBinds,resetBinds,assignBind,buildCodeMap,mouseCode,bindLabel,keybindRowsMarkup} from './keybinds.js?v=1';
 
 const deckAudio=createDeckAudio();
@@ -96,7 +96,7 @@ function watchCrosshairScale(){
   },{once:true});
 }
 watchCrosshairScale();
-const prefs={map:'ship',mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',m9Finish:'fade',karambitFinish:'hardened',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
+const prefs={map:'ship',mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,sniperGoal:matchRules.sniper.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',m9Finish:'fade',karambitFinish:'hardened',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
   if(['ak47','m4a1','awm','mp5'].includes(saved.primary))prefs.primary=saved.primary;
@@ -110,31 +110,31 @@ if(invited)prefs.mode='duel';
 else if(Object.hasOwn(matchRules,openMode))prefs.mode=openMode;
 const currentMap=()=>maps[prefs.map]||maps.ship;
 function save(){try{localStorage.setItem('df-lobby',JSON.stringify(prefs));}catch{}}
-const roundGoal=()=>prefs.mode==='duel'?matchRules.duel.goal:prefs.mode==='knife'?prefs.knifeGoal:prefs.goal;
+const roundGoal=()=>prefs.mode==='duel'?matchRules.duel.goal:prefs.mode==='knife'?prefs.knifeGoal:prefs.mode==='sniper'?prefs.sniperGoal:prefs.goal;
 const clockText=seconds=>[Math.floor(seconds/60),seconds%60].map(v=>String(v).padStart(2,'0')).join(':');
 const botPrimaryLabel=()=>prefs.botPrimary==='mirror'?'镜像你的武器':prefs.botPrimary==='random'||!names[prefs.botPrimary]?'每局随机武器':names[prefs.botPrimary];
 function summary(){
   const m=currentMap();
-  const knife=prefs.mode==='knife',duel=prefs.mode==='duel';
-  const sz=prefs.mode==='tdm'?prefs.size:matchRules[prefs.mode].size;
+  const knife=prefs.mode==='knife',duel=prefs.mode==='duel',sniper=prefs.mode==='sniper';
+  const sz=prefs.mode==='tdm'||sniper?prefs.size:matchRules[prefs.mode].size;
   const eyebrow=document.querySelector('.eyebrow');
-  if(eyebrow)eyebrow.innerHTML=duel?'<b></b>单挑 1v1 <span>/</span> DUEL':knife?'<b></b>3v3 刀战 <span>/</span> KNIFE FIGHT':'<b></b>团队竞技 <span>/</span> TEAM DEATHMATCH';
+  if(eyebrow)eyebrow.innerHTML=duel?'<b></b>单挑 1v1 <span>/</span> DUEL':knife?'<b></b>3v3 刀战 <span>/</span> KNIFE FIGHT':sniper?'<b></b>狙击对决 <span>/</span> SNIPER ONLY':'<b></b>团队竞技 <span>/</span> TEAM DEATHMATCH';
   put('mapTitle',m.name);put('mapEng',m.eng);
-  $('modeIntro').textContent=duel?'单挑一名电脑对手（'+botPrimaryLabel()+'），或开房邀请好友。':knife?'和队友近身交锋，抢先达到目标击杀数。':m.intro;
+  $('modeIntro').textContent=duel?'单挑一名电脑对手（'+botPrimaryLabel()+'），或开房邀请好友。':knife?'和队友近身交锋，抢先达到目标击杀数。':sniper?'真人与电脑只能使用相同的枪械：全场统一 AWM，副武器与手雷照常，比的是架点预瞄与拉栓节奏。':m.intro;
   const mapName=document.querySelector('.map-name');if(mapName)mapName.textContent=m.mapTitle;
   const radarLabel=document.querySelector('#radarBox span');if(radarLabel)radarLabel.textContent=m.radarLabel;
   $('statSize').innerHTML=sz+' <em>VS</em> '+sz;
   $('statSize').nextElementSibling.textContent=duel?'单挑人数':'人机对抗';
   $('statGoal').textContent=roundGoal();
   $('statTime').textContent=clockText(matchDuration(prefs.mode,sz));
-  $('primaryName').textContent=knife?('纯近战 · '+names[prefs.melee]):(names[prefs.primary]+' · '+names[prefs.melee]);
+  $('primaryName').textContent=knife?('纯近战 · '+names[prefs.melee]):sniper?('AWM 锁定 · '+names[prefs.melee]):(names[prefs.primary]+' · '+names[prefs.melee]);
   for(const btn of $('mapPick').querySelectorAll('[data-pref=map]')){
     btn.setAttribute('aria-pressed',String(btn.dataset.value===prefs.map));
   }
   for(const btn of $('modePick').querySelectorAll('[data-pref=mode]')){
     btn.setAttribute('aria-pressed',String(btn.dataset.value===prefs.mode));
   }
-  if(!$('deploy').disabled)put('deployLabel',duel?'开始单挑':knife?'开始刀战':'开始对局');
+  if(!$('deploy').disabled)put('deployLabel',duel?'开始单挑':knife?'开始刀战':sniper?'开始狙击对决':'开始对局');
 }
 function switchMap(mapId){
   const m=maps[mapId]||maps.ship;
@@ -167,10 +167,12 @@ function applyPref(key){
   }
   frameDirty=true;save();summary();
 }
+// 每个设置项只在对应模式下出现；狙击对决沿用团队竞技的人数档位，但目标击杀是独立一组数值。
+const setupOwners={size:['tdm','sniper'],goal:['tdm'],sniperGoal:['sniper'],knifeGoal:['knife'],botPrimary:['duel']};
 function syncSetupLocks(){
-  for(const key of ['size','goal','knifeGoal','botPrimary']){
+  for(const [key,modes] of Object.entries(setupOwners)){
     const group=panel.querySelector('[data-pref='+key+']')?.closest('fieldset');
-    if(group)group.hidden=prefs.mode!==(key==='knifeGoal'?'knife':key==='botPrimary'?'duel':'tdm');
+    if(group)group.hidden=!modes.includes(prefs.mode);
   }
 }
 function bindPrefs(container=panel){
@@ -182,12 +184,15 @@ function bindPrefs(container=panel){
 }
 function armory(inGame=false){
   if(inGame){if(mode==='playing')match.pause();setMode('paused');release();}
-  const knife=(inGame?match?.state?.mode:prefs.mode)==='knife';
-  showDialog(inGame?'loadout':'armory','LOADOUT',knife?'选择近战武器（3v3 刀战）':'选择主武器与近战',
-    (knife?'':'<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary))+
+  const currentMode=inGame?match?.state?.mode:prefs.mode;
+  const knife=currentMode==='knife',sniper=currentMode==='sniper';
+  showDialog(inGame?'loadout':'armory','LOADOUT',knife?'选择近战武器（3v3 刀战）':sniper?'狙击对决 · 近战选择':'选择主武器与近战',
+    (knife?'':sniper
+      ?'<div class="sectionTitle">主武器 PRIMARY · 已锁定</div><div class="weapons"><div class="weaponCard locked" aria-disabled="true"><small>狙击步枪 · 真人与电脑统一</small>'+weaponIcon('awm')+'<b>AWM</b><span>5 发 · 双倍率 · 全场同枪</span></div></div>'
+      :'<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary))+
     '<div class="sectionTitle">近战武器 MELEE（F / Y 检视 · R 把玩）</div>'+meleeChoices(prefs.melee)+
     selectors(prefs,['butterflyFinish','karambitFinish','m9Finish'])+
-    '<p class="panelNote">'+(knife?'当前为 3v3 刀战模式，全场仅使用近战武器。出生区内更换近战立即生效，离开出生区后在下次复活时领取。':'副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。')+'</p>');
+    '<p class="panelNote">'+(knife?'当前为 3v3 刀战模式，全场仅使用近战武器。出生区内更换近战立即生效，离开出生区后在下次复活时领取。':sniper?'当前为狙击对决：真人与电脑只能使用相同的枪械，主武器统一 AWM，副武器（沙漠之鹰）与手雷随身配备。近战武器可选，出生区内更换立即生效。':'副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。')+'</p>');
   bindPrefs();
   for(const b of panel.querySelectorAll('[data-weapon]'))b.onclick=()=>{
     prefs.primary=b.dataset.weapon;save();summary();
@@ -239,7 +244,7 @@ function crosshairStudio(){
     navigator.clipboard?.writeText(code).then(()=>notify('已复制无畏契约准星代码')).catch(()=>notify('代码：'+code));
   };
 }
-function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['map','mode','team','size','goal','knifeGoal','diff','botPrimary','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
+function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['map','mode','team','size','goal','sniperGoal','knifeGoal','diff','botPrimary','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
 function controlRows(){
   if(coarse)return '<p class="panelNote">左侧摇杆移动，右侧拖动转向。暂停菜单可换装或查看战绩。</p>';
   return keybindRowsMarkup(binds)+'<p class="panelNote">点击右侧按钮后按下键盘按键或鼠标侧键（侧键 4 / 侧键 5）即可改键，按 Esc 取消。数字键 1–4 切换武器槽，滚轮快速切枪。</p>';
@@ -392,7 +397,7 @@ function toMenu(){duelRoom.leave();stopOnlineMatch();closePanel();release();setM
 function pauseUI(){
   if(mode!=='playing'&&mode!=='paused')return;
   match.pause();setMode('paused');release();
-  const swapLabel=match.state.mode==='knife'?'更换近战武器':'更换主武器/近战';
+  const swapLabel=match.state.mode==='knife'||match.state.mode==='sniper'?'更换近战武器':'更换主武器/近战';
   const botSwap=match.state.mode==='duel'&&!onlineMatch;
   showDialog('pause','MATCH MENU',onlineMatch?'好友对局进行中':'对局已暂停','<div class="actions"><button id="resume" class="primary">继续对局</button><button id="inLoadout" class="secondary">'+swapLabel+'</button>'+(botSwap?'<button id="inBotWeapon" class="secondary">电脑武器</button>':'')+'<button id="inCrosshair" class="secondary">自定义准星</button><button id="inBoard" class="secondary">查看战绩</button><button id="inSettings" class="secondary">设置与操作</button><button id="leave" class="secondary">返回甲板首页</button></div>');
   $('inLoadout').onclick=()=>armory(true);if(botSwap)$('inBotWeapon').onclick=botWeapon;$('inCrosshair').onclick=crosshairStudio;$('inBoard').onclick=()=>showDialog('board','SCOREBOARD','团队战绩',board(match.state));$('resume').onclick=resume;$('inSettings').onclick=settings;$('leave').onclick=toMenu;
@@ -565,7 +570,7 @@ function hudEvent(type,data){
     syncCombatHud(data.mode);
     put('blue',String(data.score[0]).padStart(2,'0'));put('red',String(data.score[1]).padStart(2,'0'));
     put('hp',data.hp);put('ammo',isMelee(data.weapon)?'∞':data.ammo);put('reserve',data.reserve);
-    put('goalText',(data.mode==='knife'?'3v3 刀战 · ':data.mode==='duel'?'单挑 1v1 · ':'')+'目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
+    put('goalText',(data.mode==='knife'?'3v3 刀战 · ':data.mode==='duel'?'单挑 1v1 · ':data.mode==='sniper'?'狙击对决 · ':'')+'目标 '+data.target);put('weaponName',names[data.weapon]);put('armor',data.armor);
     $('scopeOverlay').hidden=!data.zoom||!data.alive;
     $('adsOverlay').hidden=!data.aiming||!!data.zoom||!data.alive;
     put('aimName',data.aimName||'');$('aimName').style.color=data.aimTeam===data.team?'var(--ice)':'var(--red)';
@@ -616,7 +621,7 @@ function hudEvent(type,data){
     const mvp=[...data.scoreboard].sort((a,b)=>(b.kills*2-b.deaths+b.headshots)-(a.kills*2-a.deaths+a.headshots))[0];
     const knife=data.mode==='knife';
     const accuracy=knife?'挥刀命中 '+data.hits+' / '+data.attempts+'（'+data.accuracy+'%）':data.headshots+' 爆头 · 命中率 '+data.accuracy+'%';
-    showDialog('end',knife?'3v3 刀战 · 对局结算':data.mode==='duel'?'单挑 1v1 · 对局结算':'MATCH RESULT',b===r?'双方平局':win?'我方胜利':'对方胜利','<div class="result"><span>'+b+'</span> · <b>'+r+'</b></div><div class="row">MVP <b>'+mvp.name+' · '+mvp.kills+' 击杀</b></div><p class="panelNote">你的战绩　'+data.kills+' 击杀 · '+data.deaths+' 阵亡 · '+accuracy+'</p>'+board(data)+'<div id="finalDeathReport"></div><div class="actions"><button id="again" class="primary">再来一局</button><button id="home" class="secondary">返回首页</button></div>');const finalReport=$('finalDeathReport');
+    showDialog('end',knife?'3v3 刀战 · 对局结算':data.mode==='duel'?'单挑 1v1 · 对局结算':data.mode==='sniper'?'狙击对决 · 对局结算':'MATCH RESULT',b===r?'双方平局':win?'我方胜利':'对方胜利','<div class="result"><span>'+b+'</span> · <b>'+r+'</b></div><div class="row">MVP <b>'+mvp.name+' · '+mvp.kills+' 击杀</b></div><p class="panelNote">你的战绩　'+data.kills+' 击杀 · '+data.deaths+' 阵亡 · '+accuracy+'</p>'+board(data)+'<div id="finalDeathReport"></div><div class="actions"><button id="again" class="primary">再来一局</button><button id="home" class="secondary">返回首页</button></div>');const finalReport=$('finalDeathReport');
     if(finalReport&&!data.alive)renderDeathReport(finalReport,data.deathReport);
     if(onlineMatch){$('again').textContent='返回好友房';$('again').onclick=duelRoom.lobby;}else $('again').onclick=start;$('home').onclick=toMenu;
   }

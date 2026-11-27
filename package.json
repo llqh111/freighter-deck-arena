@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "build:offline": "node tools/build-offline.mjs"
+    "build:offline": "node tools/build-offline.mjs",
+    "verify": "node tools/verify-modes.mjs && node tools/ttk.mjs"
   },
   "dependencies": {
     "ws": "^8.18.3"

@@ -1,5 +1,5 @@
 import {buildArmory} from './armory-models.js?v=44';
-import {isMelee} from './arsenal.js?v=30';
+import {isMelee} from './arsenal.js?v=31';
 import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=25';
 import {createButterflyMotion} from './butterfly-motion.js?v=25';
 import {buildBayonet} from './bayonet-model.js?v=8';

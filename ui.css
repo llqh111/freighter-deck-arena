@@ -89,7 +89,9 @@ button[data-pref=butterflyFinish][data-value=violet-tide]::before{background:lin
 #callout.first #killBadge{filter:drop-shadow(0 0 14px rgba(102,224,255,.85)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
 #callout.knife #killBadge{filter:drop-shadow(0 0 14px rgba(136,255,220,.82)) drop-shadow(0 4px 10px rgba(0,0,0,.8))}
 
-#modePick{margin-top:12px;max-width:min(300px,100%)}
+.weaponCard.locked{opacity:.72;border-style:dashed;cursor:default;grid-template-columns:1fr}
+.weaponCard.locked svg{grid-column:auto;width:64px;height:34px;color:var(--gold)}
+#modePick{margin-top:12px;max-width:min(380px,100%)}
 #modePick .choice{margin:0}
 #modePick legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 #modePick button{background:#15232bd9;padding:8px 7px;white-space:nowrap}

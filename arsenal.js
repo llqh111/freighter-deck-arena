@@ -34,11 +34,15 @@ export const falloff={
   mp5:{from:14,to:26,floor:.72},
   deagle:{from:18,to:32,floor:.85}
 };
-export function loadout(primary,melee='nepal',knifeOnly=false){
+// 狙击对决：副武器与手雷照常随身，但主武器由真人和电脑统一锁成 AWM，双方完全对等。
+export const sniperPrimary='awm';
+export function loadout(primary,melee='nepal',mode='tdm'){
   const m=melees.includes(melee)?melee:'nepal';
-  const ids=knifeOnly?[m]:[primary,'deagle',m,'he'];
+  const ids=mode==='knife'?[m]:[mode==='sniper'?sniperPrimary:primary,'deagle',m,'he'];
   return ids.map(id=>({id,ammo:arsenal[id].mag,max:arsenal[id].mag,reserve:arsenal[id].reserve}));
 }
+// 近战所在的槽位索引：刀战 0，其余 [主/副/近战/手雷] 为 2。
+export function meleeSlotFor(mode){return mode==='knife'?0:2;}
 export const skills={
   easy:{response:.65,miss:.88,sight:31,fov:1.60,head:.07,strafe:.13},
   normal:{response:.42,miss:.61,sight:43,fov:1.85,head:.12,strafe:.30},

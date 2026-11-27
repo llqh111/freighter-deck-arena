@@ -1,4 +1,4 @@
-import {isMelee} from './arsenal.js?v=29';
+import {isMelee} from './arsenal.js?v=31';
 import {bayonetSounds,bayonetLayers,bayonetSample} from './bayonet-audio.js?v=4';
 import {classicCueNames,classicLayers,classicSound} from './classic-blade-audio.js?v=1';
 

@@ -1,11 +1,11 @@
 import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js?v=8';
 import * as T from './three.module.js';
-import {arsenal,primaries,melees,isMelee,loadout,skills,falloff} from './arsenal.js?v=30';
+import {arsenal,primaries,melees,isMelee,loadout,skills,falloff,meleeSlotFor,sniperPrimary} from './arsenal.js?v=31';
 import {karambitContactTime} from './karambit-motion.js?v=25';
 import {butterflyContactTime} from './butterfly-motion.js?v=25';
 import {bayonetContactTime} from './bayonet-timing.js?v=3';
 import {classicBladeContact} from './classic-blade-timing.js?v=1';
-import {matchRules,matchDuration} from './match-rules.js?v=23';
+import {matchRules,matchDuration} from './match-rules.js?v=24';
 
 const clamp = T.MathUtils.clamp;
 const EYE=1.60,RADIUS=.32,ROUND=600,GOAL=50;
@@ -296,7 +296,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
   const p={id:0,name:'你',team:0,x:0,y:0,z:0,yaw:0,hp:100,armor:100,inventory:loadout('ak47','nepal'),slot:0};
   if(network)Object.assign(p,network.player,{takeHit,playSfx});
   const bots=[], units=network?.round.players??[p], grenades=[], effects=[];
-  let animate=null, skill=skills.normal, primary='ak47', melee='nepal', sound=true, firstBlood=true, knifeMode=false;
+  let animate=null, skill=skills.normal, primary='ak47', melee='nepal', sound=true, firstBlood=true, knifeMode=false, sniperMode=false;
   const state={phase:'idle',mode:'tdm',hp:100,armor:100,team:0,ammo:30,reserve:90,score:[0,0],kills:0,deaths:0,headshots:0,remaining:ROUND,target:GOAL,grounded:true,sprinting:false,alive:true,respawnIn:0,reloading:false,aiming:false,zoom:0,spread:0,weapon:'ak47',inventory:p.inventory,slot:0,scoreboard:[],rows:[],player:p,actors:bots};
   const ray=new T.Ray(), v=new T.Vector3(), dir=new T.Vector3(), eye=new T.Vector3(), aim=new T.Vector3(), tmp=new T.Vector3(), rot=new T.Euler(0,0,0,'YXZ');
   const localRay=new T.Ray(),bodyBox=new T.Box3(),headSphere=new T.Sphere(new T.Vector3(),.145);
@@ -339,7 +339,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     const list=world.spawns[a.team], spot=list[initial?a.id%list.length:Math.floor(Math.random()*list.length)];
     const role=a===p?'player':knifeMode?'duelist':a.primary==='awm'?'sniper':a.primary==='mp5'?'flanker':(a.team===p.team&&a.id===1)?'wingman':'rifle';
     const lane=a.id%3-1;
-    Object.assign(a,{x:spot.x,y:spot.y??0,z:spot.z,yaw:spot.yaw??(a.team?Math.PI:0),hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary,a===p?melee:(a.melee||'knife'),knifeMode),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0,swingT:0,ventUsed:false,ventDone:false});
+    Object.assign(a,{x:spot.x,y:spot.y??0,z:spot.z,yaw:spot.yaw??(a.team?Math.PI:0),hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary,a===p?melee:(a.melee||'knife'),state.mode),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0,swingT:0,ventUsed:false,ventDone:false});
     a.strike=null;a.scopeTarget=null;
     if(a===p){
       p.damageTaken=new Map();
@@ -1092,12 +1092,14 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
   }
   function start(opts={}){
     clearKeys();clearScene();
-    p.team=opts.team===1?1:0;state.team=p.team;primary=primaries.includes(opts.primary)?opts.primary:'ak47';
-    melee=melees.includes(opts.melee)?opts.melee:'nepal';
+    p.team=opts.team===1?1:0;state.team=p.team;
     state.mode=Object.hasOwn(matchRules,opts.mode)?opts.mode:'tdm';
-    knifeMode=state.mode==='knife';
+    knifeMode=state.mode==='knife';sniperMode=state.mode==='sniper';
+    // 狙击对决把主武器钉在 AWM 上，菜单里选过的枪不会带进来。
+    primary=sniperMode?sniperPrimary:primaries.includes(opts.primary)?opts.primary:'ak47';
+    melee=melees.includes(opts.melee)?opts.melee:'nepal';
     const rules=matchRules[state.mode];
-    const size=state.mode==='tdm'&&[3,4,6,8].includes(opts.size)?opts.size:rules.size;
+    const size=(state.mode==='tdm'||sniperMode)&&[3,4,6,8].includes(opts.size)?opts.size:rules.size;
     skill=skills[opts.diff]||skills.normal;
     state.target=rules.goals.includes(opts.goal)?opts.goal:rules.goal;
     const names=['北辰','回声','夜航','长风','白鲸','赤隼','远山','银翼','苍鹭','天狼','灰狐','海燕','青锋','岩雀','信标'];
@@ -1106,7 +1108,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     for(let i=1;!network&&i<size*2;i++){
       const team=i<size?p.team:1-p.team;
       const slot=i<size?i-1:i-size;
-      const b={id:i,name:names[i-1],team,primary:duelBot||squadOrder[slot%squadOrder.length],melee:melees[(i+1)%melees.length]};
+      const b={id:i,name:names[i-1],team,primary:sniperMode?sniperPrimary:(duelBot||squadOrder[slot%squadOrder.length]),melee:melees[(i+1)%melees.length]};
       bots.push(b);units.push(b);
     }
     animate=network?null:createSquad(scene,bots,knifeMode);state.phase='playing';state.score=network?.round.score??[0,0];state.remaining=matchDuration(state.mode,size);firstBlood=true;
@@ -1123,17 +1125,18 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(action==='sound'){sound=!!value;return;}
     if(action==='fov'){baseFov=clamp(Number(value)||78,65,100);return;}
     if(action==='primary'&&primaries.includes(value)){
+      if(sniperMode&&value!==sniperPrimary)return null;
       primary=value;
       if(!knifeMode&&p.alive&&inSpawnZone(p)){
         pendingStrike=null;
-        p.inventory[0]=loadout(primary,melee,false)[0];p.burst=newBurst();p.slot=0;state.zoom=0;loadTimer=0;shotTimer=.25;view.equip(primary);hud();return 'now';
+        p.inventory[0]=loadout(primary,melee,state.mode)[0];p.burst=newBurst();p.slot=0;state.zoom=0;loadTimer=0;shotTimer=.25;view.equip(primary);hud();return 'now';
       }return 'respawn';
     }
     if(action==='melee'&&melees.includes(value)){
       melee=value;
       if(p.alive&&inSpawnZone(p)){
-        const mSlot=knifeMode?0:2;
-        p.inventory[mSlot]=loadout(primary,melee,knifeMode)[mSlot];
+        const mSlot=meleeSlotFor(state.mode);
+        p.inventory[mSlot]=loadout(primary,melee,state.mode)[mSlot];
         useSlot(mSlot,true);
         return 'now';
       }return 'respawn';
@@ -1161,7 +1164,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         return;
       }
       if(value<0){
-        if(p.slot!==2)useSlot(2);
+        const mSlot=meleeSlotFor(state.mode);
+        if(p.slot!==mSlot)useSlot(mSlot);
         else{
           view.flourish?.();
           if(!timedMeleeContacts[active(p).id])sfx('equip',active(p).id);
