@@ -39,6 +39,8 @@ function kf(t, w, j, s, h = {}, cue = '') {
 const IDLE = kf(0, [0, 0, 0, 0, 0, 0], [0, 0], [0, 0, 0], {piv: 0, lift: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0});
 
 export const butterflyContactTime = {light: 0.090, heavy: 0.138};
+const drawCatchTimes = {draw: 0.468, rareDraw: 0.475};
+const quickGripTime = 0.028;
 
 const clips = {
   // Signature Zen Rollover Quick-Draw (0.68s): crisp upward whip from closed, thumb rollover, double-clack palm lock.
@@ -48,7 +50,7 @@ const clips = {
     kf(0.172, [-.032,  .032, -.022,  .22, -.38, -.76], [1.18, 2.38], [-2.58, -.24,  .52], {piv: 1, thumb: 1.00, idx:  .18, low:  .06, left:  .24}, 'butterflyTick'),
     kf(0.285, [-.056,  .054, -.036,  .30, -.12,  .18], [0.24, 1.32], [-4.52,  .14,  .22], {piv: 1, thumb:  .78, idx:  .32, low:  .10, left:  .18}, 'butterflySpin'),
     kf(0.395, [-.024,  .018, -.014,  .10,  .12,  .28], [0.02, 0.22], [-6.08,  .06, -.06], {piv: 0, thumb:  .20, idx:  .78, low:  .42, left:  .08}, 'butterflyTick'),
-    kf(0.468, [ .010, -.020,  .010, -.11,  .05, -.12], [0.00, 0.00], [-TAU,   .00,  .03], {piv: 0, thumb: -.08, idx: 1.08, low: 1.08, left:  .02, kick:  .85}, 'butterflyCatch'),
+    kf(drawCatchTimes.draw, [ .010, -.020,  .010, -.11,  .05, -.12], [0.00, 0.00], [-TAU,   .00,  .03], {piv: 0, thumb: -.08, idx: 1.08, low: 1.08, left:  .02, kick:  .85}, 'butterflyCatch'),
     kf(0.575, [-.002,  .004, -.002,  .03, -.01,  .03], [0.00, 0.00], [-TAU,   .00, -.01], {piv: 0, thumb:  .00, idx: 1.00, low: 1.00, left:  .00, kick: -.18}),
     kf(0.680, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, 0], {piv: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
   ],
@@ -59,7 +61,7 @@ const clips = {
     kf(0.095, [-.008, -.018,  .004,  .16, -.18, -.38], [1.92, 2.65], [-1.35, -.20,  .38], {piv: 3, lift: .028, thumb:  .88, idx:  .22, low:  .10, left: .22}, 'butterflyAir'),
     kf(0.225, [-.044,  .036, -.028,  .28, -.22, -.28], [0.78, 1.82], [-3.35,  .16,  .64], {piv: 3, lift: .078, thumb:  .95, idx:  .14, low:  .06, left: .36}, 'butterflySpin'),
     kf(0.355, [-.050,  .028, -.030,  .22,  .08,  .14], [0.16, 0.72], [-5.18,  .22,  .28], {piv: 3, lift: .052, thumb:  .82, idx:  .20, low:  .08, left: .28}, 'butterflyTick'),
-    kf(0.475, [ .006, -.028,  .014, -.16,  .08, -.16], [0.00, 0.00], [-TAU,   .00,  .04], {piv: 0, lift: .000, thumb: -.12, idx: 1.10, low: 1.12, left: .10, kick: 1.15}, 'butterflyCatch'),
+    kf(drawCatchTimes.rareDraw, [ .006, -.028,  .014, -.16,  .08, -.16], [0.00, 0.00], [-TAU,   .00,  .04], {piv: 0, lift: .000, thumb: -.12, idx: 1.10, low: 1.12, left: .10, kick: 1.15}, 'butterflyCatch'),
     kf(0.585, [-.006,  .007, -.004,  .05, -.02,  .05], [0.00, 0.00], [-TAU,   .00, -.02], {piv: 0, lift: .000, thumb:  .02, idx: 1.01, low: 1.02, left: .03, kick: -.25}),
     kf(0.725, [ .001, -.002,  .001, -.01,  .00, -.01], [0.00, 0.00], [-TAU,   .00,  .00], {piv: 0, lift: .000, thumb:  .00, idx: 1.00, low: 1.00, left: .00, kick:  .00}),
     kf(0.860, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, 0], {piv: 0, lift: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
@@ -242,9 +244,10 @@ export function createButterflyMotion(emit) {
   let inspectAlt = false, comboStep = 0, comboWindow = 0, lightAlt = false, inspectQueued = false;
   let prevBiteTotal = 0;
 
-  let contactAt = 0, contactFrame = false;
+  let contactAt = 0, contactFrame = false, quickGrip = false;
   function begin(name, blendHalfLife = 0.065) {
     contactAt = 0;
+    quickGrip = false;
     const nextClip = clips[name];
     if (!nextClip) return;
     evalClipAt(nextClip, 0, 0, rawPose, rawVel);
@@ -280,6 +283,11 @@ export function createButterflyMotion(emit) {
       // Wait for the match to resolve contact before passing the impact keyframe.
       if (!contactFrame) time = contactAt ? Math.min(time + dt, contactAt - 1e-6) : time + dt;
       contactFrame = false;
+      if (quickGrip && time >= quickGripTime) {
+        quickGrip = false;
+        secondary.latchVel -= 8.5;
+        emit('bladeGrip', secondary.spinSpeed);
+      }
       while (section + 1 < clip.length && time >= clip[section + 1][0]) {
         section++;
         const cue = clip[section].cue;
@@ -377,7 +385,7 @@ export function createButterflyMotion(emit) {
 
   function reset() {
     contactAt = 0;
-    contactFrame = false;
+    contactFrame = quickGrip = false;
     clip = null;
     clipName = '';
     time = 0;
@@ -432,12 +440,14 @@ export function createButterflyMotion(emit) {
   }
 
   function attack(kind) {
+    const grip = time < drawCatchTimes[clipName];
     if (kind === 'heavy') {
-      begin('heavy', 0.052);
+      begin('heavy', grip ? quickGripTime : 0.052);
     } else {
-      begin(lightAlt ? 'light2' : 'light1', 0.045);
+      begin(lightAlt ? 'light2' : 'light1', grip ? quickGripTime : 0.045);
       lightAlt = !lightAlt;
     }
+    quickGrip = grip;
     contactAt = butterflyContactTime[kind];
   }
 

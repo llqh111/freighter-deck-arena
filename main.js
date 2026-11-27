@@ -1,12 +1,12 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=28';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=29';
 import * as T from './three.module.js';
-import {buildWorld} from './world.js?v=23';
-import {createMatch} from './match.js?v=39';
-import {createViewModel} from './viewmodel.js?v=39';
-import {isMelee,melees} from './arsenal.js?v=27';
-import {createDeckAudio} from './deck-audio.js?v=29';
+import {buildWorld} from './world.js?v=24';
+import {createMatch} from './match.js?v=45';
+import {createViewModel} from './viewmodel.js?v=48';
+import {isMelee,melees} from './arsenal.js?v=29';
+import {createDeckAudio} from './deck-audio.js?v=32';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
-import {createDuelClient} from './duel-client.js?v=35';
+import {createDuelClient} from './duel-client.js?v=40';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
 
@@ -90,7 +90,7 @@ function applyPref(key){
   if(key==='tod')world?.setTime(prefs.tod);
   if(key==='quality'){world?.setQuality(prefs.quality);if(renderer&&view)resize();}
   if(renderer&&(key==='tod'||key==='quality'))renderer.shadowMap.needsUpdate=true;
-  if(key==='fov')match?.input('fov',prefs.fov);
+  if(key==='fov'){match?.input('fov',prefs.fov);view?.setBayonetFov(prefs.fov);}
   if(key==='vol')deckAudio.setVolume(prefs.vol);
   if(key==='butterflyFinish')view?.setButterflyFinish(prefs.butterflyFinish);
   if(key==='botPrimary'){
@@ -539,9 +539,7 @@ for(const kind of ['keydown','keyup'])addEventListener(kind,e=>{
     if(/^Digit[1-4]$/.test(e.code))match.input('slot',Number(e.code.at(-1))-1);
     if(e.code==='KeyQ')match.input('last',true);
     if((e.code==='KeyY'||e.code==='KeyF')&&match.state.alive)view.inspect();
-    // Debug toggles are F-key only:字母别名（G/T）会紧邻 Y/R 把玩键，实战中极易误触。
-    // 慢动作被误开时 update() 的 dt 全局缩放，攻击动画会被拉长到 1.8s 而 shotTimer 仍是实时，
-    // 等于当场把出刀判定打歪——所以这两个键不允许出现在正常玩法的按键路径上。
+    // Keep debug toggles away from the gameplay inspect and fidget keys.
     if(e.code==='F8'&&view?.isKarambitActive?.()){
       e.preventDefault();
       view.karambitConfig.showGizmos=!view.karambitConfig.showGizmos;
@@ -550,7 +548,7 @@ for(const kind of ['keydown','keyup'])addEventListener(kind,e=>{
     if(e.code==='F9'&&view?.isKarambitActive?.()){
       e.preventDefault();
       view.karambitConfig.slowMo=!view.karambitConfig.slowMo;
-      notify('爪刀动作倍率：'+(view.karambitConfig.slowMo?'0.2x 慢动作（F9 切换）':'1.0x 正常速度'));
+      notify('爪刀检视倍率：'+(view.karambitConfig.slowMo?'0.2x 慢动作（F9 切换）':'1.0x 正常速度'));
     }
     if(e.code==='BracketLeft'&&view?.isKarambitActive?.()&&view.karambitConfig.showGizmos){
       e.preventDefault();view.stepKarambit(-1/60);
@@ -740,7 +738,7 @@ function buildKarambitDebugPanel(){
       <button id="kdSlow" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">0.2x(F9)</button>
       <button id="kdLoop" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">持续循环</button>
       <button id="kdTrail" style="padding:3px 7px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;cursor:pointer;">刀光:开</button>
-      <label style="display:flex;align-items:center;gap:3px;padding:3px 6px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;">检视速率<input id="kdSpeed" type="number" min="0.5" max="1.25" step="0.01" value="1.15" style="width:44px;background:#0d1a22;color:#ffd24c;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;font:inherit;"></label>
+      <label style="display:flex;align-items:center;gap:3px;padding:3px 6px;background:#16303d;color:#dff8ff;border:1px solid #398fa8;border-radius:4px;">检视速率<input id="kdSpeed" type="number" min="0.5" max="1.25" step="0.01" value="${view.karambitConfig.inspectSpeed}" style="width:44px;background:#0d1a22;color:#ffd24c;border:1px solid #398fa8;border-radius:3px;padding:1px 3px;font:inherit;"></label>
     </div>
     <div style="border-top:1px solid rgba(0,245,255,.22);padding-top:6px;">
       <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">

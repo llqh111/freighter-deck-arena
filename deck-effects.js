@@ -41,6 +41,10 @@ export function makeEffects(scene) {
     obj.scale.setScalar(rand(.13,.23));obj.updateMatrix();
     stamps.setMatrixAt(stamp,obj.matrix);stamp=(stamp+1)%decalCount;stamps.count=Math.min(decalCount,stamps.count+1);stamps.instanceMatrix.needsUpdate=true;
     const wooden=material==='wood';
+    if(material==='concrete'){
+      drift(p,[.56,.54,.51],5,.24,.40);
+      return;
+    }
     for(let i=0;i<Math.ceil((wooden?5:7)*amount);i++){
       const speed=rand(1.2,3.4);
       puff(p,{x:n.x*speed+rand(-1.1,1.1),y:n.y*speed+rand(.3,1.9),z:n.z*speed+rand(-1.1,1.1)},wooden?.055:.065,rand(.11,.34),wooden?[.43,.29,.14]:[1,.62,.12],false,9);

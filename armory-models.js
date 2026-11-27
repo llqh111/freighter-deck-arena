@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {buildKarambit} from './karambit-model.js?v=11';
+import {buildKarambit} from './karambit-model.js?v=14';
 
 // Compact exterior models built in camera space, with an independent magazine and action.
 function violetTideTexture(){

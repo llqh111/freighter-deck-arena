@@ -1,6 +1,7 @@
 // Distances are scene units, times in seconds. Each inventory owns its ammunition.
 export const primaries=['ak47','m4a1','awm','mp5'];
-export const melees=['knife','nepal','malay','butterfly','karambit'];
+import {bayonetDrawTime} from './bayonet-timing.js?v=2';
+export const melees=['knife','nepal','malay','butterfly','karambit','m9'];
 export const isMelee=id=>melees.includes(id);
 const gun=(mag,reserve,reload,rpm,damage,head,armor,power,base,moving,bloom,recoil,speed=1)=>({
   mag,reserve,reload,interval:60/rpm,damage,head,armor,power,base,moving,bloom,recoil,speed
@@ -25,6 +26,7 @@ export const arsenal={
   malay:blade(1.12,.88,52,118,.29,.80,2.35,2.30,.10),
   butterfly:blade(1.11,.86,59,108,.38,.77,2.13,2.13,.22),
   karambit:blade(1.12,.87,58,116,.40,.89,2.07,2.07,.15),
+  m9:blade(1.12,.84,54,120,.37,.86,2.05,1.95,bayonetDrawTime),
   he:{mag:1,reserve:0,speed:1,armor:.75}
 };
 // 远距离伤害衰减：只给 MP5 与沙鹰，步枪与 AWM 不衰减

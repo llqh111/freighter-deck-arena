@@ -1,9 +1,5 @@
-// First-Person Karambit Reference-Replicated Procedural State Machine
-// - Deterministic, repeatable, frame-scrubbable keyframe table replicating reference video 1.70s -> 3.90s
-// - Independent armPos, armRot (Quaternion Slerp), wristRot (Quaternion Slerp), fingers[5], pivotPos,
-//   unwrappedSpinAngle (cubic Hermite with explicit tangents — NEVER slerped), and local spinAxis
-// - Strict tail-ring SpinPivot rotation; zero random sine waves; zero camera shake during inspect
-// - Seamless 3.90s -> 1.90s continuous loop (or single-cycle mode); C1 inertialized interruption from live pose
+// First-person karambit flourish. The hand stays threaded through the ring while the wrist, arm,
+// fingers and blade spin follow independent curves. The last pose closes the loop at 0.14 s.
 import * as T from './three.module.js';
 
 const tau = 2 * Math.PI;
@@ -12,36 +8,16 @@ const rad2deg = 180 / Math.PI;
 const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 
-const EASINGS = {
-  linear: t => t,
-  hermite: t => t,
-  easeInOutCubic: t => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
-  easeOutCubic: t => 1 - Math.pow(1 - t, 3),
-  easeInCubic: t => t * t * t,
-  easeOutBack: t => {
-    const s = 1.05, u = t - 1;
-    return 1 + (s + 1) * u * u * u + s * u * u;
-  }
-};
+const smoothStep = t => t * t * (3 - 2 * t);
 
 // --- Exposed Tunable Config & Debug Controls ---
 export const KARAMBIT_INSPECT_CONFIG = {
-  introDur: 0.16,         // Smooth C1 launch from Idle -> Phase 1
+  introDur: 0.17,
   outroDur: 0.38,         // Outro natural catch -> Idle
-  // Inspect-only tempo. Scales intro + loop + outro together, so the whole 检视 reads as one
-  // continuous tempo instead of "slow in / fast middle / slow out". Script-time (the durations
-  // above) stays untouched, so the seamless 2.40s -> 0.14s wrap and every C1 tangent survive
-  // exactly as designed. Does NOT touch attacks / draw / holster: their contact frames must stay
-  // locked to karambitContactTime or the hit would land off-pose.
-  // 实测（60fps 逐步模拟，见 tools 验证输出）：
-  //   1.00x → 稳态循环 2.267s，峰值 28.0°/帧
-  //   1.15x → 稳态循环 1.967s，峰值 32.2°/帧   ← 当前值
-  //   1.25x → 稳态循环 1.817s，峰值 35.0°/帧   ← 快速旋转段开始出阶梯感，别越过
-  // 峰值永远落在「连续快转·前臂呼吸」段。刀光拖尾默认开启会填满扫描弧，关掉拖尾做审计时会
-  // 更容易看出阶梯，所以上限压在 1.25；若还想更快，改 keyframe 的快速段而不是继续拉这个系数。
-  inspectSpeed: 1.15,
+  // Inspect-only timing preserves the combat contact frames.
+  inspectSpeed: 1.24,
   loopMode: 'loop',       // 'loop' (continuous complex flourish + fast spin) | 'single' (play 1 cycle then Outro)
-  loopWrapTime: 0.14,     // 2.40s wraps seamlessly to 0.14s (exact pose, tangent & -3 turns!)
+  loopWrapTime: 0.14,
   slowMo: false,          // 0.2x slow-motion toggle
   slowMoScale: 0.2,
   paused: false,          // Pause playback for frame-by-frame inspection
@@ -49,116 +25,123 @@ export const KARAMBIT_INSPECT_CONFIG = {
   showTrail: true         // Toggle blade trail VFX (set false to audit pure hand+knife motion!)
 };
 
-// --- Complex Multi-Phase C1-Smooth Karambit Choreography (0.00s -> 2.40s) ---
-// Preserves all rich beats (launch -> brief catch -> side-blade showcase -> low-right windup ->
-// reverse big left-arc flourish -> palm-flip high-speed continuous spin) while enforcing strict
-// C1 continuity (matched inTangent === outTangent everywhere + Catmull-Rom splines) for zero stutter!
+// AAA Valorant Reaver Karambit Multi-Phase Choreography (0.00s -> 2.44s, wraps seamlessly to 0.14s with exact -3 turns = -1080°):
+// 1. Snappy open-palm whip launch -> 2. Crisp finger-catch beat (with camKick) -> 3. Intimate side-blade sheen showcase ->
+// 4. Low-right windup -> 5. Explosive reverse big left-arc flourish -> 6. Palm-flip detonation into high-speed continuous spin!
 export const KARAMBIT_KEYFRAMES = [
   {
-    time: 0.00, refTime: 1.80, phase: '松握蓄势起转',
-    armPos: [-0.015, 0.010, -0.010], armRot: [0.06, 0.16, -0.14], wristRot: [0.05, 0.10, -0.08],
-    fingers: [0, 0.52, 0.48, 0.46, 0.72], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -90, spinAxis: [0, 0, 1],
-    curve: 'hermite', inTangent: -900, outTangent: -900
+    time: 0.00, refTime: 1.80, phase: '松指蓄势起转',
+    armPos: [-.014, .012, -.006], armRot: [.05, .10, -.08], wristRot: [.08, -.02, -.06],
+    fingers: [0, .38, .34, .30, .42], pivotPos: [0, 0, 0], leftPose: 0.18, kick: 0.00,
+    unwrappedSpinAngle: -55, spinAxis: [0, 0, 1],
+    inTangent: -680, outTangent: -680
   },
   {
     time: 0.14, refTime: 1.94, phase: '展掌左上翻起',
-    armPos: [0.014, 0.036, -0.026], armRot: [0.14, 0.28, -0.34], wristRot: [0.06, 0.16, -0.10],
-    fingers: [0, 0.96, 0.98, 1.00, 0.96], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -270, spinAxis: [0, 0, 1],
-    curve: 'hermite', inTangent: -1440, outTangent: -1440
+    armPos: [.008, .052, -.020], armRot: [.11, .16, -.10], wristRot: [.14, .18, -.12],
+    fingers: [0, .92, .90, .88, .86], pivotPos: [0, 0, 0], leftPose: 0.44, kick: 0.18,
+    unwrappedSpinAngle: -195, spinAxis: [.02, -.03, 1],
+    inTangent: -1380, outTangent: -1380, cue: 'karambitSpin', volume: 0.72
   },
   {
-    time: 0.26, refTime: 2.06, phase: '越掌顶转右下',
-    armPos: [0.022, 0.040, -0.030], armRot: [0.12, 0.32, -0.28], wristRot: [0.04, 0.14, -0.06],
-    fingers: [0, 0.88, 0.88, 0.86, 0.84], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -420, spinAxis: [0.02, -0.02, 1],
-    curve: 'hermite', inTangent: -900, outTangent: -900
+    time: 0.28, refTime: 2.08, phase: '刀背越掌顶转右下',
+    armPos: [.022, .072, -.028], armRot: [.13, .20, -.06], wristRot: [.16, .22, -.08],
+    fingers: [0, .96, .94, .90, .88], pivotPos: [0, 0, 0], leftPose: 0.54, kick: 0.00,
+    unwrappedSpinAngle: -395, spinAxis: [.04, -.04, 1],
+    inTangent: -1120, outTangent: -1120
   },
   {
-    time: 0.38, refTime: 2.18, phase: '收拢轻接停顿',
-    armPos: [0.004, 0.020, -0.016], armRot: [0.07, 0.20, -0.44], wristRot: [-0.04, 0.06, -0.14],
-    fingers: [0, 0.12, 0.10, 0.08, 0.16], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -475, spinAxis: [0, 0, 1],
-    curve: 'hermite', inTangent: 0, outTangent: 0
+    time: 0.42, refTime: 2.22, phase: '指环轻接停顿',
+    armPos: [.016, .048, -.022], armRot: [.08, .12, -.16], wristRot: [.06, .08, -.12],
+    fingers: [0, .14, .12, .10, .18], pivotPos: [0, 0, 0], leftPose: 0.50, kick: 0.52,
+    unwrappedSpinAngle: -470, spinAxis: [.03, -.02, 1],
+    inTangent: 0, outTangent: 0, cue: 'karambitCatch', volume: 0.76
   },
   {
-    time: 0.54, refTime: 2.34, phase: '展掌朝镜·侧刃',
-    armPos: [0.010, 0.034, -0.026], armRot: [0.14, 0.42, -0.48], wristRot: [0.08, 0.30, -0.10],
-    fingers: [0, 0.92, 0.95, 0.98, 0.92], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -540, spinAxis: [0.05, -0.03, 1],
-    curve: 'hermite', inTangent: -720, outTangent: -720
+    time: 0.54, refTime: 2.34, phase: '缓过接刀',
+    armPos: [.014, .044, -.016], armRot: [.07, .11, -.18], wristRot: [.05, .06, -.08],
+    fingers: [0, .18, .16, .14, .22], pivotPos: [0, 0, 0], leftPose: 0.52, kick: -0.10,
+    unwrappedSpinAngle: -478, spinAxis: [.04, -.01, 1],
+    inTangent: -180, outTangent: -180
   },
   {
-    time: 0.72, refTime: 2.52, phase: '翻腕越掌顶',
-    armPos: [0.028, 0.044, -0.034], armRot: [0.16, 0.34, -0.30], wristRot: [0.14, 0.18, 0.14],
-    fingers: [0, 0.94, 0.94, 0.92, 0.88], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -685, spinAxis: [0.04, 0.03, 1],
-    curve: 'hermite', inTangent: -780, outTangent: -780
+    // Intimate close-up sheen beat (glides +18mm toward camera so studio key-light sweeps across Doppler bevels!)
+    time: 0.72, refTime: 2.52, phase: '展掌朝镜·侧刃流光',
+    armPos: [.018, .058, .012], armRot: [.12, .26, -.22], wristRot: [.14, .32, -.06],
+    fingers: [0, .92, .94, .96, .90], pivotPos: [0, 0, 0], leftPose: 0.62, kick: 0.00,
+    unwrappedSpinAngle: -545, spinAxis: [.06, -.03, 1],
+    inTangent: -680, outTangent: -680, cue: 'karambitFlick', volume: 0.66
   },
   {
-    time: 0.92, refTime: 2.72, phase: '右下回撤蓄势',
-    armPos: [0.044, -0.006, -0.012], armRot: [-0.09, 0.24, -0.22], wristRot: [-0.12, 0.14, 0.12],
-    fingers: [0, 0.56, 0.54, 0.52, 0.64], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -765, spinAxis: [0, 0, 1],
-    curve: 'hermite', inTangent: 0, outTangent: 0
+    time: 0.90, refTime: 2.70, phase: '翻腕越掌顶',
+    armPos: [.038, .068, -.022], armRot: [.15, .22, -.08], wristRot: [.18, .20, .12],
+    fingers: [0, .94, .92, .90, .86], pivotPos: [0, 0, 0], leftPose: 0.56, kick: 0.00,
+    unwrappedSpinAngle: -700, spinAxis: [.05, .04, 1],
+    inTangent: -820, outTangent: -820
   },
   {
-    time: 1.08, refTime: 2.88, phase: '右上伸展·反转起势',
-    armPos: [0.036, 0.066, -0.038], armRot: [0.20, 0.28, -0.44], wristRot: [0.12, 0.14, -0.08],
-    fingers: [0, 0.72, 0.70, 0.68, 0.76], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -670, spinAxis: [-0.02, 0.02, 1],
-    curve: 'hermite', inTangent: 960, outTangent: 960
+    time: 1.06, refTime: 2.86, phase: '右下回撤蓄势',
+    armPos: [.054, .014, -.008], armRot: [-.06, .16, -.06], wristRot: [-.08, .10, .14],
+    fingers: [0, .54, .50, .46, .58], pivotPos: [0, 0, 0], leftPose: 0.42, kick: -0.14,
+    unwrappedSpinAngle: -775, spinAxis: [.02, -.02, 1],
+    inTangent: 0, outTangent: 0
   },
   {
-    time: 1.24, refTime: 3.04, phase: '前臂平推·左大弧线',
-    armPos: [0.014, 0.044, -0.042], armRot: [0.04, 0.20, -0.08], wristRot: [0.02, 0.10, 0.06],
-    fingers: [0, 0.94, 0.96, 0.94, 0.90], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -490, spinAxis: [-0.04, 0.02, 1],
-    curve: 'hermite', inTangent: 1160, outTangent: 1160
+    time: 1.22, refTime: 3.02, phase: '右上伸展·反转起势',
+    armPos: [.042, .084, -.030], armRot: [.18, .20, -.20], wristRot: [.16, .18, -.08],
+    fingers: [0, .78, .76, .72, .76], pivotPos: [0, 0, 0], leftPose: 0.62, kick: 0.28,
+    unwrappedSpinAngle: -660, spinAxis: [-.04, .05, 1],
+    inTangent: 1120, outTangent: 1120, cue: 'karambitSpin', volume: 0.80
   },
   {
-    time: 1.40, refTime: 3.20, phase: '经下方回旋上提',
-    armPos: [0.018, 0.034, -0.038], armRot: [0.08, 0.28, -0.26], wristRot: [0.04, 0.14, -0.02],
-    fingers: [0, 0.86, 0.86, 0.84, 0.82], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -305, spinAxis: [0.02, 0.02, 1],
-    curve: 'hermite', inTangent: 960, outTangent: 960
+    time: 1.38, refTime: 3.18, phase: '前臂平推·左大弧线',
+    armPos: [.010, .064, -.036], armRot: [.06, .12, .04], wristRot: [.08, .16, .08],
+    fingers: [0, .94, .96, .94, .90], pivotPos: [0, 0, 0], leftPose: 0.66, kick: 0.00,
+    unwrappedSpinAngle: -465, spinAxis: [-.06, .06, 1],
+    inTangent: 1260, outTangent: 1260
   },
   {
-    time: 1.58, refTime: 3.38, phase: '沉腕翻掌蓄势',
-    armPos: [0.026, 0.004, -0.024], armRot: [-0.04, 0.28, -0.20], wristRot: [0.06, 0.18, 0.16],
-    fingers: [0, 0.68, 0.68, 0.66, 0.74], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -215, spinAxis: [0.02, -0.02, 1],
-    curve: 'hermite', inTangent: 0, outTangent: 0
+    time: 1.54, refTime: 3.34, phase: '经下方回旋上提',
+    armPos: [.008, .048, -.030], armRot: [.06, .16, -.08], wristRot: [.06, .14, -.02],
+    fingers: [0, .82, .80, .78, .76], pivotPos: [0, 0, 0], leftPose: 0.56, kick: 0.00,
+    unwrappedSpinAngle: -285, spinAxis: [-.02, .03, 1],
+    inTangent: 820, outTangent: 820
   },
   {
-    time: 1.74, refTime: 3.54, phase: '展掌爆发连续快转·1',
-    armPos: [0.024, 0.042, -0.036], armRot: [0.16, 0.34, -0.38], wristRot: [0.05, 0.18, -0.05],
-    fingers: [0, 1.00, 1.00, 1.00, 0.98], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -340, spinAxis: [0.03, 0.02, 1],
-    curve: 'hermite', inTangent: -1320, outTangent: -1320
+    time: 1.68, refTime: 3.48, phase: '沉腕翻掌蓄势',
+    armPos: [.022, .022, -.016], armRot: [-.02, .18, -.10], wristRot: [.08, .16, .14],
+    fingers: [0, .62, .60, .56, .66], pivotPos: [0, 0, 0], leftPose: 0.46, kick: -0.12,
+    unwrappedSpinAngle: -220, spinAxis: [.02, -.02, 1],
+    inTangent: 0, outTangent: 0
   },
   {
-    time: 1.96, refTime: 3.76, phase: '连续快转·微翻腕',
-    armPos: [0.028, 0.038, -0.036], armRot: [0.14, 0.38, -0.36], wristRot: [0.08, 0.20, 0.04],
-    fingers: [0, 0.98, 1.00, 1.00, 0.98], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -660, spinAxis: [-0.02, 0.03, 1],
-    curve: 'hermite', inTangent: -1500, outTangent: -1500
+    time: 1.84, refTime: 3.64, phase: '展掌爆发高速快转·1',
+    armPos: [.024, .062, -.028], armRot: [.14, .22, -.16], wristRot: [.18, .26, -.10],
+    fingers: [0, .98, 1.00, 1.00, .96], pivotPos: [0, 0, 0], leftPose: 0.58, kick: 0.34,
+    unwrappedSpinAngle: -365, spinAxis: [.04, -.04, 1],
+    inTangent: -1440, outTangent: -1440, cue: 'karambitSpin', volume: 0.78
   },
   {
-    time: 2.18, refTime: 3.98, phase: '连续快转·前臂呼吸',
-    armPos: [0.020, 0.042, -0.034], armRot: [0.17, 0.32, -0.40], wristRot: [0.04, 0.16, -0.06],
-    fingers: [0, 1.00, 1.00, 1.00, 1.00], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -995, spinAxis: [0.02, -0.02, 1],
-    curve: 'hermite', inTangent: -1520, outTangent: -1520
+    time: 2.04, refTime: 3.84, phase: '连续快转·微翻腕',
+    armPos: [.028, .068, -.030], armRot: [.15, .26, -.14], wristRot: [.20, .28, -.04],
+    fingers: [0, 1.00, 1.00, 1.00, .98], pivotPos: [0, 0, 0], leftPose: 0.62, kick: 0.00,
+    unwrappedSpinAngle: -670, spinAxis: [.05, -.06, 1],
+    inTangent: -1580, outTangent: -1580, cue: 'karambitRing', volume: 0.66
   },
   {
-    // Exact pose & tangent match to t=0.14s (-270 deg) with exact -3 full turns (-1080 deg)!
-    time: 2.40, refTime: 4.20, phase: '无缝衔接循环',
-    armPos: [0.014, 0.036, -0.026], armRot: [0.14, 0.28, -0.34], wristRot: [0.06, 0.16, -0.10],
-    fingers: [0, 0.96, 0.98, 1.00, 0.96], pivotPos: [0, 0, 0],
-    unwrappedSpinAngle: -1350, spinAxis: [0, 0, 1],
-    curve: 'hermite', inTangent: -1440, outTangent: -1440
+    time: 2.24, refTime: 4.04, phase: '连续快转·前臂呼吸',
+    armPos: [.020, .060, -.026], armRot: [.13, .22, -.16], wristRot: [.17, .24, -.12],
+    fingers: [0, .98, .98, .98, .94], pivotPos: [0, 0, 0], leftPose: 0.54, kick: 0.00,
+    unwrappedSpinAngle: -985, spinAxis: [.04, -.06, 1],
+    inTangent: -1540, outTangent: -1540, cue: 'karambitRing', volume: 0.60
+  },
+  {
+    // Exact pose, tangent (-1380 deg/s), fingers & leftPose match to t=0.14s (-195 deg) with exact -3 full turns (-1080 deg)!
+    time: 2.44, refTime: 4.24, phase: '无缝衔接循环',
+    armPos: [.008, .052, -.020], armRot: [.11, .16, -.10], wristRot: [.14, .18, -.12],
+    fingers: [0, .92, .90, .88, .86], pivotPos: [0, 0, 0], leftPose: 0.44, kick: 0.00,
+    unwrappedSpinAngle: -1275, spinAxis: [.02, -.03, 1],
+    inTangent: -1380, outTangent: -1380
   }
 ];
 
@@ -168,6 +151,7 @@ export const karambitContactTime = { light: .105, heavy: .162 };
 // Channels (10): [x, y, z, pitch, yaw, roll, ringZ(rad), fingerOpen, thumbOpen, camKick]
 const idle = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 const drawCatchTime = .375;
+const quickGripTime = .027;
 const key = (time, pose = idle, cue = '', volume = .75) => ({ time, pose, cue, volume });
 
 const clips = {
@@ -327,6 +311,7 @@ export function createKarambitMotion(emit = () => {}) {
   let phaseLabel = 'IDLE';
   let clip = null, time = 0, section = 0, springOmega = 48;
   let contactAt = 0, contactFrame = false, backhand = false, spinAlt = false, queued = null, rebound = 0;
+  let quickGrip = false;
 
   // Deterministic inspect timeline trackers
   let introClock = 0;
@@ -335,6 +320,7 @@ export function createKarambitMotion(emit = () => {}) {
   let cycleAngleOffsetDeg = 0; // exact integer-turn offset accumulated across loops
   let curSpinVelDegS = 0;
   let lastKfIdx = -1;
+  let leftPose = 0, rawLeftPose = 0, outroStartLeftPose = 0;
 
   // Outro live-pose capture (guarantees smooth exit from ANY live evaluated pose!)
   const outroStartPos = [0, 0, 0];
@@ -342,18 +328,13 @@ export function createKarambitMotion(emit = () => {}) {
   const outroStartWristQ = new T.Quaternion();
   const outroStartFingers = new Float64Array(5);
   const outroStartPivot = new T.Vector3();
-  let outroStartSpinRad = 0;
+  let outroStartSpinRad = 0, outroSpinSlope = 0;
   let outroTargetSpinRad = 0;
   let outroTime = 0;
   let outroCatchCued = false;
 
   const loopDuration = () => KARAMBIT_KEYFRAMES[KARAMBIT_KEYFRAMES.length - 1].time;
 
-  // Periodic C1 Catmull-Rom helper so forearm/wrist/fingers glide smoothly with zero segment kinks
-  const catmull = (p0, p1, p2, p3, u) => {
-    const u2 = u * u, u3 = u2 * u;
-    return 0.5 * ((2 * p1) + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 + (-p0 + 3 * p1 - 3 * p2 + p3) * u3);
-  };
   const _rotScratch = [0, 0, 0];
 
   // Evaluate deterministic keyframe table at t (0 .. loopDuration)
@@ -365,48 +346,60 @@ export function createKarambitMotion(emit = () => {}) {
     let i = 0;
     while (i < lastIdx - 1 && clampedT >= kfs[i + 1].time) i++;
     const a = kfs[i], b = kfs[i + 1];
-    const prev = kfs[i > 0 ? i - 1 : 0];
-    const next = kfs[i + 2 <= lastIdx ? i + 2 : Math.min(lastIdx, 2)];
     const dur = Math.max(1e-5, b.time - a.time);
     const u = clamp01((clampedT - a.time) / dur);
+    const u2 = u * u, u3 = u2 * u;
+    const wA = 2 * u3 - 3 * u2 + 1, wB = -2 * u3 + 3 * u2;
+    const dA = u3 - 2 * u2 + u, dB = u3 - u2;
 
-    // 1. Forearm position via periodic C1 Catmull-Rom spline (zero velocity kinks!)
-    for (let k = 0; k < 3; k++) raw[k] = catmull(prev.armPos[k], a.armPos[k], b.armPos[k], next.armPos[k], u);
+    // Use the same time-based tangent at the loop entry and closing pose.
+    const cycle = maxT - kfs[1].time;
+    const prevA = kfs[i === 1 ? lastIdx - 1 : Math.max(0, i - 1)];
+    const wrapsB = i === 0 || i + 1 === lastIdx;
+    const prevB = wrapsB ? kfs[lastIdx - 1] : a;
+    const nextB = kfs[i + 1 === lastIdx ? 2 : i + 2];
+    const slopeA = i === 0 ? 0 : dA * dur / (b.time - prevA.time + (i === 1 ? cycle : 0));
+    const slopeB = dB * dur / (nextB.time - prevB.time + (wrapsB ? cycle : 0));
+    const sample = (channel, k) => wA * a[channel][k] + wB * b[channel][k] +
+      slopeA * (b[channel][k] - prevA[channel][k]) + slopeB * (nextB[channel][k] - prevB[channel][k]);
+
+    for (let k = 0; k < 3; k++) raw[k] = sample('armPos', k);
 
     // 2. Forearm rotation via C1 Catmull-Rom -> Quaternion
-    for (let k = 0; k < 3; k++) _rotScratch[k] = catmull(prev.armRot[k], a.armRot[k], b.armRot[k], next.armRot[k], u);
+    for (let k = 0; k < 3; k++) _rotScratch[k] = sample('armRot', k);
     eulerArrToQuat(_rotScratch, rawHandQuat);
 
     // 3. Independent wrist rotation via C1 Catmull-Rom -> Quaternion
-    for (let k = 0; k < 3; k++) _rotScratch[k] = catmull(prev.wristRot[k], a.wristRot[k], b.wristRot[k], next.wristRot[k], u);
+    for (let k = 0; k < 3; k++) _rotScratch[k] = sample('wristRot', k);
     eulerArrToQuat(_rotScratch, rawWristQuat);
 
     // 4. Independent fingers[5] via C1 Catmull-Rom
-    for (let f = 0; f < 5; f++) rawFingers[f] = clamp01(catmull(prev.fingers[f], a.fingers[f], b.fingers[f], next.fingers[f], u));
+    for (let f = 0; f < 5; f++) rawFingers[f] = clamp01(sample('fingers', f));
     raw[7] = (rawFingers[1] + rawFingers[2] + rawFingers[3]) / 3;
     raw[8] = rawFingers[4];
-    raw[9] = 0; // Zero fake camera shake during inspect!
+    // Subtle tactile viewmodel-only micro-kick & left tactical guard hand balance (matches Butterfly Knife!)
+    raw[9] = lerp(a.kick ?? 0, b.kick ?? 0, u);
+    rawLeftPose = clamp01(lerp(a.leftPose ?? 0.5, b.leftPose ?? 0.5, smoothStep(u)));
 
     // 5. SpinPivot local offset
     rawPivot.set(
-      catmull(prev.pivotPos[0], a.pivotPos[0], b.pivotPos[0], next.pivotPos[0], u),
-      catmull(prev.pivotPos[1], a.pivotPos[1], b.pivotPos[1], next.pivotPos[1], u),
-      catmull(prev.pivotPos[2], a.pivotPos[2], b.pivotPos[2], next.pivotPos[2], u)
+      sample('pivotPos', 0),
+      sample('pivotPos', 1),
+      sample('pivotPos', 2)
     );
 
     // 6. Local spin axis (smooth C1 blend)
     rawSpinAxis.set(
-      catmull(prev.spinAxis[0], a.spinAxis[0], b.spinAxis[0], next.spinAxis[0], u),
-      catmull(prev.spinAxis[1], a.spinAxis[1], b.spinAxis[1], next.spinAxis[1], u),
-      catmull(prev.spinAxis[2], a.spinAxis[2], b.spinAxis[2], next.spinAxis[2], u)
+      sample('spinAxis', 0),
+      sample('spinAxis', 1),
+      sample('spinAxis', 2)
     ).normalize();
 
     // 7. Continuous unwrappedSpinAngle via cubic Hermite (NEVER slerped!)
     const m0Deg = (a.outTangent !== null && a.outTangent !== undefined ? a.outTangent : autoSpinTangent(kfs, i)) * dur;
     const m1Deg = (b.inTangent !== null && b.inTangent !== undefined ? b.inTangent : autoSpinTangent(kfs, i + 1)) * dur;
-    const u2 = u * u, u3 = u2 * u;
     const p0 = a.unwrappedSpinAngle, p1 = b.unwrappedSpinAngle;
-    const angleDeg = (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0Deg + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1Deg;
+    const angleDeg = wA * p0 + dA * m0Deg + wB * p1 + dB * m1Deg;
     curSpinVelDegS = ((6 * u2 - 6 * u) * (p0 - p1) + (3 * u2 - 4 * u + 1) * m0Deg + (3 * u2 - 2 * u) * m1Deg) / dur;
     raw[6] = (angleDeg + cycleAngleOffsetDeg) * deg2rad;
 
@@ -417,7 +410,7 @@ export function createKarambitMotion(emit = () => {}) {
   function evalIntro(t) {
     const dur = Math.max(0.04, KARAMBIT_INSPECT_CONFIG.introDur);
     const u = clamp01(t / dur);
-    const eu = EASINGS.easeInOutCubic(u);
+    const eu = smoothStep(u);
     const k0 = KARAMBIT_KEYFRAMES[0];
 
     raw[0] = lerp(0, k0.armPos[0], eu);
@@ -435,6 +428,7 @@ export function createKarambitMotion(emit = () => {}) {
     raw[7] = (rawFingers[1] + rawFingers[2] + rawFingers[3]) / 3;
     raw[8] = rawFingers[4];
     raw[9] = 0;
+    rawLeftPose = lerp(0, k0.leftPose ?? 0.2, eu);
 
     rawPivot.set(
       lerp(0, k0.pivotPos[0], eu),
@@ -443,21 +437,22 @@ export function createKarambitMotion(emit = () => {}) {
     );
     rawSpinAxis.set(k0.spinAxis[0], k0.spinAxis[1], k0.spinAxis[2]).normalize();
 
-    // Smooth Hermite from Idle (0 deg, vel 0) into 1.80s (-90 deg)
+    // Ease out of stillness into the first spin tangent.
     const m1 = (k0.inTangent ?? -600) * dur;
     const u2 = u * u, u3 = u2 * u;
     const angleDeg = (-2 * u3 + 3 * u2) * k0.unwrappedSpinAngle + (u3 - u2) * m1;
     curSpinVelDegS = ((6 * u2 - 6 * u) * (0 - k0.unwrappedSpinAngle) + (3 * u2 - 2 * u) * m1) / dur;
     raw[6] = angleDeg * deg2rad;
-    phaseLabel = 'INTRO 1.70s->1.80s';
+    phaseLabel = '起手抬腕';
     return u >= 1;
   }
 
   function evalOutro(t) {
     const dur = Math.max(0.18, KARAMBIT_INSPECT_CONFIG.outroDur);
     const u = clamp01(t / dur);
-    const eu = EASINGS.easeInOutCubic(u);
-    const eSpin = EASINGS.easeOutBack(u);
+    const eu = smoothStep(u);
+    const u2 = u * u, u3 = u2 * u;
+    const eSpin = 3 * u2 - 2 * u3 + outroSpinSlope * (u3 - 2 * u2 + u);
     const clampDip = Math.exp(-Math.pow((u - 0.66) / 0.14, 2));
 
     raw[0] = lerp(outroStartPos[0], 0, eu);
@@ -468,18 +463,19 @@ export function createKarambitMotion(emit = () => {}) {
     rawHandQuat.copy(outroStartHandQ).slerp(_qB, eu);
     rawWristQuat.copy(outroStartWristQ).slerp(_qB, eu);
 
-    const fClose = EASINGS.easeInOutCubic(clamp01((u - 0.12) / 0.50));
+    const fClose = smoothStep(clamp01((u - 0.12) / 0.50));
     for (let f = 0; f < 5; f++) rawFingers[f] = lerp(outroStartFingers[f], 0, fClose);
     raw[7] = (rawFingers[1] + rawFingers[2] + rawFingers[3]) / 3;
     raw[8] = rawFingers[4];
-    raw[9] = 0;
+    raw[9] = clampDip * 0.45;
+    rawLeftPose = lerp(outroStartLeftPose, 0, eu);
 
     rawPivot.copy(outroStartPivot).lerp(_vA.set(0, 0, 0), eu);
     rawSpinAxis.set(0, 0, 1);
 
-    const prevRad = raw[6];
     raw[6] = lerp(outroStartSpinRad, outroTargetSpinRad, eSpin);
-    curSpinVelDegS = (raw[6] - prevRad) * rad2deg / Math.max(1e-3, dur * 0.05);
+    const spinSlope = 6 * u * (1 - u) + outroSpinSlope * (3 * u2 - 4 * u + 1);
+    curSpinVelDegS = (outroTargetSpinRad - outroStartSpinRad) * rad2deg * spinSlope / dur;
     phaseLabel = 'OUTRO 收刀回Idle';
     if (!outroCatchCued && u >= 0.64) {
       outroCatchCued = true;
@@ -533,6 +529,7 @@ export function createKarambitMotion(emit = () => {}) {
     const axisAlpha = dt > 0 ? 1 - Math.exp(-24 * dt) : 1;
     spinAxis.lerp(rawSpinAxis, axisAlpha).normalize();
     spinQuat.setFromAxisAngle(spinAxis, pose[6]);
+    leftPose += (rawLeftPose - leftPose) * (dt > 0 ? 1 - Math.exp(-14 * dt) : 1);
   }
 
   function snapshotLive() {
@@ -585,6 +582,7 @@ export function createKarambitMotion(emit = () => {}) {
     rawFingers[4] = raw[8];
     rawPivot.set(0, 0, 0);
     rawSpinAxis.set(0, 0, 1);
+    rawLeftPose = state === 'attack' ? (clip === clips.heavy ? 0.65 : 0.30) : (state === 'spin' ? 0.24 : 0);
   }
 
   function startClip(name, nextState, transition = .072) {
@@ -593,7 +591,7 @@ export function createKarambitMotion(emit = () => {}) {
     phaseLabel = nextState.toUpperCase();
     clip = clips[name];
     time = section = contactAt = 0;
-    contactFrame = false;
+    contactFrame = quickGrip = false;
     queued = null;
     KARAMBIT_INSPECT_CONFIG.paused = false;
     sampleClip(clip, 0, 0, raw, velocity);
@@ -625,12 +623,22 @@ export function createKarambitMotion(emit = () => {}) {
     outroStartWristQ.copy(wristQuat);
     outroStartFingers.set(fingers);
     outroStartPivot.copy(pivotPos);
+    outroStartLeftPose = leftPose;
     outroStartSpinRad = pose[6];
     const dir = curSpinVelDegS <= 0 ? -1 : 1;
     outroTargetSpinRad = dir < 0
       ? Math.floor(outroStartSpinRad / tau) * tau
       : Math.ceil(outroStartSpinRad / tau) * tau;
-    if (Math.abs(outroTargetSpinRad - outroStartSpinRad) < 0.8) outroTargetSpinRad += dir * tau;
+    const nearestGrip = Math.round(outroStartSpinRad / tau) * tau;
+    if (Math.abs(nearestGrip - outroStartSpinRad) < .95 ||
+        Math.abs(outroTargetSpinRad - outroStartSpinRad) > tau * .64 || Math.abs(curSpinVelDegS) < 520) {
+      outroTargetSpinRad = nearestGrip;
+    }
+    const delta = outroTargetSpinRad - outroStartSpinRad;
+    const duration = Math.max(.18, KARAMBIT_INSPECT_CONFIG.outroDur);
+    // Carry the active spin into the catch without adding another full turn.
+    outroSpinSlope = Math.abs(delta) > 1e-5
+      ? T.MathUtils.clamp(curSpinVelDegS * deg2rad * duration / delta, 0, 2.4) : 0;
     evalOutro(0);
     velocity.fill(0);
     applyInertialization(snap, transition);
@@ -687,7 +695,9 @@ export function createKarambitMotion(emit = () => {}) {
 
   function attack(kind) {
     const clipName = kind === 'heavy' ? 'heavy' : backhand ? 'backhand' : 'light';
-    startClip(clipName, 'attack', .048);
+    const grip = state === 'equip' && time < drawCatchTime;
+    startClip(clipName, 'attack', grip ? quickGripTime : .048);
+    quickGrip = grip;
     if (kind === 'light') backhand = !backhand;
     contactAt = karambitContactTime[kind];
   }
@@ -708,7 +718,7 @@ export function createKarambitMotion(emit = () => {}) {
     clip = null; time = section = contactAt = rebound = 0;
     introClock = loopTime = loopCycles = cycleAngleOffsetDeg = outroTime = curSpinVelDegS = 0;
     lastKfIdx = -1;
-    backhand = spinAlt = contactFrame = false; queued = null;
+    backhand = spinAlt = contactFrame = quickGrip = false; queued = null;
     KARAMBIT_INSPECT_CONFIG.paused = false;
     pose.fill(0); raw.fill(0); velocity.fill(0); offX.fill(0); offV.fill(0);
     fingers.fill(0); rawFingers.fill(0); fOffX.fill(0); fOffV.fill(0);
@@ -719,9 +729,14 @@ export function createKarambitMotion(emit = () => {}) {
     handQuat.identity(); rawHandQuat.identity(); prevRawHandQ.identity();
     wristQuat.identity(); rawWristQuat.identity(); prevRawWristQ.identity();
     spinQuat.identity(); spinAxis.set(0, 0, 1); rawSpinAxis.set(0, 0, 1);
+    leftPose = rawLeftPose = outroStartLeftPose = 0;
   }
 
   const prevRawPose = new Float64Array(idle.length);
+
+  function isInspecting() {
+    return state === 'inspectIntro' || state === 'inspectLoop' || state === 'inspectOutro';
+  }
 
   function update(rawDt) {
     const cfg = KARAMBIT_INSPECT_CONFIG;
@@ -734,13 +749,13 @@ export function createKarambitMotion(emit = () => {}) {
       return;
     }
 
-    const scale = cfg.slowMo ? cfg.slowMoScale : 1;
+    const inspecting = isInspecting();
+    const scale = inspecting && cfg.slowMo ? cfg.slowMoScale : 1;
     let dt = Math.max(0, Math.min(rawDt, 0.1)) * scale;
     if (dt === 0 && state === 'idle') { compose(0); return; }
 
     // Inspect-only tempo multiplier (see KARAMBIT_INSPECT_CONFIG.inspectSpeed). idt is the script
     // clock; compose() below still runs on real dt so the inertialization spring settles in real time.
-    const inspecting = state === 'inspectIntro' || state === 'inspectLoop' || state === 'inspectOutro';
     const idt = inspecting ? dt * T.MathUtils.clamp(cfg.inspectSpeed || 1, 0.25, 3) : dt;
 
     prevRawPose.set(raw);
@@ -766,7 +781,7 @@ export function createKarambitMotion(emit = () => {}) {
           startInspectOutro(.075);
           return;
         }
-        // Seamless continuous wrap: 3.90s (2.10s) -> 1.90s (loopWrapTime = 0.10s)
+        // Keep the accumulated full turns when returning to the entry pose.
         const wrapT = T.MathUtils.clamp(cfg.loopWrapTime, 0, maxT - 0.1);
         const endAngle = KARAMBIT_KEYFRAMES[KARAMBIT_KEYFRAMES.length - 1].unwrappedSpinAngle;
         const wrapKf = KARAMBIT_KEYFRAMES.find(k => Math.abs(k.time - wrapT) < 1e-3) || KARAMBIT_KEYFRAMES[1];
@@ -779,9 +794,8 @@ export function createKarambitMotion(emit = () => {}) {
       const kfIdx = evalKeyframesAt(loopTime);
       if (kfIdx !== lastKfIdx) {
         lastKfIdx = kfIdx;
-        if (kfIdx === 1 || kfIdx === 5 || kfIdx === 8 || kfIdx === 11) emit('karambitSpin', .72);
-        else if (kfIdx === 3) emit('karambitCatch', .66);
-        else if (kfIdx === 12 || kfIdx === 13) emit('karambitRing', .56);
+        const frame = KARAMBIT_KEYFRAMES[kfIdx];
+        if (frame.cue) emit(frame.cue, frame.volume);
       }
       if (idt > 1e-6) for (let j = 0; j < pose.length; j++) velocity[j] = (raw[j] - prevRawPose[j]) / idt;
     } else if (state === 'inspectOutro') {
@@ -792,11 +806,16 @@ export function createKarambitMotion(emit = () => {}) {
         state = 'idle'; phaseLabel = 'IDLE';
         raw.fill(0); velocity.fill(0); rawFingers.fill(0);
         rawPivot.set(0, 0, 0); rawHandQuat.identity(); rawWristQuat.identity();
-        rawSpinAxis.set(0, 0, 1); curSpinVelDegS = 0;
+        rawSpinAxis.set(0, 0, 1); curSpinVelDegS = 0; rawLeftPose = 0;
       }
     } else if (clip) {
       if (!contactFrame) time = contactAt ? Math.min(time + dt, contactAt - 1e-6) : time + dt;
       contactFrame = false;
+      if (quickGrip && time >= quickGripTime) {
+        quickGrip = false;
+        rebound = Math.max(rebound, .009);
+        emit('bladeGrip', .68);
+      }
       while (clip[section + 1] && time >= clip[section + 1].time) {
         const frame = clip[++section];
         if (frame.cue) emit(frame.cue, frame.volume);
@@ -818,7 +837,7 @@ export function createKarambitMotion(emit = () => {}) {
         clip = null; state = 'idle'; phaseLabel = 'IDLE';
         raw.fill(0); velocity.fill(0); rawFingers.fill(0);
         rawPivot.set(0, 0, 0); rawHandQuat.identity(); rawWristQuat.identity();
-        rawSpinAxis.set(0, 0, 1); curSpinVelDegS = 0;
+        rawSpinAxis.set(0, 0, 1); curSpinVelDegS = 0; rawLeftPose = 0;
         break;
       }
       if (clip) { sampleClip(clip, section, time, raw, velocity); applyClipRaw(); }
@@ -861,6 +880,10 @@ export function createKarambitMotion(emit = () => {}) {
     scrubTo,
     stepFrame,
     get impact() { return rebound; },
+    get leftPose() { return leftPose; },
+    get inspectTrail() {
+      return isInspecting() ? smoothStep(clamp01((Math.abs(curSpinVelDegS) - 220) / 560)) : null;
+    },
     getDebugState() {
       const refT = state === 'inspectLoop' ? (1.80 + loopTime) : (state === 'inspectIntro' ? (1.70 + introClock) : 1.70);
       return {
@@ -873,7 +896,7 @@ export function createKarambitMotion(emit = () => {}) {
         unwrappedSpinDeg: Number((pose[6] * rad2deg).toFixed(1)),
         spinVelDegS: Math.round(curSpinVelDegS),
         paused: KARAMBIT_INSPECT_CONFIG.paused,
-        timeScale: KARAMBIT_INSPECT_CONFIG.slowMo ? KARAMBIT_INSPECT_CONFIG.slowMoScale : 1,
+        timeScale: isInspecting() && KARAMBIT_INSPECT_CONFIG.slowMo ? KARAMBIT_INSPECT_CONFIG.slowMoScale : 1,
         inspectSpeed: KARAMBIT_INSPECT_CONFIG.inspectSpeed,
         loopMode: KARAMBIT_INSPECT_CONFIG.loopMode,
         showGizmos: KARAMBIT_INSPECT_CONFIG.showGizmos,

@@ -1,7 +1,7 @@
 import * as T from './three.module.js';
 import {buildWorld} from './world.js';
 import {createMatch} from './match.js';
-import {primaries,melees} from './arsenal.js?v=25';
+import {primaries,melees} from './arsenal.js?v=28';
 
 const step=1/60;
 const world=buildWorld();

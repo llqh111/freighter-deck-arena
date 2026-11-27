@@ -51,14 +51,24 @@ async function loadKnife(){
 }
 
 function addBladeTrail(weapon,ring){
-  // 112-segment angular-subdivided Reaver-style luminous crescent arc ribbon (zero-GC preallocated).
-  // Sub-steps fast rotations every ~4.3 deg so the spin arc is razor-smooth at any FPS (no polygonal facets!).
-  const count=112,lifetime=.155;
-  const positions=new Float32Array(count*6),colors=new Float32Array(count*8);
-  const ages=new Float32Array(count),strengths=new Float32Array(count),indices=[];
-  for(let i=0;i<count-1;i++){
-    const a=i*2;
-    indices.push(a,a+1,a+2,a+1,a+3,a+2);
+  // Luminous multi-rail Valorant Reaver energy arc (zero-GC preallocated, AdditiveBlending + angular sub-stepping).
+  // Soft deep-indigo outer aura -> vivid electric-violet mid core -> crisp bright lavender-blue razor edge.
+  const rails=[
+    {width:0.00, lifetime:.195, alpha:0.00, color:[.10,.05,.72]},
+    {width:0.20, lifetime:.182, alpha:0.26, color:[.14,.10,.92]},
+    {width:0.44, lifetime:.168, alpha:0.52, color:[.24,.20,1.0]},
+    {width:0.66, lifetime:.156, alpha:0.32, color:[.38,.28,1.0]},
+    {width:0.84, lifetime:.148, alpha:0.86, color:[.52,.46,1.0]},
+    {width:0.95, lifetime:.142, alpha:0.98, color:[.74,.78,1.0]},
+    {width:1.00, lifetime:.138, alpha:0.16, color:[.90,.92,1.0]}
+  ];
+  const count=136,railCount=rails.length;
+  const positions=new Float32Array(count*railCount*3),colors=new Float32Array(count*railCount*4);
+  const edges=new Float32Array(count*6),ages=new Float32Array(count),strengths=new Float32Array(count);
+  const inspectSamples=new Uint8Array(count),indices=[];
+  for(let i=0;i<count-1;i++)for(let j=0;j<railCount-1;j++){
+    const a=i*railCount+j,b=a+railCount;
+    indices.push(a,a+1,b,a+1,b+1,b);
   }
   const geometry=new T.BufferGeometry();
   const position=new T.BufferAttribute(positions,3).setUsage(T.DynamicDrawUsage);
@@ -74,74 +84,88 @@ function addBladeTrail(weapon,ring){
   ribbon.matrixAutoUpdate=false;
   ribbon.visible=false;
   weapon.root.add(ribbon);
-  // Sleek narrow crescent band hugging the outer blade edge (matches Valorant Reaver energy arc)
-  const edge=new T.Vector3(.96,.74,-.0054).applyMatrix4(mountTransform);
+
+  const edge=new T.Vector3(.92,.74,-.0054).applyMatrix4(mountTransform);
   const tip=new T.Vector3(1.29665,.69502,-.0054).applyMatrix4(mountTransform);
-  const nextEdge=new T.Vector3(),nextTip=new T.Vector3(),lastTip=new T.Vector3();
-  const prevQuat=new T.Quaternion(),curQuat=new T.Quaternion(),subQuat=new T.Quaternion();
-  const prevPos=new T.Vector3(),curPos=new T.Vector3(),subPos=new T.Vector3();
-  const subLocal=new T.Matrix4(),subWorld=new T.Matrix4(),unitScale=new T.Vector3(1,1,1);
-  let samples=0;
-  function pushSample(eVec,tVec,age,strength){
-    samples=Math.min(samples+1,count);
-    positions.copyWithin(6,0,(samples-1)*6);
-    ages.copyWithin(1,0,samples-1);
-    strengths.copyWithin(1,0,samples-1);
-    eVec.toArray(positions,0);
-    tVec.toArray(positions,3);
+  const lastTip=new T.Vector3(),nextTip=new T.Vector3(),nextEdge=new T.Vector3();
+  const lastSpin=new T.Quaternion(),spin=new T.Quaternion();
+  const lastParentQuat=new T.Quaternion(),parentQuat=new T.Quaternion();
+  const lastParentPos=new T.Vector3(),parentPos=new T.Vector3(),lastOffset=new T.Vector3();
+  const stepQuat=new T.Quaternion(),stepPos=new T.Vector3(),unitScale=new T.Vector3(1,1,1);
+  const parentScale=new T.Vector3();
+  const stepParent=new T.Matrix4(),stepWorld=new T.Matrix4(),stepLocal=new T.Matrix4();
+  let countUsed=0,lastStrength=0;
+
+  function pushSample(matrix,age,strength,inspecting){
+    countUsed=Math.min(countUsed+1,count);
+    edges.copyWithin(6,0,(countUsed-1)*6);
+    ages.copyWithin(1,0,countUsed-1);
+    strengths.copyWithin(1,0,countUsed-1);
+    inspectSamples.copyWithin(1,0,countUsed-1);
+    nextEdge.copy(edge).applyMatrix4(matrix).toArray(edges,0);
+    nextTip.copy(tip).applyMatrix4(matrix).toArray(edges,3);
     ages[0]=age;
     strengths[0]=strength;
+    inspectSamples[0]=inspecting?1:0;
   }
-  weapon.resetTrail=()=>{samples=0;ribbon.visible=false;};
-  weapon.updateTrail=dt=>{
+  weapon.resetTrail=()=>{countUsed=0;lastStrength=0;ribbon.visible=false;};
+  weapon.updateTrail=(dt,inspectWeight)=>{
     if(dt<=0)return;
     ring.updateWorldMatrix(true,false);
-    curQuat.copy(ring.quaternion);
-    curPos.copy(ring.position);
-    nextEdge.copy(edge).applyMatrix4(ring.matrixWorld);
+    ring.parent.matrixWorld.decompose(parentPos,parentQuat,parentScale);
+    spin.copy(ring.quaternion);
     nextTip.copy(tip).applyMatrix4(ring.matrixWorld);
-    const speed=samples?nextTip.distanceTo(lastTip)/dt:0;
-    const strength=T.MathUtils.clamp((speed-0.65)/2.4,0,1);
-    for(let i=0;i<samples;i++)ages[i]+=dt;
-    if(samples>0&&ring.parent){
-      const angleDelta=prevQuat.angleTo(curQuat);
-      const subSteps=angleDelta>0.075?Math.min(10,Math.ceil(angleDelta/0.075)):1;
-      if(subSteps>1){
-        const parentWorld=ring.parent.matrixWorld;
-        for(let s=1;s<=subSteps;s++){
-          const f=s/subSteps;
-          subQuat.copy(prevQuat).slerp(curQuat,f);
-          subPos.copy(prevPos).lerp(curPos,f);
-          subLocal.compose(subPos,subQuat,unitScale);
-          subWorld.multiplyMatrices(parentWorld,subLocal);
-          nextEdge.copy(edge).applyMatrix4(subWorld);
-          nextTip.copy(tip).applyMatrix4(subWorld);
-          pushSample(nextEdge,nextTip,dt*(1-f),strength);
-        }
-      }else{
-        pushSample(nextEdge,nextTip,0,strength);
+    const speed=countUsed?nextTip.distanceTo(lastTip)/dt:0;
+    const inspecting=inspectWeight!==null&&inspectWeight!==undefined;
+    let strength=T.MathUtils.clamp((speed-.55)/2.1,0,1);
+    if(inspecting)strength=Math.max(strength*inspectWeight,inspectWeight*.88);
+    for(let i=0;i<countUsed;i++)ages[i]+=dt;
+    while(countUsed>1&&ages[countUsed-1]>.198)countUsed--;
+
+    if(countUsed){
+      const twist=lastSpin.angleTo(spin)+lastParentQuat.angleTo(parentQuat);
+      const steps=Math.min(20,Math.max(1,Math.ceil(twist/.075)));
+      for(let s=1;s<=steps;s++){
+        const f=s/steps;
+        stepParent.compose(stepPos.copy(lastParentPos).lerp(parentPos,f),
+          stepQuat.copy(lastParentQuat).slerp(parentQuat,f),parentScale);
+        stepLocal.compose(stepPos.copy(lastOffset).lerp(ring.position,f),
+          stepQuat.copy(lastSpin).slerp(spin,f),unitScale);
+        stepWorld.multiplyMatrices(stepParent,stepLocal);
+        pushSample(stepWorld,dt*(1-f),T.MathUtils.lerp(lastStrength,strength,f),inspecting);
       }
     }else{
-      pushSample(nextEdge,nextTip,0,strength);
+      pushSample(ring.matrixWorld,0,strength,inspecting);
     }
-    prevQuat.copy(curQuat);
-    prevPos.copy(curPos);
-    lastTip.copy(nextTip);
+
+    lastTip.copy(tip).applyMatrix4(ring.matrixWorld);
+    lastParentPos.copy(parentPos);
+    lastParentQuat.copy(parentQuat);
+    lastOffset.copy(ring.position);
+    lastSpin.copy(spin);
+    lastStrength=strength;
+
     let visible=false;
-    for(let i=0;i<samples;i++){
-      const tNorm=Math.max(0,1-ages[i]/lifetime);
-      const fade=(tNorm*tNorm)*Math.pow(tNorm,.15)*strengths[i];
-      const offset=i*8;
-      // Rich Valorant Reaver deep electric-indigo inner glow -> crisp violet-blue outer razor arc
-      colors[offset]=.24;colors[offset+1]=.18;colors[offset+2]=.96;colors[offset+3]=fade*.15;
-      colors[offset+4]=.54;colors[offset+5]=.58;colors[offset+6]=1.0;colors[offset+7]=fade*.72;
-      visible||=fade>.012;
+    for(let i=0;i<countUsed;i++){
+      const old=i*6,inspect=inspectSamples[i];
+      for(let j=0;j<railCount;j++){
+        const rail=rails[j],vertex=i*railCount+j,p=vertex*3,c=vertex*4;
+        const time=Math.max(0,1-ages[i]/(inspect?rail.lifetime:.115));
+        const fade=time*time*strengths[i];
+        const width=inspect?1-(1-rail.width)*(.58+.42*time):rail.width;
+        for(let k=0;k<3;k++)positions[p+k]=T.MathUtils.lerp(edges[old+k],edges[old+3+k],width);
+        colors[c]=inspect?rail.color[0]:.56;
+        colors[c+1]=inspect?rail.color[1]:.52;
+        colors[c+2]=inspect?rail.color[2]:1.0;
+        colors[c+3]=fade*(inspect?rail.alpha:.48*rail.width);
+        visible||=colors[c+3]>.010;
+      }
     }
-    ribbon.visible=visible&&samples>1;
+    ribbon.visible=visible&&countUsed>1;
     if(!ribbon.visible)return;
     ribbon.matrix.copy(weapon.root.matrixWorld).invert();
     ribbon.matrixWorldNeedsUpdate=true;
-    geometry.setDrawRange(0,(samples-1)*6);
+    geometry.setDrawRange(0,(countUsed-1)*(railCount-1)*6);
     position.needsUpdate=true;color.needsUpdate=true;
   };
 }
@@ -154,18 +178,18 @@ export function buildKarambit(weapon,parts){
 
   const cuffMatte=paint(0x1d2224,.88,.04);
   const armorPlate=paint(0x2d3230,.58,.18);
-  const mount=new T.Group(),spinPivot=new T.Group(),thumb=new T.Group();
+  const mount=new T.Group(),spinPivot=new T.Group(),thumb=new T.Group(),forearm=new T.Group();
   mount.name='KarambitMount';
   spinPivot.name='SpinPivot';
-  const hand=weapon.hand,fingers=[];
-  weapon.body.add(mount);
+  const hand=weapon.hand,fingers=[],fingerTips=[];
+  weapon.body.add(mount,forearm);
   mount.add(spinPivot);
   hand.add(thumb);
 
   // --- Proportioned Gloved Right Hand (matched to 0.070 karambit ring & grip) ---
-  pad(hand,glove,.046,-.012,.028,.040,.030,.021);
-  pad(hand,knuckle,.040,.010,.026,.034,.014,.017);
-  pad(hand,armorPlate,.043,.007,.035,.030,.011,.008);
+  pad(hand,glove,.046,-.012,.028,.037,.027,.019);
+  pad(hand,knuckle,.040,.010,.026,.033,.012,.014);
+  pad(hand,armorPlate,.043,.007,.035,.027,.009,.006);
   for(let i=0;i<4;i++){
     pad(hand,knuckle,.017+i*.0165,.015-i*.003,.027,.0105,.0095,.011);
   }
@@ -175,28 +199,34 @@ export function buildKarambit(weapon,parts){
   tube(hand,glove,[.003,.003,.011],[-.001,-.001,-.012],.0070,.0062,12);
   pad(hand,knuckle,-.001,-.001,-.012,.0064,.0064,.0064);
 
-  // Seamless wrist gaiter & diagonal forearm sweeping cleanly off bottom-right corner
-  const wPt=[.090,-.044,.040], ePt=[.235,-.215,.275];
+  const palmGrip=paint(0x414943,.87,.06);
+  pad(hand,palmGrip,.049,-.012,.010,.022,.012,.004);
+  pad(hand,glove,.029,-.020,.010,.011,.009,.005);
+  // The forearm keeps its line when the palm rolls. Both parts meet at the cuff.
+  const wPt=[.090,-.044,.040], ePt=[.281,-.211,.252];
+  const wristJoint=new T.Vector3(...wPt);
   const aLerp=t=>[wPt[0]+(ePt[0]-wPt[0])*t,wPt[1]+(ePt[1]-wPt[1])*t,wPt[2]+(ePt[2]-wPt[2])*t];
-  tube(hand,glove,[.060,-.019,.029],wPt,.028,.030,14);
-  pad(hand,cuffMatte,wPt[0],wPt[1],wPt[2],.033,.033,.033);
-  tube(hand,cuffMatte,wPt,aLerp(.14),.033,.038,14);
-  tube(hand,sleeveBand,aLerp(.14),aLerp(.24),.0408,.0435,14);
-  tube(hand,cloth,ePt,aLerp(.13),.066,.038,14);
-  tube(hand,clothFold,aLerp(.45),aLerp(.58),.051,.054,14);
+  tube(hand,glove,[.060,-.019,.029],wPt,.024,.025,14);
+  pad(forearm,cuffMatte,wPt[0],wPt[1],wPt[2],.026,.027,.026);
+  tube(forearm,cuffMatte,wPt,aLerp(.14),.026,.032,14);
+  tube(forearm,sleeveBand,aLerp(.14),aLerp(.23),.033,.035,14);
+  tube(forearm,cloth,ePt,aLerp(.13),.053,.032,14);
+  tube(forearm,clothFold,aLerp(.45),aLerp(.58),.042,.045,14);
+  bake(forearm);
 
   // 3 articulated fingers (Middle, Ring, Pinky) proportioned to the 0.070 handle
   for(let i=0;i<3;i++){
-    const finger=new T.Group();
-    const s=1-i*.07;
+    const finger=new T.Group(),tipJoint=new T.Group();
+    const s=1-i*.09;
     finger.position.set(.031+i*.0165,.015-i*.003,.023);
-    tube(finger,glove,[0,0,0],[0,.006,-.020*s],.0086*s,.0076*s,10);
-    pad(finger,knuckle,0,.006,-.020*s,.0078*s,.0076*s,.0080*s);
-    tube(finger,glove,[0,.006,-.020*s],[0,-.017*s,-.023*s],.0074*s,.0064*s,10);
-    pad(finger,knuckle,0,-.017*s,-.023*s,.0066*s,.0066*s,.0068*s);
-    bake(finger);
-    hand.add(finger);
-    fingers.push(finger);
+    tipJoint.position.set(0,.006,-.020*s);
+    tube(finger,glove,[0,0,0],tipJoint.position.toArray(),.0082*s,.0073*s,10);
+    pad(finger,knuckle,0,.006,-.020*s,.0073*s,.0072*s,.0073*s);
+    tube(tipJoint,glove,[0,0,0],[0,-.019*s,-.003*s],.0071*s,.0055*s,10);
+    pad(tipJoint,knuckle,0,-.019*s,-.003*s,.0057*s,.0057*s,.0062*s);
+    bake(finger);bake(tipJoint);
+    finger.add(tipJoint);hand.add(finger);
+    fingers.push(finger);fingerTips.push(tipJoint);
   }
   // Articulated thumb on lower-left palm
   thumb.position.set(.036,-.028,.024);
@@ -204,6 +234,26 @@ export function buildKarambit(weapon,parts){
   pad(thumb,knuckle,-.011,.004,-.006,.0096,.0090,.0096);
   pad(thumb,knuckle,-.021,.008,-.013,.0086,.0084,.0088);
   bake(thumb);
+
+  // --- INDEPENDENT TACTICAL LEFT GUARD ARM (matches Butterfly Knife craft; tucked in idle, rises during inspect/combat!) ---
+  const leftRig=new T.Group();
+  leftRig.name='KarambitLeftGuard';
+  leftRig.position.set(-.34,-.30,-.04);
+  leftRig.rotation.set(.16,-.24,.22);
+  weapon.root.add(leftRig);
+  const leftMesh=new T.Group();
+  tube(leftMesh,cloth,[-.115,-.195,.34],[-.020,-.034,.062],.092,.052,11);
+  tube(leftMesh,sleeveBand,[-.026,-.044,.078],[-.016,-.027,.048],.0545,.0515,11);
+  tube(leftMesh,cuffMatte,[-.016,-.027,.048],[.002,.002,-.004],.050,.044,11);
+  pad(leftMesh,glove,.012,.012,-.038,.019,.027,.042);
+  pad(leftMesh,knuckle,.002,.020,-.036,.012,.023,.038);
+  tube(leftMesh,glove,[.016,.028,-.024],[.032,.044,-.054],.0108,.0088,9);
+  for(let i=0;i<4;i++){
+    const zz=-.066+i*.018, s=1-i*.07;
+    tube(leftMesh,glove,[.012,.018-i*.004,zz],[.034*s,.024-i*.005,zz-.022*s],.0096*s,.0078*s,8);
+  }
+  bake(leftMesh);
+  leftRig.add(leftMesh);
 
   // --- Debug Gizmos anchored at SpinPivot (tail-ring center 0,0,0) ---
   const debugGizmo=new T.Group();
@@ -260,5 +310,5 @@ export function buildKarambit(weapon,parts){
 
   addBladeTrail(weapon,spinPivot);
   const ready=loadKnife().then(mesh=>{spinPivot.add(mesh);});
-  weapon.karambit={mount,spinPivot,ringPivot:spinPivot,fingers,thumb,debugGizmo,updateDebugGizmo,ready};
+  weapon.karambit={mount,spinPivot,ringPivot:spinPivot,fingers,fingerTips,thumb,forearm,leftRig,wristJoint,debugGizmo,updateDebugGizmo,ready};
 }

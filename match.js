@@ -1,14 +1,17 @@
 import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js?v=8';
 import * as T from './three.module.js';
-import {arsenal,primaries,melees,isMelee,loadout,skills,falloff} from './arsenal.js?v=27';
-import {karambitContactTime} from './karambit-motion.js?v=12';
-import {butterflyContactTime} from './butterfly-motion.js?v=23';
+import {arsenal,primaries,melees,isMelee,loadout,skills,falloff} from './arsenal.js?v=29';
+import {karambitContactTime} from './karambit-motion.js?v=19';
+import {butterflyContactTime} from './butterfly-motion.js?v=24';
+import {bayonetContactTime} from './bayonet-timing.js?v=2';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
 
 const clamp = T.MathUtils.clamp;
 const EYE=1.60,RADIUS=.32,ROUND=600,GOAL=50;
-const timedMeleeContacts={butterfly:butterflyContactTime,karambit:karambitContactTime};
-const spatialSounds=new Set(['shot','step','land','jump','light','heavy','reload','clang','timber','throw','bounce','explode','death']);
+const timedMeleeContacts={butterfly:butterflyContactTime,karambit:karambitContactTime,m9:bayonetContactTime};
+const bayonetSurfaceCue={wood:'m9Wood',concrete:'m9Stone',metal:'m9Metal'};
+const lightSweepAngles=[-12,-8,-4,4,8,12].map(degrees=>T.MathUtils.degToRad(degrees));
+const spatialSounds=new Set(['shot','step','land','jump','light','heavy','reload','clang','bladeWall','timber','throw','bounce','explode','death',...Object.values(bayonetSurfaceCue)]);
 const sq = n => n*n;
 const rangeScale = (id,dist)=>{
   const f=falloff[id];if(!f||dist<=f.from)return 1;
@@ -294,6 +297,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
   const state={phase:'idle',mode:'tdm',hp:100,armor:100,team:0,ammo:30,reserve:90,score:[0,0],kills:0,deaths:0,headshots:0,remaining:ROUND,target:GOAL,grounded:true,sprinting:false,alive:true,respawnIn:0,reloading:false,aiming:false,zoom:0,spread:0,weapon:'ak47',inventory:p.inventory,slot:0,scoreboard:[],rows:[],player:p,actors:bots};
   const ray=new T.Ray(), v=new T.Vector3(), dir=new T.Vector3(), eye=new T.Vector3(), aim=new T.Vector3(), tmp=new T.Vector3(), rot=new T.Euler(0,0,0,'YXZ');
   const localRay=new T.Ray(),bodyBox=new T.Box3(),headSphere=new T.Sphere(new T.Vector3(),.145);
+  const sweepDir=new T.Vector3();
   const tracerGeo=new T.CylinderGeometry(.010,.015,1,4),tracerMaterial=new T.MeshBasicMaterial({color:0xffce73,transparent:true,opacity:.86,depthWrite:false});
   const tracerPool=Array.from({length:36},()=>{const m=new T.Mesh(tracerGeo,tracerMaterial);m.visible=false;m.frustumCulled=false;scene.add(m);return {m,left:0};});
   let tracerCursor=0;
@@ -336,7 +340,9 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     a.strike=null;a.scopeTarget=null;
     if(a===p){
       pendingStrike=null;
-      pitch=jumpVel=bob=loadTimer=0;grounded=true;shotTimer=.12;lastSlot=0;semiLatch=false;
+      pitch=jumpVel=bob=loadTimer=0;grounded=true;
+      shotTimer=active(p).id==='m9'?arsenal.m9.drawCd:.12;
+      lastSlot=0;semiLatch=false;
       restoreZoom=0;state.zoom=0;state.aiming=false;state.killedBy='';camY=EYE;bobAmp=0;recoilFollow=.43;shake=0;lookSwayX=lookSwayY=0;
       view.equip?.(active(p).id);cameraAt(0);
     }
@@ -394,16 +400,29 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(grounded&&!wasGrounded&&jumpVel< -2.4)sfx('land',active(p).id);
     if(grounded)jumpVel=0;
   }
-  function wallDistance(origin,direction,max){
+  const bayonetSurface={material:'metal',normal:new T.Vector3()};
+  function wallDistance(origin,direction,max,surface){
     ray.set(origin,direction);
     let dist=max;
     for(const s of colliders){
       const x=origin.x-s.x,z=origin.z-s.z;
       localRay.origin.set(x*s.c-z*s.n,origin.y,x*s.n+z*s.c);
       localRay.direction.set(direction.x*s.c-direction.z*s.n,direction.y,direction.x*s.n+direction.z*s.c);
-      if(localRay.intersectBox(s.box,tmp))dist=Math.min(dist,localRay.origin.distanceTo(tmp));
+      if(!localRay.intersectBox(s.box,tmp))continue;
+      const distance=localRay.origin.distanceTo(tmp);
+      if(distance>=dist)continue;
+      dist=distance;
+      if(surface){
+        const nx=Math.abs(Math.abs(tmp.x)-s.w/2)<.002?Math.sign(tmp.x):0;
+        const nz=!nx&&Math.abs(Math.abs(tmp.z)-s.d/2)<.002?Math.sign(tmp.z):0;
+        surface.normal.set(nx*s.c+nz*s.n,nx||nz?0:direction.y<0?1:-1,nz*s.c-nx*s.n);
+        surface.material=s.material||'metal';
+      }
     }
-    if(direction.y<-.0001)dist=Math.min(dist,-origin.y/direction.y);
+    if(direction.y<-.0001&&-origin.y/direction.y<dist){
+      dist=-origin.y/direction.y;
+      if(surface){surface.normal.set(0,1,0);surface.material='metal';}
+    }
     return dist;
   }
   function visible(a,b){
@@ -464,7 +483,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(kill)emit('feed',{killer:a.name,victim:b.name,weapon:id,team:a.team,head,wall,first});
     if(a===p&&a!==b){
       if(knifeMode&&isMelee(id))hits++;
-      sfx('hit',id,p,{head});emit('hit',{kill,head,wall,first,weapon:id,victim:b.name,multi:kill?a.multi:0});
+      sfx(id==='m9'?'m9Flesh':timedMeleeContacts[id]?'bladeFlesh':'hit',id,p,{head});
+      emit('hit',{kill,head,wall,first,weapon:id,victim:b.name,multi:kill?a.multi:0});
     }
     if(!network&&state.score[a.team]>=state.target)finish();
   }
@@ -535,8 +555,9 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
   }
   function useSlot(slot,reequip=false){
     if(!p.alive||!p.inventory[slot]||(!reequip&&p.slot===slot)||(!p.inventory[slot].ammo&&slot===3))return;
-    // A tap buffered during the Karambit draw belongs to that weapon.
-    if(active(p).id==='karambit'||p.inventory[slot].id==='karambit')fireTap=altTap=false;
+    // Buffered attack taps belong to the blade being drawn.
+    const oldId=active(p).id,newId=p.inventory[slot].id;
+    if(oldId==='karambit'||newId==='karambit'||oldId==='m9'||newId==='m9')fireTap=altTap=false;
     pendingStrike=null;
     if(p.slot!==slot)lastSlot=p.slot;
     p.slot=slot;restoreZoom=0;state.zoom=0;state.aiming=false;p.burst=newBurst();loadTimer=0;semiLatch=!!keys.fire;
@@ -553,18 +574,43 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
   function playerMelee(id,heavy){
     const def=arsenal[id],reach=heavy?def.heavyReach:def.reach;
     camera.getWorldDirection(dir);
-    const wallDist=wallDistance(camera.position,dir,reach);
-    const hit=actorHit(p,camera.position,dir,wallDist);
+    const wallDist=wallDistance(camera.position,dir,reach,id==='m9'?bayonetSurface:null);
+    let hit=actorHit(p,camera.position,dir,wallDist);
+    const aimedHit=!!hit;
+    if(!hit&&!heavy&&timedMeleeContacts[id]){
+      // Preserve the aimed hit first. An off-center slash can only reach the nearest exposed target.
+      for(const angle of lightSweepAngles){
+        sweepDir.copy(dir).applyAxisAngle(axis,angle);
+        const limit=wallDistance(camera.position,sweepDir,hit?.distance??reach);
+        const sideHit=actorHit(p,camera.position,sweepDir,limit);
+        if(sideHit){
+          hit=sideHit;
+          if(id==='m9')hitPos.copy(camera.position).addScaledVector(sweepDir,hit.distance);
+        }
+      }
+    }
     if(hit){
       if(timedMeleeContacts[id]&&hit.unit.shield>0)return 'air';
       const rear=Math.cos(hit.unit.yaw-p.yaw)>.5;
       const baseDmg=heavy?def.heavyDmg:def.lightDmg;
+      if(id==='m9'){
+        if(aimedHit)hitPos.copy(camera.position).addScaledVector(dir,hit.distance);
+        world.fx.wound?.(hitPos);
+      }
       damage(p,hit.unit,baseDmg*(rear?1.8:1)*(hit.head?1.3:1),id,hit.head);
       return 'flesh';
     }
     if(wallDist<reach){
-      world.fx.impact(camera.position.clone().addScaledVector(dir,wallDist),dir.clone().negate());
-      sfx('clang',id,p,{volume:.26});
+      const point=camera.position.clone().addScaledVector(dir,wallDist);
+      if(id==='m9'){
+        const {normal,material}=bayonetSurface;
+        world.fx.impact(point,normal,material);
+        sfx(bayonetSurfaceCue[material]||bayonetSurfaceCue.metal,id,point,{volume:.76});
+      }else{
+        world.fx.impact(point,dir.clone().negate());
+        if(timedMeleeContacts[id])sfx('bladeWall',id,point);
+        else sfx('clang',id,p,{volume:.26});
+      }
       return 'wall';
     }
     return 'air';
@@ -604,7 +650,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     p.quiet=!!keys.walk||p.crouch;const walked=Math.hypot(p.x-oldX,p.z-oldZ);p.walking=walked>dt*.1;
     if(p.walking&&!p.quiet&&grounded&&Math.floor(bob)!==Math.floor(bob+walked*2))for(const b of bots){
       if(b.team!==p.team&&Math.hypot(b.x-p.x,b.z-p.z)<8)b.lastHeard={x:p.x,z:p.z};
-    }bob+=walked*2;vertical(dt);state.grounded=grounded;state.sprinting=!!keys.sprint&&p.walking&&!state.aiming;cameraAt(dt);
+    }bob+=walked*2;vertical(dt);state.grounded=grounded;state.verticalSpeed=jumpVel;
+    state.sprinting=!!keys.sprint&&p.walking&&!state.aiming;cameraAt(dt);
     if(pendingStrike&&clock+1e-8>=pendingStrike.at){
       const {id,heavy}=pendingStrike;
       pendingStrike=null;
@@ -627,7 +674,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       const contactTime=timedMeleeContacts[w.id]?.[action];
       if(contactTime){
         pendingStrike={id:w.id,heavy,at:clock+contactTime};
-        view.shoot(action);
+        if(w.id==='m9')view.shoot(action,network?0:dt);
+        else view.shoot(action);
       }else{
         playerMelee(w.id,heavy);
         view.shoot(action);

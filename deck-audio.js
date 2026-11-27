@@ -1,4 +1,5 @@
-import {isMelee} from './arsenal.js?v=27';
+import {isMelee} from './arsenal.js?v=28';
+import {bayonetSounds,bayonetLayers,bayonetSample} from './bayonet-audio.js?v=2';
 
 const butterflyAssets = {
   latch: new URL('./assets/butterfly/mechanical-latch-light.wav', import.meta.url).href,
@@ -22,6 +23,8 @@ const bladeMotionSounds = {
   karambitCatch: {asset: 'latch', offset: .048, mix: .56, pitch: 2640, ring: .22, duration: .118},
   karambitCut: {asset: 'swish', offset: .037, mix: .72, pitch: 1520, ring: .14, duration: .16}
 };
+
+const bladeFeedbackDurations = {bladeGrip: .066, bladeFlesh: .125, bladeWall: .18};
 
 // Short, cached Web Audio samples with idle prewarming and classic CF kill cues.
 export function createDeckAudio() {
@@ -158,10 +161,13 @@ export function createDeckAudio() {
   function sampleFor(kind, weapon = '', head = false) {
     const key = kind + weapon + (head ? 'Head' : '');
     if (samples[key]) return samples[key];
+    if(Object.hasOwn(bayonetSounds,kind)){
+      return samples[key]=makeSample(bayonetSounds[kind][0],bayonetSample(kind,head,context.sampleRate));
+    }
     const freq = {ak47: 94, m4a1: 118, mp5: 155, awm: 61, deagle: 83}[weapon] || 110;
     const isBlade = isMelee(weapon);
     const motion = bladeMotionSounds[kind];
-    const duration = motion?.duration ?? ({sea: 3.2, gull: .62, step: .18, land: .23, jump: .14, death: .22, hurt: .12, scope: .075, timber: .15, clang: .19, dry: .06, shot: weapon === 'awm' ? .52 : .24, explode: .75, bolt: .34, reload: .42, bounce: .11, pulse: .21, hit: .09, equip: isBlade ? .26 : .14, light: isBlade ? .18 : .14, heavy: isBlade ? .28 : .18}[kind] || .14);
+    const duration = motion?.duration ?? bladeFeedbackDurations[kind] ?? ({sea: 3.2, gull: .62, step: .18, land: .23, jump: .14, death: .22, hurt: .12, scope: .075, timber: .15, clang: .19, dry: .06, shot: weapon === 'awm' ? .52 : .24, explode: .75, bolt: .34, reload: .42, bounce: .11, pulse: .21, hit: .09, equip: isBlade ? .26 : .14, light: isBlade ? .18 : .14, heavy: isBlade ? .28 : .18}[kind] || .14);
     let seed = 3492, lp = 0;
     samples[key] = makeSample(duration, t => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -203,6 +209,30 @@ export function createDeckAudio() {
         const phase = tau * motion.pitch * t;
         const metal = (Math.sin(phase) + .38 * Math.sin(phase * 1.87) + .16 * Math.sin(phase * 2.73)) * motion.ring * Math.exp(-54 * t);
         return Math.max(-.92, Math.min(.92, noise + metal));
+      }
+      if (kind === 'bladeGrip') {
+        const butterfly = weapon === 'butterfly';
+        const pitch = butterfly ? 3240 : 2510;
+        const click = (.26 * (white - lp) + .16 * Math.sin(2 * Math.PI * pitch * t)) * Math.exp(-250 * t);
+        const latchTime = t - .012;
+        const latch = butterfly && latchTime > 0
+          ? .20 * Math.sin(2 * Math.PI * 2050 * latchTime) * Math.exp(-200 * latchTime) : 0;
+        const grip = .18 * Math.sin(2 * Math.PI * 155 * t) * Math.exp(-68 * t);
+        return click + latch + grip;
+      }
+      if (kind === 'bladeFlesh') {
+        const pitch = weapon === 'butterfly' ? 155 : 122;
+        const thud = .50 * Math.sin(2 * Math.PI * pitch * t) * Math.exp(-46 * t);
+        const edge = .52 * lp * Math.exp(-83 * t);
+        const headTick = head ? .17 * Math.sin(2 * Math.PI * 1220 * t) * Math.exp(-105 * t) : 0;
+        return thud + edge + headTick;
+      }
+      if (kind === 'bladeWall') {
+        const pitch = weapon === 'butterfly' ? 2360 : 1910;
+        const strike = .29 * (white - lp) * Math.exp(-145 * t);
+        const ring = (.35 * Math.sin(2 * Math.PI * pitch * t) + .16 * Math.sin(2 * Math.PI * pitch * 1.64 * t)) * Math.exp(-33 * t);
+        const knock = .22 * Math.sin(2 * Math.PI * 275 * t) * Math.exp(-65 * t);
+        return strike + ring + knock;
       }
       if (kind === 'shot') {
         if (weapon === 'awm') {
@@ -271,6 +301,8 @@ export function createDeckAudio() {
   }
 
   const prewarmQueue = [
+    ...Object.keys(bayonetSounds).map(kind=>()=>sampleFor(kind,'m9')),
+    () => sampleFor('m9Flesh','m9',true),
     () => getFoot(false, 0), () => getFoot(false, 1),
     () => getFoot(true, 0), () => getFoot(true, 1),
     () => { if (!samples.kill_b_1__) samples.kill_b_1__ = cfKillSound(false, 1, '', false); },
@@ -284,6 +316,10 @@ export function createDeckAudio() {
     () => sampleFor('equip', 'nepal'), () => sampleFor('equip', 'malay'), () => sampleFor('equip', 'knife'),
     () => sampleFor('light', 'nepal'), () => sampleFor('heavy', 'nepal'),
     ...Object.keys(bladeMotionSounds).map(kind => () => sampleFor(kind, kind.startsWith('karambit') ? 'karambit' : 'butterfly')),
+    ...['karambit', 'butterfly'].flatMap(weapon => [
+      ...Object.keys(bladeFeedbackDurations).map(kind => () => sampleFor(kind, weapon)),
+      () => sampleFor('bladeFlesh', weapon, true)
+    ]),
     () => sampleFor('sea'), () => sampleFor('hurt'), () => sampleFor('death')
   ];
 
@@ -415,8 +451,8 @@ export function createDeckAudio() {
     if (!enabled || !samples) return;
     if (level < .025) return;
     const spread = Math.max(-1, Math.min(1, pan));
-    const motion = bladeMotionSounds[kind];
-    const rate = motion ? .965 + Math.random() * .075 : 1;
+    const motion = bladeMotionSounds[kind] || bayonetLayers[kind];
+    const rate = motion || bladeFeedbackDurations[kind] || Object.hasOwn(bayonetSounds,kind) ? .965 + Math.random() * .075 : 1;
     if (motion) play(samples[motion.asset], level * motion.mix, spread, motion.offset, rate);
     play(sampleFor(kind, weapon, head), level, spread, 0, rate);
   }

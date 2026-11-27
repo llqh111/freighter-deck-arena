@@ -1,9 +1,10 @@
 import * as T from './three.module.js';
-import {createSquad} from './match.js?v=39';
+import {createSquad} from './match.js?v=44';
 
 export function createDuelClient({scene,camera,view,world,send,emit}){
   let actors=[],animate,target,sequence=0,pending=[];
   let lookX=0,lookY=0,viewTime=0,baseFov=78;
+  let swayX=0,swayY=0;
   const buttons=new Map(),state={};
   const rotation=new T.Quaternion(),angles=new T.Euler(0,0,0,'YXZ');
   const position=new T.Vector3(),tracers=[];
@@ -40,6 +41,8 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
     if(lookX||lookY){
       const x=T.MathUtils.clamp(lookX,-360,360),y=T.MathUtils.clamp(lookY,-360,360);
       lookX=lookY=0;
+      swayX=T.MathUtils.clamp(swayX+x*.00028,-.035,.035);
+      swayY=T.MathUtils.clamp(swayY+y*.00022,-.028,.028);
       const seq=++sequence;
       if(send({type:'look',seq,x,y}))pending.push({seq,x,y});
       if(pending.length>32)pending.shift();
@@ -85,9 +88,13 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
     viewTime+=dt;
     animate?.(viewTime,true);
     const player=state.player;
+    const bayonet=state.weapon==='m9';
     view.update(dt,{alive:state.alive,moving:player.walking,sprinting:state.sprinting,
       crouching:state.crouching,grounded:state.grounded,aiming:state.aiming,reloading:state.reloading,
+      swayX:bayonet?swayX:0,swayY:bayonet?swayY:0,vy:bayonet?state.verticalSpeed:0,
       strafe:Number(!!buttons.get('right'))-Number(!!buttons.get('left'))});
+    const decay=Math.exp(-dt*12);
+    swayX*=decay;swayY*=decay;
   }
   function visual(packet){
     if(packet.type==='view'&&renderedActions.has(packet.name)){
