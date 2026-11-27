@@ -9,6 +9,7 @@ import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseVa
 import {createDuelClient} from './duel-client.js?v=42';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
+import {loadBinds,resetBinds,assignBind,buildCodeMap,mouseCode,bindLabel,keybindRowsMarkup} from './keybinds.js?v=1';
 
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
@@ -241,18 +242,34 @@ function crosshairStudio(){
 function setup(){showDialog('setup','MATCH SETUP','对局配置',selectors(prefs,['map','mode','team','size','goal','knifeGoal','diff','botPrimary','tod','quality'])+'<div class="actions"><button id="setupDone" class="primary">完成</button></div>');bindPrefs();$('setupDone').onclick=closePanel;}
 function controlRows(){
   if(coarse)return '<p class="panelNote">左侧摇杆移动，右侧拖动转向。暂停菜单可换装或查看战绩。</p>';
-  const knife=prefs.mode==='knife';
-  const combat=knife?[['轻击 / 重击','鼠标左键 / 右键'],['快捷滚轮','上滚甩刀 · 下滚检视']]:[['射击 / 瞄准或重击','鼠标左键 / 右键'],['快捷滚轮','下滚主枪 · 上滚切刀'],['武器槽 / 快切 / 换弹','1–4 / Q / R']];
-  return [['移动 / 静步 / 冲刺','WASD / Shift / X'],['下蹲 / 跳跃','C / 空格'],['空中转向','A/D + 同向移动鼠标'],...combat,['检视 / 换装','Y / B'],['蝴蝶刀 / 爪刀连转','R 连按'],['战绩 / 暂停','Tab / Esc']].map(([a,b])=>'<div class="row"><span>'+a+'</span><kbd>'+b+'</kbd></div>').join('');
+  return keybindRowsMarkup(binds)+'<p class="panelNote">点击右侧按钮后按下键盘按键或鼠标侧键（侧键 4 / 侧键 5）即可改键，按 Esc 取消。数字键 1–4 切换武器槽，滚轮快速切枪。</p>';
 }
 function settings(){
+  stopRebind();
   let ranges='';for(const [id,name,min,max,step,value] of [['sens','视角灵敏度',.2,3,.05,sensitivity],['fov','视野',65,100,1,prefs.fov],['vol','音量',0,1,.05,prefs.vol]])ranges+='<div class="row"><label for="'+id+'">'+name+'</label><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+value+'"><output>'+value+'</output></div>';
-  showDialog('settings','CONTROLS','设置与操作',ranges+selectors(prefs,['wheel','tod','quality'])+'<div class="row"><span>自定义准星</span><button id="openXhFromSet" class="secondary">打开准星工坊</button></div>'+controlRows()+'<div class="row"><span>游戏声音</span><button id="audioToggle" class="secondary">'+(sound?'开启':'关闭')+'</button></div><p class="panelNote">爪刀模型 <a href="https://sketchfab.com/3d-models/low-poly-karambit-bicagi-9f48d6ee01584347ad54df3526170bd9" target="_blank" rel="noopener">OldTÜRK34</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> · 已适配握持与材质</p>');
+  showDialog('settings','CONTROLS','设置与操作',ranges+selectors(prefs,['wheel','tod','quality'])+'<div class="row"><span>自定义准星</span><button id="openXhFromSet" class="secondary">打开准星工坊</button></div>'+controlRows()+'<div class="row"><span>游戏声音</span><button id="audioToggle" class="secondary">'+(sound?'开启':'关闭')+'</button></div>'+(mode==='paused'?'<div class="actions"><button id="settingsResume" class="primary">返回对局</button></div>':'')+'<p class="panelNote">爪刀模型 <a href="https://sketchfab.com/3d-models/low-poly-karambit-bicagi-9f48d6ee01584347ad54df3526170bd9" target="_blank" rel="noopener">OldTÜRK34</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> · 已适配握持与材质</p>');
   for(const el of panel.querySelectorAll('input'))el.oninput=()=>{
     el.nextElementSibling.value=el.value;if(el.id==='sens'){sensitivity=+el.value;try{localStorage.setItem('df-sensitivity',sensitivity);}catch{}}
     else{prefs[el.id]=+el.value;applyPref(el.id);}
   };bindPrefs();
+  for(const btn of panel.querySelectorAll('.kbBtn'))btn.onclick=e=>{
+    e.stopPropagation();
+    const act=btn.dataset.bindAction;
+    if(rebindAction===act){stopRebind();return;}
+    stopRebind();
+    rebindAction=act;
+    btn.classList.add('listening');
+    btn.textContent='请按键 / 侧键…';
+  };
+  const resetBtn=$('resetBinds');
+  if(resetBtn)resetBtn.onclick=()=>{
+    stopRebind();binds=resetBinds();codeMap=buildCodeMap(binds);
+    for(const b of panel.querySelectorAll('.kbBtn'))b.textContent=bindLabel(binds[b.dataset.bindAction]);
+    notify('已恢复默认按键');
+  };
   $('openXhFromSet').onclick=crosshairStudio;
+  const setResume=$('settingsResume');
+  if(setResume)setResume.onclick=resume;
   if(location.protocol!=='file:'){
     const download=document.createElement('a');download.className='offline';download.href='./transport-ship.html';download.download='运输船-离线版.html';download.textContent='下载单文件离线版';$('panelContent').append(download);
   }
@@ -317,7 +334,7 @@ function lock(){
   }catch{fallback();}
 }
 function release(){if(document.pointerLockElement)document.exitPointerLock();}
-function closePanel(){if(panel.open)panel.close();dialogKind='';}
+function closePanel(){stopRebind();if(panel.open)panel.close();dialogKind='';}
 function resetFeedback(){clearAnnouncement();deckAudio.reset();$('feed').replaceChildren();$('notice').hidden=true;}
 function start(){
   resetFeedback();closePanel();setMode('playing');setSound();
@@ -604,18 +621,58 @@ function hudEvent(type,data){
     if(onlineMatch){$('again').textContent='返回好友房';$('again').onclick=duelRoom.lobby;}else $('again').onclick=start;$('home').onclick=toMenu;
   }
 }
-const keys={KeyW:'forward',KeyS:'back',KeyA:'left',KeyD:'right',Space:'jump',ShiftLeft:'walk',ShiftRight:'walk',KeyX:'sprint',KeyC:'crouch',ArrowLeft:'left',ArrowRight:'right',KeyR:'reload',ArrowUp:'forward',ArrowDown:'back'};
+let binds=loadBinds(),codeMap=buildCodeMap(binds),rebindAction=null;
+const fallbackCodes={ArrowUp:{action:'forward',kind:'hold'},ArrowDown:{action:'back',kind:'hold'},ArrowLeft:{action:'left',kind:'hold'},ArrowRight:{action:'right',kind:'hold'},ShiftRight:{action:'walk',kind:'hold'},KeyY:{action:'inspect',kind:'tap'}};
+function stopRebind(){
+  if(!rebindAction)return;
+  rebindAction=null;
+  for(const b of panel.querySelectorAll('.kbBtn')){
+    b.classList.remove('listening');
+    b.textContent=bindLabel(binds[b.dataset.bindAction]);
+  }
+}
+function commitRebind(code){
+  const act=rebindAction;
+  assignBind(binds,act,code);
+  codeMap=buildCodeMap(binds);
+  stopRebind();
+  notify('已更新按键：'+bindLabel(code));
+}
+function dispatchBind(code,down,repeat=false){
+  const def=codeMap[code]||fallbackCodes[code];
+  if(!def)return false;
+  if(def.kind==='roster'){
+    $('roster').hidden=!down;
+    if(down)$('roster').innerHTML=board(match.state);
+    return true;
+  }
+  if(def.kind==='hold'){
+    match.input(def.action,down);
+    return true;
+  }
+  if(def.kind==='tap'&&down&&!repeat){
+    if(def.action==='last')match.input('last',true);
+    else if(def.action==='inspect'&&match.state.alive)view.inspect();
+    else if(def.action==='loadout')armory(true);
+  }
+  return true;
+}
 for(const kind of ['keydown','keyup'])addEventListener(kind,e=>{
   const down=kind==='keydown';
-  if(e.code==='KeyB'&&down&&!e.repeat&&dialogKind==='loadout'){e.preventDefault();resume();return;}
+  if(rebindAction){
+    e.preventDefault();e.stopPropagation();
+    if(down&&!e.repeat){
+      if(e.code==='Escape')stopRebind();
+      else commitRebind(e.code);
+    }
+    return;
+  }
+  if(e.code===binds.loadout&&down&&!e.repeat&&dialogKind==='loadout'){e.preventDefault();resume();return;}
   if(e.key==='Escape'&&down&&mode==='playing'){e.preventDefault();pauseUI();return;}
   if(down&&e.key==='?'&&mode==='menu'&&!panel.open)settings();
   if(mode!=='playing'||!match)return;
-  if(e.code==='Tab'){e.preventDefault();$('roster').hidden=!down;if(down){$('roster').innerHTML=board(match.state);}return;}
   if(down&&!e.repeat){
-    if(/^Digit[1-4]$/.test(e.code))match.input('slot',Number(e.code.at(-1))-1);
-    if(e.code==='KeyQ')match.input('last',true);
-    if((e.code==='KeyY'||e.code==='KeyF')&&match.state.alive)view.inspect();
+    if(/^Digit[1-4]$/.test(e.code)&&!codeMap[e.code])match.input('slot',Number(e.code.at(-1))-1);
     // Keep debug toggles away from the gameplay inspect and fidget keys.
     if(e.code==='F8'&&view?.isKarambitActive?.()){
       e.preventDefault();
@@ -636,9 +693,8 @@ for(const kind of ['keydown','keyup'])addEventListener(kind,e=>{
     if(e.code==='KeyP'&&view?.isKarambitActive?.()&&view.karambitConfig.showGizmos){
       e.preventDefault();view.karambitConfig.paused=!view.karambitConfig.paused;
     }
-    if(e.code==='KeyB'){e.preventDefault();armory(true);return;}
   }
-  if(keys[e.code]){e.preventDefault();match.input(keys[e.code],down);}
+  if(dispatchBind(e.code,down,e.repeat))e.preventDefault();
 });
 $('slotRack').addEventListener('pointerdown',e=>{const btn=e.target.closest('[data-slot]');if(btn&&mode==='playing')match.input('slot',+btn.dataset.slot);});
 let lastWheelAt=0;
@@ -658,19 +714,37 @@ canvas.addEventListener('wheel',e=>{
   else match.input('cycle',dir);
 },{passive:false});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
-// Mouse events report each button transition, including a second press during ADS.
-function syncMouse(buttons){
-  draggingMouse=!!(buttons&3);
-  match.input('fire',!!(buttons&1));
-  match.input('aim',!!(buttons&2));
-}
-canvas.addEventListener('mousedown',e=>{
-  if(mode!=='playing'||e.sourceCapabilities?.firesTouchEvents||!(e.button===0||e.button===2))return;
-  if(!document.pointerLockElement&&!lockPending)lock();
-  syncMouse(e.buttons);
+// Mouse events report each button transition, including side buttons (Mouse3/Mouse4).
+window.addEventListener('auxclick',e=>{
+  if(rebindAction||mode==='playing')e.preventDefault();
 });
+window.addEventListener('mousedown',e=>{
+  if(rebindAction){
+    if(e.target.closest?.('.kbBtn')&&e.button===0)return;
+    e.preventDefault();e.stopPropagation();
+    commitRebind(mouseCode(e.button));
+    return;
+  }
+  if(mode!=='playing'||e.sourceCapabilities?.firesTouchEvents)return;
+  if(e.target!==canvas&&document.pointerLockElement!==canvas)return;
+  if(e.button>=1)e.preventDefault();
+  if(!coarse&&canvas.requestPointerLock&&document.pointerLockElement!==canvas){
+    if((e.button===0||e.button===2)&&!lockPending)lock();
+    e.preventDefault();
+    return;
+  }
+  draggingMouse=!!(e.buttons&3);
+  dispatchBind(mouseCode(e.button),true,false);
+},true);
 window.addEventListener('mouseup',e=>{
-  if(mode==='playing'&&draggingMouse&&!e.sourceCapabilities?.firesTouchEvents)syncMouse(e.buttons);
+  if(rebindAction){
+    if(e.button>=1)e.preventDefault();
+    return;
+  }
+  if(mode!=='playing'||e.sourceCapabilities?.firesTouchEvents)return;
+  if(e.button>=1)e.preventDefault();
+  draggingMouse=!!(e.buttons&3);
+  dispatchBind(mouseCode(e.button),false,false);
 });
 let lockGraceUntil=0,skipMoves=0,recentMoveMag=0,lastMoveTs=0;
 document.addEventListener('mousemove',e=>{
