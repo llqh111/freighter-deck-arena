@@ -238,6 +238,7 @@ export function buildKarambit(weapon,parts){
   // --- INDEPENDENT TACTICAL LEFT GUARD ARM (matches Butterfly Knife craft; tucked in idle, rises during inspect/combat!) ---
   const leftRig=new T.Group();
   leftRig.name='KarambitLeftGuard';
+  leftRig.visible=false;
   leftRig.position.set(-.34,-.30,-.04);
   leftRig.rotation.set(.16,-.24,.22);
   weapon.root.add(leftRig);

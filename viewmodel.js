@@ -392,14 +392,17 @@ export function createViewModel(playMotionSound = () => {}) {
       tOpen>=0?-tOpen*.34:0
     );
     if(tOpen<0)model.thumb.rotation.x=tOpen*.65;
-    const brace=motion.support;
-    entry.guard=ease(entry.guard,motion.activeGuard,dt,10);
-    left.scale.setScalar(handScale);
-    // Tuck left tactical guard hand cleanly below HP HUD in Idle; raise smoothly to balance draw/inspect/fidget/heavy!
-    left.position.set(-Math.min(.272,aspect*.178)+entry.guard*.038+Math.sin(phase+.7)*stride*.7-brace*.54,
-      -.328+entry.guard*.102-Math.cos(phase*2)*stride*.55+landing*.64-brace*.45-entry.crouch,
-      (classic?-.586:-.610)+brace*.30-depth-zoom);
-    left.rotation.set(.12+brace*2.8,-.47-brace*2.5,.27+tilt*.47,'YXZ');
+    left.visible=!!classic;
+    if(left.visible){
+      const brace=motion.support;
+      entry.guard=ease(entry.guard,motion.activeGuard,dt,10);
+      left.scale.setScalar(handScale);
+      // Tuck left tactical guard hand cleanly below HP HUD in Idle; raise smoothly to balance draw/inspect/fidget/heavy!
+      left.position.set(-Math.min(.272,aspect*.178)+entry.guard*.038+Math.sin(phase+.7)*stride*.7-brace*.54,
+        -.328+entry.guard*.102-Math.cos(phase*2)*stride*.55+landing*.64-brace*.45-entry.crouch,
+        (classic?-.586:-.610)+brace*.30-depth-zoom);
+      left.rotation.set(.12+brace*2.8,-.47-brace*2.5,.27+tilt*.47,'YXZ');
+    }
     if(current===entry){
       const kickTarget=motion.camKick * scale;
       camKickPitch=ease(camKickPitch,kickTarget*.0062,dt,28);
@@ -601,16 +604,7 @@ export function createViewModel(playMotionSound = () => {}) {
         my-=karambitFraming*.006;
         mz-=karambitFraming*(.018+Math.max(0,1.24-aspect)*.38);
         const part=current.karambit;
-        // Independent tactical left guard hand (tucked off-screen in idle, rises smoothly during inspect & combat!)
-        if(part.leftRig){
-          const lp=T.MathUtils.clamp((karambitMotion.leftPose||0)+sprintBlend*.16,0,1);
-          part.leftRig.position.set(
-            -.325+lp*.078-Math.sin(phase)*.004*walk,
-            -.315+lp*.148+airOffset*.4+landDip*.5,
-            -.045-lp*.042
-          );
-          part.leftRig.rotation.set(.16+lp*.24,-.24+lp*.20,.22-lp*.18);
-        }
+        if(part.leftRig)part.leftRig.visible=false;
         // The hand and ring rotate together around the wrist while the cuff stays on the arm.
         part.mount.quaternion.copy(karambitMountBaseQ).multiply(karambitMotion.wristQuat);
         part.mount.position.copy(part.wristJoint).applyQuaternion(part.mount.quaternion).negate().add(karambitWristAnchor);
