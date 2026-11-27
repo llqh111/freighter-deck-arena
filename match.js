@@ -923,38 +923,43 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       if(settling){
         if(b.scopeTarget!==foe){b.scopeTarget=foe;b.scopeSince=clock;}
       }else b.scopeTarget=null;
-      const scopeWait=def.scopeSettle?(def.scopeSettle+.16+skill.response*.95+(foeAirborne?.14:0)):0;
+      const scopeWait=def.scopeSettle?(def.scopeSettle+skill.response*.65+(foeAirborne?.08:0)):0;
       const scopeReady=!settling||clock-b.scopeSince+1e-8>=scopeWait;
       const pref=botWeaponRange(w.id);
       b.crouch=reloading||(sniper&&range>13)||(range>16&&b.burst.count>=2&&skill.strafe<.65);
+      let moveSpd=0;
       // If retreating to cover while low HP or reloading, follow cover path while still facing threat.
       if((b.hp<38||reloading)&&b.path.length&&clock<b.coverUntil){
         const q=b.path[0],dx=q.x-b.x,dz=q.z-b.z,dist=Math.hypot(dx,dz);
         if(dist<.18)b.path.shift();
-        else{const spd=dt*(b.tag>0?.55:1)*3.1;move(b,dx/dist*Math.min(spd,dist),dz/dist*Math.min(spd,dist));b.walking=true;}
+        else{const spd=dt*(b.tag>0?.55:1)*3.1;move(b,dx/dist*Math.min(spd,dist),dz/dist*Math.min(spd,dist));b.walking=true;moveSpd=spd/Math.max(1e-4,dt);}
       }else{
-        // Natural non-sinusoidal strafing + weapon-aware range control.
+        // Counter-strafe to steady aim right before an AWM shot, otherwise strafe naturally.
+        const steadySniper=sniper&&!reloading&&aligned&&b.shot<=.18&&w.ammo>0&&skill.strafe>=.5;
         if(clock>=b.strafeAt){b.strafeDir*=-1;b.strafeAt=clock+.55+Math.random()*.95;}
-        const strafeSpd=skill.strafe*1.75*(b.crouch?.45:1)*(b.tag>0?.55:1);
+        const strafeSpd=steadySniper?0:skill.strafe*1.75*(b.crouch?.45:1)*(b.tag>0?.55:1);
         let mx=Math.cos(b.yaw)*b.strafeDir*strafeSpd,mz=-Math.sin(b.yaw)*b.strafeDir*strafeSpd;
         const fwdX=-Math.sin(b.yaw),fwdZ=-Math.cos(b.yaw);
-        if(range<pref.min){mx-=fwdX*1.6;mz-=fwdZ*1.6;}
-        else if(range>pref.max&&!sniper){mx+=fwdX*1.85;mz+=fwdZ*1.85;}
+        if(!steadySniper){
+          if(range<pref.min){mx-=fwdX*1.6;mz-=fwdZ*1.6;}
+          else if(range>pref.max&&!sniper){mx+=fwdX*1.85;mz+=fwdZ*1.85;}
+        }
         if(friendlyInLine(b,foe.x,foe.z,range)){mx+=Math.cos(b.yaw)*b.strafeDir*2.2;mz+=-Math.sin(b.yaw)*b.strafeDir*2.2;}
         const oldX=b.x,oldZ=b.z;
         move(b,mx*dt,mz*dt);
         const moved=Math.hypot(b.x-oldX,b.z-oldZ);
+        moveSpd=dt>1e-5?moved/dt:0;
         b.walking=moved>dt*.25;
         if(moved<dt*.15&&strafeSpd>.2){b.strafeDir*=-1;b.strafeAt=clock+.5;}
       }
       if(!reloading&&aligned&&scopeReady&&b.shot<=0&&foe.shield<=0&&!friendlyInLine(b,foe.x,foe.z,range)){
         if(w.ammo>0){
-          const airPenalty=foeAirborne?(sniper?.54:.24):0;
-          const movePenalty=foeSpeed*(sniper?.068:.026);
-          const airLagY=foeAirborne&&foe===p?-jumpVel*.09:0;
-          const miss=skill.miss*(b.crouch?.78:1)+(sniper?.15:0)+range*.0055+airPenalty+movePenalty;
+          const airPenalty=foeAirborne?(sniper?.32:.20):0;
+          const movePenalty=foeSpeed*(sniper?.022:.018);
+          const airLagY=foeAirborne&&foe===p?-jumpVel*.06:0;
+          const miss=skill.miss*(b.crouch?.78:1)+range*.0055+airPenalty+movePenalty;
           dir.set(foe.x-b.x+(Math.random()-.5)*miss*2,foe.y+airLagY+(Math.random()<skill.head?1.63:1.18)-b.y-eyeHeight(b)+(Math.random()-.5)*miss*1.75,foe.z-b.z+(Math.random()-.5)*miss*2).normalize();
-          const botMoveSpeed=b.walking?(sniper?Math.max(2.2,skill.strafe*2.4):skill.strafe*1.6):0;
+          const botMoveSpeed=b.walking?Math.min(moveSpd,skill.strafe*1.6):0;
           const spread=firingCone(def,b.burst,{speed:botMoveSpeed,grounded:!b.fall,crouch:b.crouch,scoped:!!def.scopeSettle,ads:w.id!=='mp5'});
           const offset=spreadOffset(spread);
           rot.set(Math.asin(clamp(dir.y,-1,1))+b.burst.pitch+offset.y,Math.atan2(-dir.x,-dir.z)+b.burst.yaw+offset.x,0,'YXZ');
