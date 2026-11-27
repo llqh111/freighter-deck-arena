@@ -477,15 +477,15 @@ export function buildPyramidWorld(scene) {
   const bounds = {minX: -14.4, maxX: 14.4, minZ: -25.6, maxZ: 25.6};
   const ai = {
     lanes: [-8.2, 0, 8.2],
-    spawnZoneZ: [19.8, -19.8],
+    spawnZoneZ: [18.5, -18.5],
     snipers: [
       [
-        {x: 0, z: 18.8, yaw: 0},          // 中门正中对狙位（①号点）
+        {x: 0, z: 14.2, yaw: 0},          // 中门前庭对狙位（不堵石室门洞）
         {x: -7.8, z: 12.2, yaw: 0.14},    // 左翼高台架枪位
         {x: 7.8, z: 12.2, yaw: -0.14},    // 右翼高台架枪位
       ],
       [
-        {x: 0, z: -18.8, yaw: Math.PI},
+        {x: 0, z: -14.2, yaw: Math.PI},
         {x: 7.8, z: -12.2, yaw: Math.PI + 0.14},
         {x: -7.8, z: -12.2, yaw: Math.PI - 0.14},
       ],
