@@ -39,7 +39,7 @@ export const KARAMBIT_KEYFRAMES = [
   {
     time: 0.14, refTime: 1.94, phase: '展掌左上翻起',
     armPos: [.008, .052, -.020], armRot: [.11, .16, -.10], wristRot: [.14, .18, -.12],
-    fingers: [0, .92, .90, .88, .86], pivotPos: [0, 0, 0], leftPose: 0.44, kick: 0.18,
+    fingers: [0, .92, .90, .88, .86], pivotPos: [0, 0, 0], leftPose: 0.44, kick: 0.08,
     unwrappedSpinAngle: -195, spinAxis: [.02, -.03, 1],
     inTangent: -1380, outTangent: -1380, cue: 'karambitSpin', volume: 0.72
   },
@@ -139,7 +139,7 @@ export const KARAMBIT_KEYFRAMES = [
     // Exact pose, tangent (-1380 deg/s), fingers & leftPose match to t=0.14s (-195 deg) with exact -3 full turns (-1080 deg)!
     time: 2.44, refTime: 4.24, phase: '无缝衔接循环',
     armPos: [.008, .052, -.020], armRot: [.11, .16, -.10], wristRot: [.14, .18, -.12],
-    fingers: [0, .92, .90, .88, .86], pivotPos: [0, 0, 0], leftPose: 0.44, kick: 0.00,
+    fingers: [0, .92, .90, .88, .86], pivotPos: [0, 0, 0], leftPose: 0.44, kick: 0.08,
     unwrappedSpinAngle: -1275, spinAxis: [.02, -.03, 1],
     inTangent: -1380, outTangent: -1380
   }

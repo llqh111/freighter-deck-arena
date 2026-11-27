@@ -332,6 +332,7 @@ export function buildWorld(scene) {
     vec2 p=n.xz/(h+.12)*1.95;float f=noise2(p)*.53+noise2(p*2.1)*.26+noise2(p*4.4)*.14+noise2(p*9.)*.07;
     col=mix(col,vec3(.92,.86,.75),smoothstep(.49,.78,f)*smoothstep(.015,.21,h)*.69);col+=vec3(.77,.66,.39)*smoothstep(.9985,.99965,d);
     col=mix(col,col*vec3(.78,.45,.42)+vec3(.12,.04,.09),dusk);gl_FragColor=vec4(col,1.);
+    #include <tonemapping_fragment>
     #include <colorspace_fragment>
     }`}));
   scene.add(skydome);
@@ -349,6 +350,7 @@ export function buildWorld(scene) {
       vec3 sunset=c*mix(vec3(1.10,.47,.26),vec3(.44,.37,.64),smoothstep(.02,.76,n.y));
       float glow=pow(max(dot(n,normalize(vec3(-.68,.115,-.72))),0.),18.);
       sunset+=vec3(.50,.16,.034)*glow;gl_FragColor=vec4(mix(c,sunset,dusk),1.);
+      #include <tonemapping_fragment>
       #include <colorspace_fragment>
       }`});
     original.dispose();
@@ -442,6 +444,7 @@ export function buildWorld(scene) {
     vec3 col=mix(vec3(.064,.19,.20),vec3(.24,.37,.35),.45+.28*w);
     col+=spec*vec3(1.15,.71,.35);col=mix(col,vec3(.62,.70,.68),smoothstep(30.,235.,d)*.82);col=mix(col,col*vec3(.82,.56,.61),dusk);
     gl_FragColor=vec4(col,1.);
+    #include <tonemapping_fragment>
     #include <colorspace_fragment>
     }`}));
   water.position.y=-3.62;water.rotation.x=-Math.PI/2;scene.add(water);

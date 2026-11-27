@@ -1,12 +1,12 @@
 import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=30';
 import * as T from './three.module.js';
-import {buildWorld} from './world.js?v=24';
-import {createMatch} from './match.js?v=46';
-import {createViewModel} from './viewmodel.js?v=51';
-import {isMelee,melees} from './arsenal.js?v=29';
+import {buildWorld} from './world.js?v=25';
+import {createMatch} from './match.js?v=47';
+import {createViewModel} from './viewmodel.js?v=52';
+import {isMelee,melees} from './arsenal.js?v=30';
 import {createDeckAudio} from './deck-audio.js?v=33';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
-import {createDuelClient} from './duel-client.js?v=41';
+import {createDuelClient} from './duel-client.js?v=42';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
 
@@ -824,6 +824,7 @@ function updateKarambitDebugBadge(){
 async function init(){
   try{
     renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});renderer.autoClear=false;
+    renderer.toneMapping=T.AgXToneMapping;renderer.toneMappingExposure=1.06;
     renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
     world=buildWorld(scene);view=createViewModel(deckAudio.sfx);view.initEnv?.(renderer);
     const dbgParam=new URLSearchParams(location.search).get('debug');

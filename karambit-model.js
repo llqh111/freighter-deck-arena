@@ -39,9 +39,9 @@ async function loadKnife(){
     map.colorSpace=T.SRGBColorSpace;
     map.anisotropy=4;
     const material=new T.MeshStandardMaterial({
-      map,roughness:.28,metalness:.40,side:T.DoubleSide
+      map,roughness:.24,metalness:.56,side:T.DoubleSide
     });
-    material.envMapIntensity=1.24;
+    material.envMapIntensity=1.38;
     const mesh=new T.Mesh(geometry,material);
     mesh.name='OldTÜRK34 Karambit';
     return mesh;

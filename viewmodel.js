@@ -1,9 +1,9 @@
-import {buildArmory} from './armory-models.js?v=37';
-import {isMelee} from './arsenal.js?v=29';
-import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=19';
+import {buildArmory} from './armory-models.js?v=38';
+import {isMelee} from './arsenal.js?v=30';
+import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=20';
 import {createButterflyMotion} from './butterfly-motion.js?v=24';
-import {buildBayonet} from './bayonet-model.js?v=6';
-import {createBayonetMotion} from './bayonet-motion.js?v=6';
+import {buildBayonet} from './bayonet-model.js?v=7';
+import {createBayonetMotion} from './bayonet-motion.js?v=7';
 import {buildClassicBlades} from './classic-blades.js?v=2';
 import {classicMotionProfiles} from './classic-blade-motion.js?v=2';
 import * as T from './three.module.js';
@@ -113,7 +113,7 @@ export function createViewModel(playMotionSound = () => {}) {
   const steelGrain = brushedSurface(), twill = brushedSurface(true);
   const paint = (color, roughness, metalness, map) => {
     const m = new T.MeshStandardMaterial({color, roughness, metalness, map: map || null});
-    m.envMapIntensity = 0.28;
+    m.envMapIntensity = 0.44;
     return m;
   };
   const alloy = paint(0x465057, .43, .42, steelGrain), graphite = paint(0x2e3438, .49, .38, steelGrain);
@@ -260,8 +260,17 @@ export function createViewModel(playMotionSound = () => {}) {
     arsenal[weapon]=entry;
     return entry;
   });
+  // Per-weapon underdamped 3-DOF spring recoil profiles (Z kick, pitch climb, roll torque, stiffness k, damping c).
+  const GUN_SPRING={
+    ak47:  {z:.92,p:1.42,r:.68,kZ:245,cZ:19,kP:210,cP:17.5,kR:195,cR:16,cam:.58},
+    m4a1:  {z:.74,p:1.04,r:.46,kZ:285,cZ:22,kP:250,cP:20.5,kR:230,cR:19,cam:.42},
+    awm:   {z:1.58,p:2.35,r:.92,kZ:160,cZ:15.5,kP:140,cP:14.5,kR:145,cR:14,cam:1.15},
+    mp5:   {z:.50,p:.72,r:.38,kZ:340,cZ:25,kP:300,cP:23,kR:260,cR:21,cam:.28},
+    deagle:{z:1.12,p:2.65,r:.82,kZ:215,cZ:17,kP:175,cP:15.5,kR:185,cR:15.5,cam:.85}
+  };
   let id='m4a1', current=arsenal[id];current.root.visible=true;
-  let phase=0,recoil=0,spark=0,aim=0,walk=0,sprintBlend=0,loading=-1,reloadSignal=false;
+  let phase=0,recoil=0,spark=0,aim=0,walk=0,sprintBlend=0,gunCrouch=0,loading=-1,reloadSignal=false,reloadSeatFired=false;
+  let kickZ=0,kickVZ=0,kickP=0,kickVP=0,kickR=0,kickVR=0;
   let swayX=0,swayY=0,tilt=0,karambitFraming=0;
   let wasGrounded=true,airOffset=0,landDip=0,landVel=0,camKickPitch=0,camKickRoll=0;
   let lastAirSpeed=0;
@@ -289,7 +298,8 @@ export function createViewModel(playMotionSound = () => {}) {
     if(current.motion&&next!==id){current.model.resetTrail();current.motion.holster();}
     else current.root.visible=false;
     id=next;current=arsenal[id];current.root.visible=true;
-    current.root.position.set(0,0,0);draw=1;gesture=inspectT=1;loading=-1;reloadSignal=false;aim=0;recoil=spark=0;
+    current.root.position.set(0,0,0);draw=1;gesture=inspectT=1;loading=-1;reloadSignal=false;reloadSeatFired=false;aim=0;recoil=spark=0;
+    kickZ=kickVZ=kickP=kickVP=kickR=kickVR=0;
     camKickPitch=camKickRoll=0;camera.rotation.set(0,0,0);
     butterflyMotion.reset();karambitMotion.reset();karambitFraming=0;
     if(id==='karambit'){draw=0;karambitMotion.draw();}
@@ -316,7 +326,7 @@ export function createViewModel(playMotionSound = () => {}) {
   function reload(duration) {
     if(id==='he'||isMelee(id)||loading>=0)return;
     loadDuration=Number.isFinite(duration)?Math.max(.30,duration):({awm:3.0,deagle:1.8,mp5:2.0,ak47:2.35,m4a1:2.15})[id];
-    loading=0;inspectT=1;
+    loading=0;reloadSeatFired=false;inspectT=1;
   }
   function shoot(action='primary',frameTime=0){
     if(current.motion){current.motion.attack(action,frameTime);return;}
@@ -328,7 +338,15 @@ export function createViewModel(playMotionSound = () => {}) {
     inspectT=1;gesture=0;
     if(id==='he'){gestureDuration=.65;return;}
     gestureDuration=id==='awm'?.95:.15;
-    recoil=Math.min(1.85,recoil+current.kick);spark=.045;flash.visible=true;
+    recoil=Math.min(1.85,recoil+current.kick);
+    const sp=GUN_SPRING[id]||GUN_SPRING.m4a1;
+    const adsDamp=1-.52*aim;
+    kickVZ=Math.min(2.6,kickVZ+sp.z*(.85+.30*adsDamp));
+    kickVP=Math.min(4.2,kickVP+sp.p*adsDamp);
+    kickVR+=(Math.random()<.5?-1:1)*sp.r*(.65+Math.random()*.55)*adsDamp;
+    camKickPitch+=sp.cam*.0055*adsDamp;
+    camKickRoll+=(Math.random()-.5)*sp.cam*.0075*adsDamp;
+    spark=.045;flash.visible=true;
     flash.rotation.z=Math.random()*Math.PI;flash.scale.setScalar(id==='mp5'?.70:id==='awm'?1.4:1);
   }
   function updateFixedBlade(entry,dt,values){
@@ -345,21 +363,23 @@ export function createViewModel(playMotionSound = () => {}) {
     const zoom=Math.max(-.024,Math.min(.043,(78-bayonetFov)*.0011));
     const stride=walk*(.006+sprintBlend*.004);
     const scale=classic?.86:1;
+    const handScale=classic?1:.76;
     const offset=motion.position;
     const sec=motion.secondary;
     entry.crouch=ease(entry.crouch,values.crouching?.021:0,dt,12);
     const landing=Math.max(-.027,Math.min(.027,airOffset+landDip));
+    right.scale.setScalar(handScale);
     right.position.set(
-      (classic?Math.min(.226,aspect*.146):Math.min(.164,aspect*.118))+Math.max(0,1-aspect)*.115+portrait*.045+offset.x+Math.sin(phase)*stride-swayX*.57,
-      (classic?-.221:-.142)+offset.y+Math.cos(phase*2)*(.0018+stride*.55)+swayY*.55+landing-entry.crouch,
-      (classic?-.629:-.525)+offset.z-depth-zoom+motion.impact*.013+sec.reboundZ);
+      (classic?Math.min(.226,aspect*.146):Math.min(.188,aspect*.132))+Math.max(0,1-aspect)*.115+portrait*.045+offset.x*handScale+Math.sin(phase)*stride-swayX*.57,
+      (classic?-.221:-.172)+offset.y*handScale+Math.cos(phase*2)*(.0018+stride*.55)+swayY*.55+landing-entry.crouch,
+      (classic?-.629:-.618)+offset.z*handScale-depth-zoom+(motion.impact*.013+sec.reboundZ)*handScale);
     bayonetEuler.set(swayY*1.25-landing*.7,swayX*-.72,-tilt*.65+motion.impact*.033+sec.reboundRoll,'YXZ');
     right.quaternion.copy(bayonetAdditive.setFromEuler(bayonetEuler)).multiply(motion.rotation);
     spinPivot.position.set(0,motion.knifeLift,.045);
     spinPivot.quaternion.copy(motion.spin);
-    sleeve.position.set(classic?Math.min(.38,aspect*.27):Math.min(.32,aspect*.23),classic?-.397:-.360,(classic?-.245:-.215)-narrow*.09-zoom);
-    sleeveDirection.copy(wristSocket).applyQuaternion(right.quaternion).add(right.position).sub(sleeve.position);
-    sleeve.scale.y=sleeveDirection.length();
+    sleeve.position.set(classic?Math.min(.38,aspect*.27):Math.min(.34,aspect*.24),classic?-.397:-.368,(classic?-.245:-.235)-narrow*.09-zoom);
+    sleeveDirection.copy(wristSocket).multiplyScalar(handScale).applyQuaternion(right.quaternion).add(right.position).sub(sleeve.position);
+    sleeve.scale.set(handScale,sleeveDirection.length(),handScale);
     sleeve.quaternion.setFromUnitVectors(wristUp,sleeveDirection.normalize());
     const fOpen=motion.fingerOpen;
     for(let i=0;i<model.fingers.length;i++){
@@ -374,10 +394,11 @@ export function createViewModel(playMotionSound = () => {}) {
     if(tOpen<0)model.thumb.rotation.x=tOpen*.65;
     const brace=motion.support;
     entry.guard=ease(entry.guard,motion.activeGuard,dt,10);
+    left.scale.setScalar(handScale);
     // Tuck left tactical guard hand cleanly below HP HUD in Idle; raise smoothly to balance draw/inspect/fidget/heavy!
     left.position.set(-Math.min(.272,aspect*.178)+entry.guard*.038+Math.sin(phase+.7)*stride*.7-brace*.54,
       -.328+entry.guard*.102-Math.cos(phase*2)*stride*.55+landing*.64-brace*.45-entry.crouch,
-      -.586+brace*.30-depth-zoom);
+      (classic?-.586:-.610)+brace*.30-depth-zoom);
     left.rotation.set(.12+brace*2.8,-.47-brace*2.5,.27+tilt*.47,'YXZ');
     if(current===entry){
       const kickTarget=motion.camKick * scale;
@@ -391,17 +412,48 @@ export function createViewModel(playMotionSound = () => {}) {
     dt=Math.max(0,Math.min(dt,.1));
     const melee=isMelee(id);
     if(values.reloading&&!reloadSignal)reload();reloadSignal=!!values.reloading;
-    if(loading>=0){loading+=dt/loadDuration;if(loading>=1)loading=-1;}
-    const t=Math.max(0,loading), lower=Math.sin(Math.PI*t);
-    const drop=Math.sin(Math.PI*T.MathUtils.clamp((t-.12)/.68,0,1));
-    current.mag.position.set(-drop*(id==='deagle'?.013:.06),-drop*(id==='mp5'?.20:.17),drop*.05);
-    current.mag.rotation.x=id==='ak47'?drop*.42:0;
-    if(!current.isArticulatedButterfly){
-      current.hand.position.set(drop*.035,-drop*.054,drop*(id==='deagle'?.045:.12));
-      current.hand.rotation.x=drop*.19;
+    if(loading>=0){loading+=dt/loadDuration;if(loading>=1){loading=-1;reloadSeatFired=false;}}
+    const smooth=(a,b,x)=>{const u=T.MathUtils.clamp((x-a)/(b-a),0,1);return u*u*(3-2*u);};
+    const pulse=(a,b,x)=>Math.sin(Math.PI*T.MathUtils.clamp((x-a)/(b-a),0,1));
+    // 4-stage procedural firearm reload: 1. cant & eject (0..0.24) -> 2. fetch mag (0.24..0.56) ->
+    // 3. seat & slap impulse (0.56..0.78) -> 4. rack bolt/slide & settle (0.78..1.0).
+    let reloadPose=0,reloadRoll=0,reloadPitch=0,reloadYaw=0,reloadDropY=0,reloadBolt=0;
+    if(loading>=0&&!melee&&id!=='he'){
+      const t=loading;
+      const eject=smooth(.06,.24,t);
+      const insert=1-smooth(.54,.73,t);
+      const magOut=Math.min(eject,insert);
+      const seatSlap=pulse(.69,.79,t);
+      reloadBolt=pulse(.79,.93,t);
+      if(t>=.71&&!reloadSeatFired){
+        reloadSeatFired=true;
+        kickVP+=.48;kickVZ-=.14;kickVR+=.22;
+        camKickPitch+=.0022;camKickRoll-=.0025;
+      }
+      reloadPose=smooth(0,.12,t)*(1-smooth(.86,1,t));
+      reloadRoll=reloadPose*(id==='deagle'?.38:.58)+seatSlap*.10-reloadBolt*.14;
+      reloadPitch=reloadPose*.12+seatSlap*.08-reloadBolt*.06;
+      reloadYaw=-reloadPose*.22+reloadBolt*.09;
+      reloadDropY=-reloadPose*.042+seatSlap*.014;
+      const magArc=Math.sin(Math.PI*T.MathUtils.clamp((t-.06)/.68,0,1));
+      current.mag.position.set(
+        -magOut*(id==='deagle'?.016:.055),
+        -magOut*(id==='mp5'?.22:.19)-magArc*.02,
+        magOut*(id==='ak47'?.06:.04)
+      );
+      current.mag.rotation.x=id==='ak47'?magOut*.48:magOut*.12;
+      if(!current.isArticulatedButterfly){
+        const rackReach=reloadBolt*(id==='deagle'?.05:.09);
+        current.hand.position.set(
+          magOut*.032-rackReach*.35,
+          -magOut*.078+rackReach*.55,
+          magOut*(id==='deagle'?.045:.12)+rackReach*.45
+        );
+        current.hand.rotation.x=magOut*.24-rackReach*.5;
+      }
     }else{
-      current.hand.position.set(0,0,0);
-      current.hand.rotation.set(0,0,0);
+      current.mag.position.set(0,0,0);current.mag.rotation.set(0,0,0);
+      if(!current.isArticulatedButterfly){current.hand.position.set(0,0,0);current.hand.rotation.set(0,0,0);}
     }
     draw=Math.max(0,draw-dt*(id==='awm'?2.8:melee?5.2:3.6));
     inspectT=Math.min(1,inspectT+dt*(melee?.78:.68));
@@ -409,9 +461,10 @@ export function createViewModel(playMotionSound = () => {}) {
     if(values.aiming||values.reloading)inspectT=1;
     const inspection=Math.sin(Math.PI*inspectT)**2, movement=Math.sin(Math.PI*gesture)**2;
     const item=melee||id==='he';
-    aim=ease(aim,values.aiming&&!item&&loading<0?1:0,dt,15);
+    aim=ease(aim,values.aiming&&!item&&loading<0?1:0,dt,16);
     walk=ease(walk,values.moving?1:0,dt,10);
-    sprintBlend=ease(sprintBlend,values.sprinting?1:0,dt,9);
+    sprintBlend=ease(sprintBlend,values.sprinting&&!values.aiming&&loading<0?1:0,dt,9);
+    gunCrouch=ease(gunCrouch,values.crouching&&!item?1:0,dt,12);
 
     // Jump float & landing cushion physics
     const groundedNow=values.grounded!==false;
@@ -424,14 +477,23 @@ export function createViewModel(playMotionSound = () => {}) {
     }
     wasGrounded=groundedNow;
     airOffset=ease(airOffset,groundedNow?0:T.MathUtils.clamp(-vy*.0024,-.015,.018),dt,12);
-    // Substep the landing spring so a slow frame cannot destabilize it.
-    const steps=current.motion?Math.max(1,Math.ceil(dt/.016)):1;
+    // Substep springs so slow frames never destabilize landing cushion or firearm recoil.
+    const steps=Math.max(1,Math.ceil(dt/.016));
+    const sp=GUN_SPRING[id]||GUN_SPRING.m4a1;
     for(let i=0;i<steps;i++){
       const step=dt/steps;
       landVel+=(-landDip*195-landVel*19)*step;
       landDip+=landVel*step;
+      if(!item){
+        kickVZ+=(-kickZ*sp.kZ-kickVZ*sp.cZ)*step;kickZ+=kickVZ*step;
+        kickVP+=(-kickP*sp.kP-kickVP*sp.cP)*step;kickP+=kickVP*step;
+        kickVR+=(-kickR*sp.kR-kickVR*sp.cR)*step;kickR+=kickVR*step;
+      }
     }
     if(Math.abs(landDip)<1e-5&&Math.abs(landVel)<1e-4)landDip=landVel=0;
+    if(Math.abs(kickZ)<1e-5&&Math.abs(kickVZ)<1e-4)kickZ=kickVZ=0;
+    if(Math.abs(kickP)<1e-5&&Math.abs(kickVP)<1e-4)kickP=kickVP=0;
+    if(Math.abs(kickR)<1e-5&&Math.abs(kickVR)<1e-4)kickR=kickVR=0;
 
     const swayScale=1-.76*aim;
     swayX=ease(swayX,T.MathUtils.clamp((values.swayX||0)*swayScale,-.032,.032),dt,14);
@@ -441,8 +503,10 @@ export function createViewModel(playMotionSound = () => {}) {
     flash.visible=spark>0&&!item;
     if(current.action){
       const bolt=id==='awm'?Math.sin(Math.PI*T.MathUtils.clamp((gesture-.22)/.62,0,1)):0;
-      current.action.position.z=bolt*.083+(id==='deagle'?recoil*.042:0);
-      current.action.rotation.z=bolt*.34;
+      const slideBack=id==='deagle'?Math.max(recoil*.042,kickZ*.34):0;
+      const rackZ=reloadBolt*(id==='deagle'?.044:id==='awm'?.075:.062);
+      current.action.position.z=Math.max(bolt*.083,slideBack,rackZ);
+      current.action.rotation.z=Math.max(bolt*.34,id==='awm'?reloadBolt*.30:0);
       current.action.visible=id!=='he'||!(gesture>.34&&gesture<.97);
     }
     const offset=Math.min(current.hipX,.160*aspect),idle=1-aim;
@@ -574,10 +638,20 @@ export function createViewModel(playMotionSound = () => {}) {
       }
     }
     const bflyScale=id==='butterfly'?.65:1;
+    const gunSprint=item?0:sprintBlend*idle;
+    const sprintBob=gunSprint*Math.sin(phase);
+    const springZ=item?0:T.MathUtils.clamp(kickZ,-.012,.095)*(1-.48*aim);
+    const springP=item?0:T.MathUtils.clamp(kickP,-.04,.22)*(1-.55*aim);
+    const springR=item?0:T.MathUtils.clamp(kickR,-.12,.12)*(1-.55*aim);
+    if(!item){
+      camKickPitch=ease(camKickPitch,0,dt,20);
+      camKickRoll=ease(camKickRoll,0,dt,20);
+      camera.rotation.set(camKickPitch,0,camKickRoll);
+    }
     rig.position.set(
-      idle*(offset+Math.sin(phase)*(.0014+walk*.005*bflyScale))+lower*.034+mx-(melee?0:inspection*.10)-swayX,
-      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*.003*bflyScale)-lower*.044+recoil*.003-draw*(id==='butterfly'?.15:(melee?.17:.24))+my+inspection*.027+throwing*.14+swayY+(id==='butterfly'?0:airOffset+landDip),
-      T.MathUtils.lerp(current.hipZ,-.48,aim)+recoil*(aim>.6?.021:.043)+lower*.038+draw*.07+mz-throwing*.12);
+      idle*(offset+Math.sin(phase)*(.0014+walk*(.005+gunSprint*.004)*bflyScale))+reloadPose*.034-gunSprint*.042+mx-(melee?0:inspection*.10)-swayX,
+      T.MathUtils.lerp(current.hipY,-current.sight,aim)+idle*Math.cos(phase*2)*(.0013+walk*(.003+gunSprint*.003)*bflyScale)+reloadDropY-gunSprint*.038-gunCrouch*idle*.012+springZ*.08-draw*(id==='butterfly'?.15:(melee?.17:.24))+my+inspection*.027+throwing*.14+swayY+(id==='butterfly'?0:airOffset+landDip),
+      T.MathUtils.lerp(current.hipZ,-.48,aim)+springZ+reloadPose*.036+gunSprint*.024+draw*.07+mz-throwing*.12);
     if(id==='karambit'){
       karambitRigEul.set(
         .045*idle+swayY*1.4,
@@ -588,9 +662,9 @@ export function createViewModel(playMotionSound = () => {}) {
       rig.quaternion.copy(karambitBaseRigQ.setFromEuler(karambitRigEul)).multiply(karambitMotion.handQuat);
     }else{
       rig.rotation.set(
-        .045*idle+recoil*(id==='deagle'?.14:.077)*(1-.52*aim)+lower*.09-draw*(melee?.35:.52)+throwing*.85+swayY*1.4,
-        .190*idle-lower*.19-(melee?0:inspection*.57)-swayX*1.5,
-        -.056*idle+lower*(id==='deagle'?.36:.57)+draw*.22-(melee?0:inspection*.84)-tilt);
+        .045*idle+springP+reloadPitch-gunSprint*.20-draw*(melee?.35:.52)+throwing*.85+swayY*1.4+landDip*1.1,
+        .190*idle+reloadYaw+gunSprint*.38+sprintBob*.04-(melee?0:inspection*.57)-swayX*1.5,
+        -.056*idle+springR+reloadRoll+gunSprint*.24+gunCrouch*idle*.045+draw*.22-(melee?0:inspection*.84)-tilt);
     }
     if(id==='karambit'&&values.alive!==false){
       if(KARAMBIT_INSPECT_CONFIG.showTrail)current.updateTrail(dt,karambitTrail);

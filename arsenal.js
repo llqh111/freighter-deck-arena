@@ -1,6 +1,6 @@
 // Distances are scene units, times in seconds. Each inventory owns its ammunition.
 export const primaries=['ak47','m4a1','awm','mp5'];
-import {bayonetDrawTime} from './bayonet-timing.js?v=2';
+import {bayonetDrawTime} from './bayonet-timing.js?v=3';
 export const melees=['knife','nepal','malay','butterfly','karambit','m9'];
 export const isMelee=id=>melees.includes(id);
 const gun=(mag,reserve,reload,rpm,damage,head,armor,power,base,moving,bloom,recoil,speed=1)=>({
@@ -21,12 +21,12 @@ export const arsenal={
   awm:{...gun(5,20,3.4,42,115,2.2,.97,2,.072,.12,0,.028,.84),scopeSettle:.15},
   mp5:gun(30,120,2.1,800,28,3.5,.65,.6,.004,.029,.0038,.006,1.06),
   deagle:gun(7,35,2,260,54,3.8,.8,1,.0032,.069,.014,.023,.97),
-  knife:blade(1.12,.84,54,120,.37,.86,2.05,1.95,.10),
-  nepal:blade(1.10,.90,68,135,.43,.90,2.20,2.18,.11),
-  malay:blade(1.12,.88,52,118,.29,.80,2.35,2.30,.10),
-  butterfly:blade(1.11,.86,59,108,.38,.77,2.13,2.13,.22),
-  karambit:blade(1.12,.87,58,116,.40,.89,2.07,2.07,.15),
-  m9:blade(1.12,.84,54,120,.37,.86,2.05,1.95,bayonetDrawTime),
+  knife:blade(1.12,.84,54,120,.37,.86,2.05,2.10,.10),
+  nepal:blade(1.10,.90,68,135,.43,.90,2.20,2.26,.11),
+  malay:blade(1.12,.88,52,118,.29,.80,2.35,2.38,.10),
+  butterfly:blade(1.12,.86,59,118,.38,.82,2.10,2.14,.20),
+  karambit:blade(1.12,.87,58,117,.39,.86,2.08,2.12,.16),
+  m9:blade(1.11,.85,60,122,.39,.86,2.08,2.16,bayonetDrawTime),
   he:{mag:1,reserve:0,speed:1,armor:.75}
 };
 // 远距离伤害衰减：只给 MP5 与沙鹰，步枪与 AWM 不衰减

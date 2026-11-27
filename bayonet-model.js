@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {installM9Finish} from './m9-finish.js?v=1';
+import {installM9Finish} from './m9-finish.js?v=2';
 
 export function bladeFinish(){
   const canvas=document.createElement('canvas');
@@ -107,8 +107,8 @@ async function loadBayonetMesh(){
 }
 
 function addBladeTrail(root,spinPivot,carrierOffset,tip,style){
-  // Angles are subdivided before writing the preallocated ribbon so quick swipes stay smooth.
-  const count=56,lifetime=style?.108:.136,rails=style?5:2;
+  // Angles are subdivided before writing the preallocated 5-rail ribbon so quick swipes stay silky smooth.
+  const count=56,lifetime=style?.108:.078,rails=5;
   const positions=new Float32Array(count*rails*3),colors=new Float32Array(count*rails*4);
   const ages=new Float32Array(count),strengths=new Float32Array(count),indices=[];
   for(let i=0;i<count-1;i++){
@@ -132,10 +132,17 @@ function addBladeTrail(root,spinPivot,carrierOffset,tip,style){
   ribbon.visible=false;
   root.add(ribbon);
 
-  const baseLocal=new T.Vector3(0,0,-.08).add(carrierOffset);
+  const baseLocal=new T.Vector3(0,0,style?-.08:-.22).add(carrierOffset);
   const tipLocal=tip.clone().add(carrierOffset);
   const pBase=new T.Vector3(),pTip=new T.Vector3(),railPos=new T.Vector3();
-  const railStrength=[.02,.16,.27,.58,.12];
+  const railStrength=[.02,.12,.22,.46,.10];
+  const fadeRails=[
+    [.48,.20,.88,.02],
+    [.76,.26,.82,.10],
+    [.98,.44,.68,.20],
+    [1.0,.76,.54,.42],
+    [1.0,.95,.84,.12]
+  ];
   const finishTint=new T.Color();
   let tint=style?new T.Color(style.color):null;
   const lastParentPos=new T.Vector3(),parentPos=new T.Vector3();
@@ -210,8 +217,10 @@ function addBladeTrail(root,spinPivot,carrierOffset,tip,style){
           colors[k+3]=fade*railAlpha;
         }
       }else{
-        colors[c]=.90;colors[c+1]=.42;colors[c+2]=.88;colors[c+3]=fade*.20;
-        colors[c+4]=1.0;colors[c+5]=.86;colors[c+6]=.76;colors[c+7]=fade*.72;
+        for(let j=0;j<rails;j++){
+          const k=c+j*4,s=fadeRails[j];
+          colors[k]=s[0];colors[k+1]=s[1];colors[k+2]=s[2];colors[k+3]=fade*s[3];
+        }
       }
       visible||=fade>.02;
     }

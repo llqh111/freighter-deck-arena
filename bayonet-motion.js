@@ -9,7 +9,7 @@
 // 12    : support (left tactical guard hand pose/recoil)
 // 13    : camKick (viewmodel-only tactile camera micro-impulse)
 import {Euler, Quaternion, Vector3} from './three.module.js';
-import {bayonetContactTime} from './bayonet-timing.js?v=2';
+import {bayonetContactTime} from './bayonet-timing.js?v=3';
 
 const CHANNELS = 14;
 const PI = Math.PI;
@@ -75,17 +75,17 @@ const clips = {
     kf(0.140, HIDDEN_POS, HIDDEN_ROT, [0.22, 0, 0], {open: 0.15, thumb: 0.15, sup: 0.05})
   ],
 
-  // Standard CS M9 Inspect (2.48s): +34mm bevel close-up -> sawback & hollow-grind sheen sweep ->
+  // Standard CS M9 Inspect (2.48s): clean mid-frame bevel showcase -> sawback & hollow-grind sheen sweep ->
   // crisp 180° flip showcasing guard ring & grooved handle -> snappy roll lock back to ready!
   inspect: [
     IDLE,
-    kf(0.180, [-0.032, 0.024, -0.006], [0.42, 1.16, 0.58], [0.02, 0.04, -0.12], {open: 0.08, thumb: 0.05, sup: 0.012}, 'm9Cloth', 0.28),
-    kf(0.420, [-0.020, 0.046, 0.012], [0.38, 1.26, 0.22], [0.00, 0.06, -0.22], {open: -0.06, thumb: -0.04, sup: 0.028}, 'm9Sheen', 0.56),
-    kf(0.760, [-0.014, 0.048, 0.010], [0.34, 1.32, 0.14], [0.00, 0.04, -0.34], {open: -0.08, thumb: -0.05, sup: 0.030}),
-    kf(1.060, [-0.028, 0.040, -0.012], [0.44, 1.28, 0.52], [-0.14, -0.08, 1.45], {lift: 0.012, open: 0.42, thumb: 0.36, sup: 0.024}, 'm9Spin', 0.52),
-    kf(1.300, [-0.036, 0.036, -0.018], [0.56, 1.16, 0.84], [0.00, -0.06, 2.86], {open: -0.04, thumb: -0.02, sup: 0.016, kick: 0.24}, 'm9Sheen', 0.50),
-    kf(1.740, [-0.032, 0.038, -0.016], [0.58, 1.12, 0.92], [0.00, -0.04, 3.04], {open: -0.06, thumb: -0.04, sup: 0.014}),
-    kf(2.010, [-0.018, 0.024, -0.012], [0.46, 1.02, 1.16], [-0.08, 0.04, 5.52], {lift: 0.010, open: 0.48, thumb: 0.40, sup: 0.008}, 'm9Flip', 0.58),
+    kf(0.180, [-0.032, 0.018, -0.022], [0.42, 1.12, 1.06], [0.02, 0.04, -0.10], {open: 0.08, thumb: 0.05, sup: 0.012}, 'm9Cloth', 0.28),
+    kf(0.420, [-0.024, 0.032, -0.024], [0.38, 1.18, 1.08], [0.00, 0.06, -0.14], {open: -0.06, thumb: -0.04, sup: 0.028}, 'm9Sheen', 0.56),
+    kf(0.760, [-0.020, 0.034, -0.026], [0.34, 1.22, 0.96], [0.00, 0.04, -0.22], {open: -0.08, thumb: -0.05, sup: 0.030}),
+    kf(1.060, [-0.030, 0.030, -0.032], [0.44, 1.26, 0.52], [-0.14, -0.08, 1.45], {lift: 0.012, open: 0.42, thumb: 0.36, sup: 0.024}, 'm9Spin', 0.52),
+    kf(1.300, [-0.036, 0.028, -0.034], [0.56, 1.14, 0.84], [0.00, -0.06, 2.86], {open: -0.04, thumb: -0.02, sup: 0.016, kick: 0.24}, 'm9Sheen', 0.50),
+    kf(1.740, [-0.032, 0.030, -0.032], [0.58, 1.10, 0.92], [0.00, -0.04, 3.04], {open: -0.06, thumb: -0.04, sup: 0.014}),
+    kf(2.010, [-0.018, 0.020, -0.022], [0.46, 1.02, 1.16], [-0.08, 0.04, 5.52], {lift: 0.010, open: 0.48, thumb: 0.40, sup: 0.008}, 'm9Flip', 0.58),
     kf(2.180, [0.005, -0.010, 0.006], [0.28, 0.88, 1.28], [0.00, 0.00, TAU], {open: -0.08, thumb: -0.06, sup: 0.002, kick: 0.44}, 'm9Catch', 0.72),
     kf(2.310, [-0.001, 0.003, -0.002], [0.37, 0.96, 1.41], [0.00, 0.00, TAU], {open: 0.00, thumb: 0.00, sup: 0.000, kick: -0.10}),
     kf(2.480, REST_POS, REST_ROT, [0, 0, TAU])
@@ -94,23 +94,23 @@ const clips = {
   // Rare CS M9 Toss-Flip Inspect (2.76s): upward palm toss -> 360° aerial flip -> heavy catch -> slow bevel sheen!
   rareInspect: [
     IDLE,
-    kf(0.110, [-0.020, 0.024, -0.014], [0.48, 0.86, 0.62], [0.18, 0.04, 0.08], {lift: 0.018, open: 0.78, thumb: 0.72, sup: 0.014}, 'm9Unsheath', 0.62),
-    kf(0.280, [-0.044, 0.056, -0.036], [0.64, 0.82, 0.34], [-2.55, 0.14, 0.24], {lift: 0.062, open: 0.96, thumb: 0.92, sup: 0.026}, 'm9Flip', 0.84),
-    kf(0.455, [-0.052, 0.052, -0.040], [0.60, 0.90, 0.56], [-5.28, 0.08, 0.06], {lift: 0.032, open: 0.72, thumb: 0.66, sup: 0.028}),
-    kf(0.575, [-0.030, 0.028, -0.016], [0.32, 0.98, 1.12], [-TAU, 0.00, -0.10], {lift: 0.000, open: -0.12, thumb: -0.10, sup: 0.024, kick: 0.88}, 'm9Catch', 0.90),
-    // Intimate close-up bevel & sawback light sweep after the crisp catch
-    kf(1.060, [-0.024, 0.048, 0.010], [0.38, 1.28, 0.24], [-TAU, 0.04, -0.22], {open: -0.04, thumb: -0.02, sup: 0.030, kick: -0.16}, 'm9Sheen', 0.56),
-    kf(1.580, [-0.034, 0.042, -0.010], [0.54, 1.18, 0.82], [-TAU, -0.04, 0.76], {open: 0.08, thumb: 0.06, sup: 0.022}, 'm9Sheen', 0.44),
-    kf(2.040, [-0.024, 0.032, -0.012], [0.46, 1.06, 1.14], [-TAU, 0.02, 0.24], {open: 0.04, thumb: 0.02, sup: 0.014}),
-    kf(2.340, [-0.008, 0.010, -0.006], [0.32, 0.92, 1.32], [-TAU, 0.00, 0.02], {open: -0.04, thumb: -0.03, sup: 0.004, kick: 0.26}, 'm9Seat', 0.52),
+    kf(0.110, [-0.048, 0.016, -0.048], [0.48, 0.62, 0.42], [0.18, 0.04, 0.08], {lift: 0.018, open: 0.78, thumb: 0.72, sup: 0.014}, 'm9Unsheath', 0.62),
+    kf(0.280, [-0.118, 0.036, -0.118], [0.58, 0.14, 0.12], [-2.75, -0.32, 0.20], {lift: 0.048, open: 0.96, thumb: 0.92, sup: 0.026}, 'm9Flip', 0.84),
+    kf(0.455, [-0.096, 0.034, -0.096], [0.64, 0.48, 0.32], [-5.28, -0.14, 0.06], {lift: 0.024, open: 0.72, thumb: 0.66, sup: 0.028}),
+    kf(0.575, [-0.030, 0.022, -0.024], [0.32, 0.98, 1.12], [-TAU, 0.00, -0.10], {lift: 0.000, open: -0.12, thumb: -0.10, sup: 0.024, kick: 0.88}, 'm9Catch', 0.90),
+    // Clean mid-frame bevel & sawback light sweep after the crisp catch
+    kf(1.060, [-0.026, 0.034, -0.024], [0.38, 1.18, 1.06], [-TAU, 0.04, -0.14], {open: -0.04, thumb: -0.02, sup: 0.030, kick: -0.16}, 'm9Sheen', 0.56),
+    kf(1.580, [-0.034, 0.032, -0.028], [0.54, 1.16, 0.82], [-TAU, -0.04, 0.76], {open: 0.08, thumb: 0.06, sup: 0.022}, 'm9Sheen', 0.44),
+    kf(2.040, [-0.024, 0.024, -0.022], [0.46, 1.06, 1.14], [-TAU, 0.02, 0.24], {open: 0.04, thumb: 0.02, sup: 0.014}),
+    kf(2.340, [-0.008, 0.010, -0.008], [0.32, 0.92, 1.32], [-TAU, 0.00, 0.02], {open: -0.04, thumb: -0.03, sup: 0.004, kick: 0.26}, 'm9Seat', 0.52),
     kf(2.760, REST_POS, REST_ROT, [-TAU, 0, 0])
   ],
 
   // Fidget 1 (0.50s): Crisp CS Draw-Roll Replay (forward 360° palm roll + weighty catch!)
   fidget1: [
     IDLE,
-    kf(0.085, [-0.024, 0.040, -0.022], [0.62, 0.72, 0.38], [-1.72, 0.08, 0.14], {lift: 0.028, open: 0.92, thumb: 0.88, sup: 0.012}, 'm9Flip', 0.80),
-    kf(0.205, [-0.036, 0.052, -0.030], [0.68, 0.68, 0.44], [-4.38, 0.06, -0.06], {lift: 0.024, open: 0.96, thumb: 0.90, sup: 0.018}),
+    kf(0.085, [-0.072, 0.028, -0.068], [0.52, 0.28, 0.16], [-1.72, -0.24, 0.14], {lift: 0.024, open: 0.92, thumb: 0.88, sup: 0.012}, 'm9Flip', 0.80),
+    kf(0.205, [-0.118, 0.036, -0.112], [0.62, 0.12, 0.14], [-4.38, -0.34, -0.06], {lift: 0.022, open: 0.96, thumb: 0.90, sup: 0.018}),
     kf(0.325, [0.005, -0.014, 0.009], [0.24, 0.88, 1.24], [-TAU, 0.00, 0.03], {lift: 0.000, open: -0.12, thumb: -0.10, sup: 0.004, kick: 0.72}, 'm9Catch', 0.86),
     kf(0.415, [-0.002, 0.004, -0.002], [0.38, 0.96, 1.42], [-TAU, 0.00, -0.01], {open: 0.02, thumb: 0.02, kick: -0.16}),
     kf(0.500, REST_POS, REST_ROT, [-TAU, 0, 0])
@@ -119,8 +119,8 @@ const clips = {
   // Fidget 2 (0.52s): Reverse Backhand 360° Roll + Longitudinal Flash
   fidget2: [
     IDLE,
-    kf(0.090, [-0.028, 0.038, -0.020], [0.46, 0.86, 0.56], [1.68, -0.10, 0.36], {lift: 0.024, open: 0.92, thumb: 0.88, sup: 0.014}, 'm9Spin', 0.78),
-    kf(0.215, [-0.040, 0.054, -0.030], [0.54, 0.88, 0.48], [4.32, -0.08, 0.28], {lift: 0.022, open: 0.96, thumb: 0.92, sup: 0.018}),
+    kf(0.090, [-0.078, 0.028, -0.072], [0.46, 0.36, 0.26], [1.68, -0.22, 0.36], {lift: 0.022, open: 0.92, thumb: 0.88, sup: 0.014}, 'm9Spin', 0.78),
+    kf(0.215, [-0.118, 0.038, -0.110], [0.54, 0.24, 0.22], [4.32, -0.28, 0.28], {lift: 0.020, open: 0.96, thumb: 0.92, sup: 0.018}),
     kf(0.340, [0.004, -0.012, 0.008], [0.26, 0.88, 1.26], [TAU, 0.00, -0.03], {lift: 0.000, open: -0.12, thumb: -0.10, sup: 0.004, kick: 0.66}, 'm9Catch', 0.84),
     kf(0.430, [-0.001, 0.004, -0.002], [0.38, 0.96, 1.41], [TAU, 0.00, 0.01], {open: 0.02, thumb: 0.02, kick: -0.14}),
     kf(0.520, REST_POS, REST_ROT, [TAU, 0, 0])
@@ -129,8 +129,8 @@ const clips = {
   // Fidget 3 (0.58s): Pommel-Pop Parabolic Aerial Flip Finisher!
   fidget3: [
     IDLE,
-    kf(0.092, [-0.018, 0.030, -0.018], [0.58, 0.76, 0.48], [-1.45, -0.08, 0.24], {lift: 0.036, open: 0.90, thumb: 0.86, sup: 0.014}, 'm9Unsheath', 0.68),
-    kf(0.230, [-0.040, 0.056, -0.034], [0.66, 0.74, 0.38], [-3.98, 0.10, 0.32], {lift: 0.058, open: 0.98, thumb: 0.94, sup: 0.024}, 'm9Flip', 0.84),
+    kf(0.092, [-0.068, 0.022, -0.066], [0.52, 0.32, 0.22], [-1.45, -0.24, 0.24], {lift: 0.030, open: 0.90, thumb: 0.86, sup: 0.014}, 'm9Unsheath', 0.68),
+    kf(0.230, [-0.120, 0.038, -0.114], [0.60, 0.14, 0.16], [-3.98, -0.32, 0.26], {lift: 0.048, open: 0.98, thumb: 0.94, sup: 0.024}, 'm9Flip', 0.84),
     kf(0.375, [0.006, -0.018, 0.011], [0.22, 0.86, 1.22], [-TAU, 0.00, 0.04], {lift: 0.000, open: -0.14, thumb: -0.12, sup: 0.006, kick: 0.90}, 'm9Catch', 0.90),
     kf(0.475, [-0.002, 0.005, -0.003], [0.38, 0.96, 1.42], [-TAU, 0.00, -0.01], {open: 0.02, thumb: 0.02, kick: -0.20}),
     kf(0.580, REST_POS, REST_ROT, [-TAU, 0, 0])
@@ -464,8 +464,8 @@ export function createBayonetMotion(play = () => {}, profile) {
     secondary.spinSpeed = secondary.spinSpeed * Math.exp(-dt * 14) + spinMag * (1 - Math.exp(-dt * 14));
     const slashActive = clipName === 'light' || clipName === 'backhand' || clipName === 'heavy';
     const wantTrail = slashActive
-      ? Math.min(1, Math.hypot(vel[0], vel[1], vel[2]) * 0.45 + spinMag * 0.06)
-      : Math.max(0, Math.min(0.75, (spinMag - 7.5) * 0.052));
+      ? Math.min(0.88, Math.hypot(vel[0], vel[1], vel[2]) * 0.42 + spinMag * 0.05)
+      : Math.max(0, Math.min(0.28, (spinMag - 9.0) * 0.025));
     secondary.trailIntensity += (wantTrail * (profile?.trailStrength??1) - secondary.trailIntensity) * (1 - Math.exp(-dt * 28));
 
     syncOutputs();

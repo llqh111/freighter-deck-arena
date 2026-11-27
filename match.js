@@ -1,9 +1,9 @@
 import {newBurst,recoverBurst,firingCone,recordShot,spreadOffset} from './gunplay.js?v=8';
 import * as T from './three.module.js';
-import {arsenal,primaries,melees,isMelee,loadout,skills,falloff} from './arsenal.js?v=29';
-import {karambitContactTime} from './karambit-motion.js?v=19';
+import {arsenal,primaries,melees,isMelee,loadout,skills,falloff} from './arsenal.js?v=30';
+import {karambitContactTime} from './karambit-motion.js?v=20';
 import {butterflyContactTime} from './butterfly-motion.js?v=24';
-import {bayonetContactTime} from './bayonet-timing.js?v=2';
+import {bayonetContactTime} from './bayonet-timing.js?v=3';
 import {classicBladeContact} from './classic-blade-timing.js?v=1';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
 
@@ -13,6 +13,7 @@ const timedMeleeContacts={butterfly:butterflyContactTime,karambit:karambitContac
 const bayonetSurfaceCue={wood:'m9Wood',concrete:'m9Stone',metal:'m9Metal'};
 const classicSurfaceCue={wood:'classicWood',concrete:'classicStone',metal:'classicMetal'};
 const lightSweepAngles=[-12,-8,-4,4,8,12].map(degrees=>T.MathUtils.degToRad(degrees));
+const heavySweepAngles=[-6,-3,3,6].map(degrees=>T.MathUtils.degToRad(degrees));
 const spatialSounds=new Set(['shot','step','land','jump','light','heavy','reload','clang','bladeWall','timber','throw','bounce','explode','death',...Object.values(bayonetSurfaceCue),...Object.values(classicSurfaceCue)]);
 const sq = n => n*n;
 const rangeScale = (id,dist)=>{
@@ -582,15 +583,16 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     const wallDist=wallDistance(camera.position,dir,reach,surfaceCues?bayonetSurface:null);
     let hit=actorHit(p,camera.position,dir,wallDist);
     const aimedHit=!!hit;
-    if(!hit&&!heavy&&timedMeleeContacts[id]&&!classic){
-      // Preserve the aimed hit first. An off-center slash can only reach the nearest exposed target.
-      for(const angle of lightSweepAngles){
+    const sweepAngles=heavy?heavySweepAngles:(timedMeleeContacts[id]&&!classic?lightSweepAngles:null);
+    if(!hit&&sweepAngles){
+      // Preserve the aimed hit first. An off-center slash/thrust can only reach the nearest exposed target.
+      for(const angle of sweepAngles){
         sweepDir.copy(dir).applyAxisAngle(axis,angle);
         const limit=wallDistance(camera.position,sweepDir,hit?.distance??reach);
         const sideHit=actorHit(p,camera.position,sweepDir,limit);
         if(sideHit){
           hit=sideHit;
-          if(id==='m9')hitPos.copy(camera.position).addScaledVector(sweepDir,hit.distance);
+          if(surfaceCues)hitPos.copy(camera.position).addScaledVector(sweepDir,hit.distance);
         }
       }
     }
@@ -914,13 +916,17 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         return;
       }
       // The sniper reacquires its scope after a bolt cycle or after losing sight.
+      const foeAirborne=foe===p?!grounded:foe.fall>0;
+      const foeSpeed=Math.hypot(foe.vx||0,foe.vz||0);
+      const sniper=w.id==='awm';
       const settling=def.scopeSettle&&w.ammo>0&&!reloading&&aligned&&b.shot<=0;
       if(settling){
         if(b.scopeTarget!==foe){b.scopeTarget=foe;b.scopeSince=clock;}
       }else b.scopeTarget=null;
-      const scopeReady=!settling||clock-b.scopeSince+1e-8>=def.scopeSettle;
+      const scopeWait=def.scopeSettle?(def.scopeSettle+.16+skill.response*.95+(foeAirborne?.14:0)):0;
+      const scopeReady=!settling||clock-b.scopeSince+1e-8>=scopeWait;
       const pref=botWeaponRange(w.id);
-      b.crouch=reloading||(w.id==='awm'&&range>13)||(range>16&&b.burst.count>=2&&skill.strafe<.65);
+      b.crouch=reloading||(sniper&&range>13)||(range>16&&b.burst.count>=2&&skill.strafe<.65);
       // If retreating to cover while low HP or reloading, follow cover path while still facing threat.
       if((b.hp<38||reloading)&&b.path.length&&clock<b.coverUntil){
         const q=b.path[0],dx=q.x-b.x,dz=q.z-b.z,dist=Math.hypot(dx,dz);
@@ -933,7 +939,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         let mx=Math.cos(b.yaw)*b.strafeDir*strafeSpd,mz=-Math.sin(b.yaw)*b.strafeDir*strafeSpd;
         const fwdX=-Math.sin(b.yaw),fwdZ=-Math.cos(b.yaw);
         if(range<pref.min){mx-=fwdX*1.6;mz-=fwdZ*1.6;}
-        else if(range>pref.max&&w.id!=='awm'){mx+=fwdX*1.85;mz+=fwdZ*1.85;}
+        else if(range>pref.max&&!sniper){mx+=fwdX*1.85;mz+=fwdZ*1.85;}
         if(friendlyInLine(b,foe.x,foe.z,range)){mx+=Math.cos(b.yaw)*b.strafeDir*2.2;mz+=-Math.sin(b.yaw)*b.strafeDir*2.2;}
         const oldX=b.x,oldZ=b.z;
         move(b,mx*dt,mz*dt);
@@ -943,9 +949,13 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       }
       if(!reloading&&aligned&&scopeReady&&b.shot<=0&&foe.shield<=0&&!friendlyInLine(b,foe.x,foe.z,range)){
         if(w.ammo>0){
-          const miss=skill.miss*(b.crouch?.78:1)+range*.0055;
-          dir.set(foe.x-b.x+(Math.random()-.5)*miss*2,foe.y+(Math.random()<skill.head?1.63:1.18)-b.y-eyeHeight(b)+(Math.random()-.5)*miss*1.75,foe.z-b.z+(Math.random()-.5)*miss*2).normalize();
-          const spread=firingCone(def,b.burst,{speed:b.walking?skill.strafe*1.6:0,grounded:!b.fall,crouch:b.crouch,scoped:!!def.scopeSettle,ads:w.id!=='mp5'});
+          const airPenalty=foeAirborne?(sniper?.54:.24):0;
+          const movePenalty=foeSpeed*(sniper?.068:.026);
+          const airLagY=foeAirborne&&foe===p?-jumpVel*.09:0;
+          const miss=skill.miss*(b.crouch?.78:1)+(sniper?.15:0)+range*.0055+airPenalty+movePenalty;
+          dir.set(foe.x-b.x+(Math.random()-.5)*miss*2,foe.y+airLagY+(Math.random()<skill.head?1.63:1.18)-b.y-eyeHeight(b)+(Math.random()-.5)*miss*1.75,foe.z-b.z+(Math.random()-.5)*miss*2).normalize();
+          const botMoveSpeed=b.walking?(sniper?Math.max(2.2,skill.strafe*2.4):skill.strafe*1.6):0;
+          const spread=firingCone(def,b.burst,{speed:botMoveSpeed,grounded:!b.fall,crouch:b.crouch,scoped:!!def.scopeSettle,ads:w.id!=='mp5'});
           const offset=spreadOffset(spread);
           rot.set(Math.asin(clamp(dir.y,-1,1))+b.burst.pitch+offset.y,Math.atan2(-dir.x,-dir.z)+b.burst.yaw+offset.x,0,'YXZ');
           dir.set(0,0,-1).applyEuler(rot);w.ammo--;shot(b,dir,w.id);recordShot(b.burst,def,clock,w.id!=='mp5',b.crouch);

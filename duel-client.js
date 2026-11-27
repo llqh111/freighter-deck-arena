@@ -1,6 +1,6 @@
 import * as T from './three.module.js';
-import {createSquad} from './match.js?v=46';
-import {classicBladeContact} from './classic-blade-timing.js?v=1';
+import {createSquad} from './match.js?v=47';
+import {isMelee} from './arsenal.js?v=30';
 
 export function createDuelClient({scene,camera,view,world,send,emit}){
   let actors=[],animate,target,sequence=0,pending=[];
@@ -89,16 +89,16 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
     viewTime+=dt;
     animate?.(viewTime,true);
     const player=state.player;
-    const fixedBlade=state.weapon==='m9'||classicBladeContact[state.weapon];
     view.update(dt,{alive:state.alive,moving:player.walking,sprinting:state.sprinting,
       crouching:state.crouching,grounded:state.grounded,aiming:state.aiming,reloading:state.reloading,
-      swayX:fixedBlade?swayX:0,swayY:fixedBlade?swayY:0,vy:fixedBlade?state.verticalSpeed:0,
+      swayX,swayY,vy:state.verticalSpeed,
       strafe:Number(!!buttons.get('right'))-Number(!!buttons.get('left'))});
     const decay=Math.exp(-dt*12);
     swayX*=decay;swayY*=decay;
   }
   function visual(packet){
     if(packet.type==='view'&&renderedActions.has(packet.name)){
+      if(packet.name==='fidget'&&isMelee(state.weapon))return;
       view[packet.name]?.(...packet.args);return;
     }
     if(packet.type==='fx'&&fxActions.has(packet.name)){
@@ -121,6 +121,10 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
     if(typeof value==='boolean'&&action!=='last'){
       if((buttons.get(action)??false)===value)return;
       buttons.set(action,value);
+      if(action==='reload'&&value&&state.alive&&isMelee(state.weapon)){
+        view.fidget?.();
+        return;
+      }
     }
     send({type:'input',action,value});
     if(action==='primary'||action==='melee'){

@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {buildKarambit} from './karambit-model.js?v=14';
+import {buildKarambit} from './karambit-model.js?v=15';
 
 // Compact exterior models built in camera space, with an independent magazine and action.
 function violetTideTexture(){
@@ -155,7 +155,8 @@ export function buildArmory(parts) {
     // skeletonized twin-scale titanium channels with real through-holes, 3D multi-plane hollow-ground
     // recurve clip-point blade with through-fuller, spring T-latch, articulated 5-finger right hand,
     // independent tactical left guard, and zero-GC cold-steel specular motion ribbon.
-    w.hipX=.160;w.hipY=-.092;w.hipZ=-.452;
+    w.hipX=.172;w.hipY=-.106;w.hipZ=-.498;
+    w.root.scale.setScalar(.82);
     w.hinges=true;
     w.isArticulatedButterfly=true;
 
@@ -585,14 +586,17 @@ export function buildArmory(parts) {
     buildHollowBlade(bladeMeshGroup);
     bake(bladeMeshGroup);
 
-    // --- 4. ZERO-GC COLD-STEEL SPECULAR MOTION RIBBON (active during fast spins & slashes) ---
-    const TRAIL_STEPS=12;
-    const trailPos=new Float32Array(TRAIL_STEPS*2*3);
-    const trailCol=new Float32Array(TRAIL_STEPS*2*4);
+    // --- 4. ZERO-GC SUB-STEPPED 5-RAIL SPECULAR MOTION RIBBON (finish-aware for Steel & Violet-Tide) ---
+    const TRAIL_STEPS=48,TRAIL_RAILS=5;
+    const trailPos=new Float32Array(TRAIL_STEPS*TRAIL_RAILS*3);
+    const trailCol=new Float32Array(TRAIL_STEPS*TRAIL_RAILS*4);
+    const trailStr=new Float32Array(TRAIL_STEPS);
     const trailIdx=[];
     for(let i=0;i<TRAIL_STEPS-1;i++){
-      const a=i*2,b=a+1,c=a+2,d=a+3;
-      trailIdx.push(a,b,c, b,d,c);
+      for(let j=0;j<TRAIL_RAILS-1;j++){
+        const a=i*TRAIL_RAILS+j,b=a+TRAIL_RAILS;
+        trailIdx.push(a,a+1,b, a+1,b+1,b);
+      }
     }
     const trailGeo=new T.BufferGeometry();
     trailGeo.setAttribute('position',new T.BufferAttribute(trailPos,3).setUsage(T.DynamicDrawUsage));
@@ -601,7 +605,7 @@ export function buildArmory(parts) {
     const trailMat=new T.MeshBasicMaterial({
       vertexColors:true,
       transparent:true,
-      opacity:.56,
+      opacity:.76,
       depthWrite:false,
       side:T.DoubleSide,
       blending:T.AdditiveBlending,
@@ -612,12 +616,21 @@ export function buildArmory(parts) {
     trailRibbon.visible=false;
     w.root.add(trailRibbon);
 
-    const pBase=new T.Vector3(),pTip=new T.Vector3(),invRoot=new T.Matrix4();
-    let trailPrimed=false;
-    w.resetTrail=()=>{trailPrimed=false;trailRibbon.visible=false;};
+    const steelRails=[[.62,.78,.94,.03],[.74,.87,.98,.17],[.84,.93,1.0,.30],[.95,.98,1.0,.64],[1.0,1.0,1.0,.14]];
+    const tideRails=[[.34,.14,.78,.03],[.54,.24,.94,.20],[.72,.44,1.0,.36],[.90,.74,1.0,.70],[.98,.92,1.0,.18]];
+    const pBase=new T.Vector3(),pTip=new T.Vector3(),lastBase=new T.Vector3(),lastTip=new T.Vector3();
+    const sBase=new T.Vector3(),sTip=new T.Vector3(),railP=new T.Vector3(),invRoot=new T.Matrix4();
+    let trailUsed=0,lastTrailStr=0;
+    function pushTrail(bVec,tVec,str){
+      trailUsed=Math.min(trailUsed+1,TRAIL_STEPS);
+      trailPos.copyWithin(TRAIL_RAILS*3,0,(trailUsed-1)*TRAIL_RAILS*3);
+      trailStr.copyWithin(1,0,trailUsed-1);
+      for(let j=0;j<TRAIL_RAILS;j++)railP.copy(bVec).lerp(tVec,j/(TRAIL_RAILS-1)).toArray(trailPos,j*3);
+      trailStr[0]=str;
+    }
+    w.resetTrail=()=>{trailUsed=0;lastTrailStr=0;trailRibbon.visible=false;};
     w.updateTrail=(intensity)=>{
-      if(intensity<.035){
-        trailPrimed=false;
+      if(intensity<.03&&trailUsed===0){
         trailRibbon.visible=false;
         return;
       }
@@ -625,27 +638,35 @@ export function buildArmory(parts) {
       invRoot.copy(w.root.matrixWorld).invert();
       pBase.set(0,-.010,-.054).applyMatrix4(safeJoint.matrixWorld).applyMatrix4(invRoot);
       pTip.set(0,.0025,-.183).applyMatrix4(safeJoint.matrixWorld).applyMatrix4(invRoot);
-      if(!trailPrimed){
-        for(let i=0;i<TRAIL_STEPS;i++){
-          const k=i*6;
-          trailPos[k]=pBase.x;trailPos[k+1]=pBase.y;trailPos[k+2]=pBase.z;
-          trailPos[k+3]=pTip.x;trailPos[k+4]=pTip.y;trailPos[k+5]=pTip.z;
-        }
-        trailPrimed=true;
+      if(trailUsed===0){
+        pushTrail(pBase,pTip,intensity);
       }else{
-        trailPos.copyWithin(6,0,(TRAIL_STEPS-1)*6);
-        trailPos[0]=pBase.x;trailPos[1]=pBase.y;trailPos[2]=pBase.z;
-        trailPos[3]=pTip.x;trailPos[4]=pTip.y;trailPos[5]=pTip.z;
+        const dist=pTip.distanceTo(lastTip);
+        const steps=Math.min(8,Math.max(1,Math.ceil(dist/.012)));
+        for(let s=1;s<=steps;s++){
+          const f=s/steps;
+          sBase.copy(lastBase).lerp(pBase,f);
+          sTip.copy(lastTip).lerp(pTip,f);
+          pushTrail(sBase,sTip,T.MathUtils.lerp(lastTrailStr,intensity,f));
+        }
       }
-      for(let i=0;i<TRAIL_STEPS;i++){
-        const fade=Math.pow(1-i/(TRAIL_STEPS-1),1.65)*intensity;
-        const c=i*8;
-        trailCol[c]=.76;trailCol[c+1]=.88;trailCol[c+2]=.96;trailCol[c+3]=fade*.22;
-        trailCol[c+4]=.94;trailCol[c+5]=.98;trailCol[c+6]=1.0;trailCol[c+7]=fade*.74;
+      lastBase.copy(pBase);lastTip.copy(pTip);lastTrailStr=intensity;
+      const palette=tide?tideRails:steelRails;
+      let any=false;
+      for(let i=0;i<trailUsed;i++){
+        const fade=Math.pow(1-i/Math.max(1,trailUsed-1),1.7)*trailStr[i];
+        const c=i*TRAIL_RAILS*4;
+        for(let j=0;j<TRAIL_RAILS;j++){
+          const k=c+j*4,r=palette[j];
+          trailCol[k]=r[0];trailCol[k+1]=r[1];trailCol[k+2]=r[2];trailCol[k+3]=fade*r[3];
+        }
+        any||=fade>.02;
       }
+      if(!any&&intensity<.03){w.resetTrail();return;}
+      trailGeo.setDrawRange(0,Math.max(0,trailUsed-1)*(TRAIL_RAILS-1)*6);
       trailGeo.attributes.position.needsUpdate=true;
       trailGeo.attributes.color.needsUpdate=true;
-      trailRibbon.visible=true;
+      trailRibbon.visible=trailUsed>1;
     };
 
     w.rigParts={

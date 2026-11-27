@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {buildFixedBladeRig} from './bayonet-model.js?v=6';
+import {buildFixedBladeRig} from './bayonet-model.js?v=7';
 
 // Cross sections run from the guard to the tip. Values are axial distance, center and half width.
 const kukri=[
