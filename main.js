@@ -1,10 +1,10 @@
 import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=38';
 import * as T from './three.module.js';
 import {maps} from './maps.js?v=2';
-import {createMatch} from './match.js?v=49';
-import {createViewModel} from './viewmodel.js?v=59';
+import {createMatch} from './match.js?v=54';
+import {createViewModel} from './viewmodel.js?v=64';
 import {isMelee,melees} from './arsenal.js?v=30';
-import {createDeckAudio} from './deck-audio.js?v=33';
+import {createDeckAudio} from './deck-audio.js?v=34';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
 import {createDuelClient} from './duel-client.js?v=42';
 import {createDuelRoom,invited} from './duel-room.js?v=23';

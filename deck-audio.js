@@ -1,28 +1,27 @@
 import {isMelee} from './arsenal.js?v=29';
-import {bayonetSounds,bayonetLayers,bayonetSample} from './bayonet-audio.js?v=3';
+import {bayonetSounds,bayonetLayers,bayonetSample} from './bayonet-audio.js?v=4';
 import {classicCueNames,classicLayers,classicSound} from './classic-blade-audio.js?v=1';
 
 const butterflyAssets = {
   latch: new URL('./assets/butterfly/mechanical-latch-light.wav', import.meta.url).href,
   swish: new URL('./assets/butterfly/swish-hard.wav', import.meta.url).href
 };
-// External foley starts just before its catalogued contact or peak, layered with cold-steel synthesis.
+// External foley starts just before its catalogued contact or peak, layered with CS2-inspired cold-steel synthesis.
 const bladeMotionSounds = {
-  butterflyAir: {asset: 'swish', offset: .042, mix: .32, pitch: 2120, ring: .048, duration: .125},
-  butterflySpin: {asset: 'swish', offset: .036, mix: .44, pitch: 2760, ring: .105, duration: .115},
-  butterflyTick: {asset: 'latch', offset: .049, mix: .42, pitch: 2920, ring: .175, duration: .072},
-  butterflyRicochet: {asset: 'latch', offset: .048, mix: .34, pitch: 3380, ring: .19, duration: .088},
+  butterflyAir: {asset: 'swish', offset: .040, mix: .30, pitch: 2340, ring: .046, duration: .120},
+  butterflySpin: {asset: 'swish', offset: .034, mix: .42, pitch: 2940, ring: .092, duration: .118},
+  butterflyTick: {asset: 'latch', offset: .048, mix: .46, pitch: 3180, ring: .19, duration: .064},
+  butterflyRicochet: {asset: 'latch', offset: .047, mix: .36, pitch: 3560, ring: .20, duration: .082},
   butterflyCatch: {asset: 'latch', offset: .046, mix: .66, pitch: 1580, ring: .26, duration: .128},
-  butterflySlash: {asset: 'swish', offset: .042, mix: .72, pitch: 1740, ring: .145, duration: .138},
-  butterflyThrust: {asset: 'swish', offset: .040, mix: .78, pitch: 1040, ring: .18, duration: .168},
-  // Inspect-only sheen: the near-silent ridge roll between showcase beats. Low mix so it fills the
-  // 1.05s inspect silence without competing with latch transients.
-  butterflySheen: {asset: 'swish', offset: .012, mix: .20, pitch: 3520, ring: .075, duration: .28},
-  karambitSpin: {asset: 'swish', offset: .038, mix: .46, pitch: 2480, ring: .095, duration: .145},
-  karambitRing: {asset: 'swish', offset: .028, mix: .26, pitch: 3180, ring: .095, duration: .26},
-  karambitFlick: {asset: 'swish', offset: .032, mix: .48, pitch: 2150, ring: .075, duration: .115},
+  butterflySlash: {asset: 'swish', offset: .038, mix: .64, pitch: 1920, ring: .13, duration: .132},
+  butterflyThrust: {asset: 'swish', offset: .035, mix: .72, pitch: 1120, ring: .16, duration: .168},
+  // Inspect-only sheen: the near-silent ridge roll between showcase beats.
+  butterflySheen: {asset: 'swish', offset: .012, mix: .14, pitch: 3640, ring: .062, duration: .26},
+  karambitSpin: {asset: 'swish', offset: .036, mix: .44, pitch: 2740, ring: .088, duration: .142},
+  karambitRing: {asset: 'swish', offset: .028, mix: .20, pitch: 3320, ring: .082, duration: .25},
+  karambitFlick: {asset: 'swish', offset: .031, mix: .42, pitch: 2380, ring: .072, duration: .108},
   karambitCatch: {asset: 'latch', offset: .048, mix: .56, pitch: 2640, ring: .22, duration: .118},
-  karambitCut: {asset: 'swish', offset: .037, mix: .72, pitch: 1520, ring: .14, duration: .16}
+  karambitCut: {asset: 'swish', offset: .034, mix: .64, pitch: 1680, ring: .13, duration: .152}
 };
 
 const bladeFeedbackDurations = {bladeGrip: .066, bladeFlesh: .125, bladeWall: .18};
@@ -171,13 +170,67 @@ export function createDeckAudio() {
     const isBlade = isMelee(weapon);
     const motion = bladeMotionSounds[kind];
     const duration = motion?.duration ?? bladeFeedbackDurations[kind] ?? ({sea: 3.2, gull: .62, step: .18, land: .23, jump: .14, death: .22, hurt: .12, scope: .075, timber: .15, clang: .19, dry: .06, shot: weapon === 'awm' ? .52 : .24, explode: .75, bolt: .34, reload: .42, bounce: .11, pulse: .21, hit: .09, equip: isBlade ? .26 : .14, light: isBlade ? .18 : .14, heavy: isBlade ? .28 : .18}[kind] || .14);
-    let seed = 3492, lp = 0;
+    let seed = 3492, lp = 0, mp = 0;
     samples[key] = makeSample(duration, t => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       const white = seed / 2147483648 - 1;
-      lp += .15 * (white - lp);
+      lp += .13 * (white - lp);
+      mp += .42 * (white - mp);
+      const midBand = mp - lp, highBand = white - mp;
       if (motion) {
         const tau = 2 * Math.PI;
+        const u = Math.min(1, t / duration);
+        if (kind === 'butterflyTick') {
+          // CS2 signature balisong titanium-on-tang clack: ultra-dry dual micro-impulse + tight inharmonic titanium modes
+          const hit1 = Math.exp(-420 * t) * (.34 * (white - lp) + .26 * Math.sin(tau * 3140 * t) + .16 * Math.sin(tau * 5080 * t) + .09 * Math.sin(tau * 7620 * t));
+          const dt2 = t - .009;
+          const hit2 = dt2 > 0 ? Math.exp(-360 * dt2) * (.20 * (white - lp) + .19 * Math.sin(tau * 2420 * dt2) + .11 * Math.sin(tau * 4310 * dt2)) : 0;
+          const body = .09 * Math.sin(tau * 480 * t) * Math.exp(-130 * t);
+          return Math.max(-.93, Math.min(.93, hit1 + hit2 + body));
+        }
+        if (kind === 'butterflyAir') {
+          // Agile balisong opening whip: crisp rising air-cut + micro pivot click at onset
+          const env = Math.sin(Math.PI * u) ** 1.5;
+          const peak = Math.exp(-(((t - .030) / .024) ** 2));
+          const air = (midBand * .24 + highBand * .20) * (.45 * env + .82 * peak);
+          const pivot = Math.exp(-380 * t) * (.15 * highBand + .11 * Math.sin(tau * 3620 * t));
+          return Math.max(-.9, Math.min(.9, air + pivot));
+        }
+        if (kind === 'butterflySpin') {
+          // Centrifugal dual-handle flutter: brisk Doppler whoosh with subtle handle-whir modulation + steel whisper
+          const env = Math.sin(Math.PI * u) ** 1.4;
+          const flutter = .78 + .22 * Math.sin(tau * 32 * t);
+          const air = (midBand * .28 + highBand * .22) * env * flutter;
+          const bearing = .085 * Math.exp(-48 * t) * (Math.sin(tau * 3120 * t) + .42 * Math.sin(tau * 4890 * t));
+          const tick = Math.exp(-340 * t) * .12 * Math.sin(tau * 4120 * t);
+          return Math.max(-.91, Math.min(.91, air + bearing + tick));
+        }
+        if (kind === 'butterflySheen') {
+          // Near-silent hollow-grind bevel whisper during inspect admiration
+          const breath = Math.sin(Math.PI * u) ** 2;
+          const air = (.08 * midBand + .06 * highBand) * breath;
+          const glint = (.048 * Math.sin(tau * 3680 * t) + .026 * Math.sin(tau * 5620 * t)) * breath;
+          return Math.max(-.82, Math.min(.82, air + glint));
+        }
+        if (kind === 'butterflySlash') {
+          // CS2 fast razor whip-slash: early aggressive air-tear + tight wrist snap + cold edge zip
+          const peak = Math.exp(-(((t - .026) / .022) ** 2));
+          const env = Math.sin(Math.PI * u) ** 1.45;
+          const cut = (midBand * .36 + highBand * .34) * (.35 * env + .98 * peak);
+          const snap = .20 * Math.sin(tau * (175 * t + .38 * (1 - Math.exp(-62 * t)))) * Math.exp(-52 * t);
+          const edge = .105 * Math.exp(-58 * t) * (Math.sin(tau * 2260 * t) + .45 * Math.sin(tau * 3780 * t)) * (.5 + .5 * peak);
+          return Math.max(-.93, Math.min(.93, cut + snap + edge));
+        }
+        if (kind === 'butterflyThrust') {
+          // CS2 heavy viper lunge: deep air rush + mechanical tension click + needle-tip hiss
+          const peak = Math.exp(-(((t - .038) / .030) ** 2));
+          const env = Math.sin(Math.PI * u) ** 1.5;
+          const click = Math.exp(-360 * t) * (.18 * highBand + .15 * Math.sin(tau * 2980 * t));
+          const rush = (midBand * .40 + highBand * .26) * (.40 * env + .96 * peak) + .26 * lp * (env + .75 * peak);
+          const punch = .26 * Math.sin(tau * (108 * t + .58 * (1 - Math.exp(-46 * t)))) * Math.exp(-30 * t);
+          const hiss = .095 * Math.exp(-45 * t) * Math.sin(tau * (2640 - 420 * u) * t) * peak;
+          return Math.max(-.94, Math.min(.94, click + rush + punch + hiss));
+        }
         if (kind === 'butterflyCatch') {
           // Authentic balisong double-clack (tang lock + handle mate 18ms apart) + gloved palm thud + subtle T-latch clink!
           const c1 = Math.exp(-320 * t) * (.28 * (white - lp) + .22 * Math.sin(tau * 2680 * t) + .12 * Math.sin(tau * 4890 * t));
@@ -189,17 +242,43 @@ export function createDeckAudio() {
           return Math.max(-.92, Math.min(.92, c1 + c2 + palm + latch));
         }
         if (kind === 'butterflyRicochet') {
-          // Gloved knuckle bounce + ringing steel spine shimmer
-          const tap = .26 * Math.sin(tau * 340 * t) * Math.exp(-68 * t) + .18 * (white - lp) * Math.exp(-240 * t);
-          const ring = (.20 * Math.sin(tau * motion.pitch * t) + .11 * Math.sin(tau * motion.pitch * 1.62 * t)) * Math.exp(-42 * t);
-          return Math.max(-.9, Math.min(.9, tap + ring));
+          // Gloved knuckle bounce + crisp titanium spine ping
+          const tap = .24 * Math.sin(tau * 320 * t) * Math.exp(-76 * t) + .22 * (white - lp) * Math.exp(-280 * t);
+          const ring = (.18 * Math.sin(tau * 3560 * t) + .11 * Math.sin(tau * 5740 * t) + .06 * Math.sin(tau * 8120 * t)) * Math.exp(-52 * t);
+          return Math.max(-.91, Math.min(.91, tap + ring));
+        }
+        if (kind === 'karambitSpin') {
+          // CS2 Karambit curved-blade arc whoosh: silky Doppler sweep + glassy high-steel whisper
+          const env = Math.sin(Math.PI * u) ** 1.55;
+          const peak = Math.exp(-(((t - .044) / .030) ** 2));
+          const air = (midBand * .27 + highBand * .25) * (.44 * env + .86 * peak) + .11 * lp * env;
+          const glint = (.072 * Math.sin(tau * (3080 + 480 * u) * t) + .038 * Math.sin(tau * 4920 * t) + .018 * Math.sin(tau * 7140 * t)) * env * Math.exp(-24 * t);
+          return Math.max(-.9, Math.min(.9, air + glint));
+        }
+        if (kind === 'karambitFlick') {
+          // Agile wrist-flick whip + crisp finger-ring bearing micro-tick
+          const env = Math.sin(Math.PI * u) ** 1.45;
+          const peak = Math.exp(-(((t - .026) / .020) ** 2));
+          const whip = (midBand * .26 + highBand * .28) * (.38 * env + .92 * peak);
+          const ringTick = Math.exp(-360 * t) * (.14 * highBand + .12 * Math.sin(tau * 4180 * t));
+          const shimmer = .058 * Math.sin(tau * 2760 * t) * Math.exp(-54 * t);
+          return Math.max(-.9, Math.min(.9, whip + ringTick + shimmer));
         }
         if (kind === 'karambitRing') {
-          // Hypnotic Valorant Reaver/RGX continuous ring-whir: smooth air swell + delicate crystalline steel hum
-          const swell = Math.sin(Math.PI * t / duration);
-          const air = .20 * (white - lp) * swell * swell;
-          const hum = (.095 * Math.sin(tau * 3180 * t) + .055 * Math.sin(tau * 4960 * t)) * swell;
-          return Math.max(-.85, Math.min(.85, air + hum));
+          // Hypnotic CS2 continuous finger-ring whir: silky air vortex + delicate crystalline steel hum
+          const swell = Math.sin(Math.PI * u);
+          const air = (midBand * .16 + highBand * .14) * swell * swell;
+          const hum = (.068 * Math.sin(tau * 3320 * t) + .036 * Math.sin(tau * 5180 * t) + .018 * Math.sin(tau * 7360 * t)) * swell;
+          return Math.max(-.84, Math.min(.84, air + hum));
+        }
+        if (kind === 'karambitCut') {
+          // CS2 razor-talon slash: crisp early air-tear + tight wrist snap + curved-edge zip
+          const peak = Math.exp(-(((t - .028) / .024) ** 2));
+          const env = Math.sin(Math.PI * u) ** 1.4;
+          const tear = (midBand * .38 + highBand * .36) * (.34 * env + .98 * peak);
+          const snap = .22 * Math.sin(tau * (152 * t + .44 * (1 - Math.exp(-56 * t)))) * Math.exp(-44 * t);
+          const edge = .10 * Math.exp(-52 * t) * (Math.sin(tau * 2480 * t) + .42 * Math.sin(tau * 4120 * t)) * (.5 + .5 * peak);
+          return Math.max(-.94, Math.min(.94, tear + snap + edge));
         }
         if (kind === 'karambitCatch') {
           // Weighty CS2 Karambit palm-clamp catch: crisp metallic ring-stop + warm gloved palm thud
@@ -208,7 +287,7 @@ export function createDeckAudio() {
           return Math.max(-.92, Math.min(.92, click + palm));
         }
         const contact = motion.asset === 'latch';
-        const noise = (white - lp) * (contact ? .26 * Math.exp(-340 * t) : .25 * Math.sin(Math.PI * t / duration));
+        const noise = (white - lp) * (contact ? .26 * Math.exp(-340 * t) : .25 * Math.sin(Math.PI * u));
         const phase = tau * motion.pitch * t;
         const metal = (Math.sin(phase) + .38 * Math.sin(phase * 1.87) + .16 * Math.sin(phase * 2.73)) * motion.ring * Math.exp(-54 * t);
         return Math.max(-.92, Math.min(.92, noise + metal));
@@ -224,18 +303,23 @@ export function createDeckAudio() {
         return click + latch + grip;
       }
       if (kind === 'bladeFlesh') {
-        const pitch = weapon === 'butterfly' ? 155 : 122;
-        const thud = .50 * Math.sin(2 * Math.PI * pitch * t) * Math.exp(-46 * t);
-        const edge = .52 * lp * Math.exp(-83 * t);
-        const headTick = head ? .17 * Math.sin(2 * Math.PI * 1220 * t) * Math.exp(-105 * t) : 0;
-        return thud + edge + headTick;
+        // CS2 crisp knife flesh hit: punchy pitch-drop chest thump + snappy wet tear + subtle steel bite
+        const tau = 2 * Math.PI;
+        const base = weapon === 'butterfly' ? 132 : 116;
+        const thud = .52 * Math.sin(tau * (base * t + .62 * (1 - Math.exp(-56 * t)))) * Math.exp(-38 * t);
+        const tear = (midBand * .44 + highBand * .22) * Math.exp(-68 * t) + .34 * lp * Math.exp(-52 * t);
+        const bite = .20 * highBand * Math.exp(-195 * t);
+        const headTick = head ? (.20 * Math.sin(tau * 1560 * t) + .12 * Math.sin(tau * 3080 * t)) * Math.exp(-92 * t) : 0;
+        return Math.max(-.95, Math.min(.95, thud + tear + bite + headTick));
       }
       if (kind === 'bladeWall') {
-        const pitch = weapon === 'butterfly' ? 2360 : 1910;
-        const strike = .29 * (white - lp) * Math.exp(-145 * t);
-        const ring = (.35 * Math.sin(2 * Math.PI * pitch * t) + .16 * Math.sin(2 * Math.PI * pitch * 1.64 * t)) * Math.exp(-33 * t);
-        const knock = .22 * Math.sin(2 * Math.PI * 275 * t) * Math.exp(-65 * t);
-        return strike + ring + knock;
+        // CS2 cold-steel wall/metal strike: sharp impact crack + staggered inharmonic steel spark ring
+        const tau = 2 * Math.PI;
+        const pitch = weapon === 'butterfly' ? 2480 : 2060;
+        const strike = .34 * (white - lp) * Math.exp(-175 * t) + .14 * highBand * Math.exp(-48 * t);
+        const ring = (.28 * Math.sin(tau * pitch * t) + .16 * Math.sin(tau * pitch * 1.57 * t) + .09 * Math.sin(tau * pitch * 2.38 * t)) * Math.exp(-30 * t);
+        const knock = .22 * Math.sin(tau * 290 * t) * Math.exp(-62 * t);
+        return Math.max(-.95, Math.min(.95, strike + ring + knock));
       }
       if (kind === 'shot') {
         if (weapon === 'awm') {

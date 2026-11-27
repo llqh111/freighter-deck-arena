@@ -1,9 +1,9 @@
 import {buildArmory} from './armory-models.js?v=44';
 import {isMelee} from './arsenal.js?v=30';
-import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=20';
-import {createButterflyMotion} from './butterfly-motion.js?v=24';
+import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=25';
+import {createButterflyMotion} from './butterfly-motion.js?v=25';
 import {buildBayonet} from './bayonet-model.js?v=8';
-import {createBayonetMotion} from './bayonet-motion.js?v=7';
+import {createBayonetMotion} from './bayonet-motion.js?v=11';
 import {buildClassicBlades} from './classic-blades.js?v=2';
 import {classicMotionProfiles} from './classic-blade-motion.js?v=2';
 import * as T from './three.module.js';
@@ -277,9 +277,11 @@ export function createViewModel(playMotionSound = () => {}) {
   let curPivX=0,curPivY=-.012,curPivZ=.042;
   let aspect=1.7,draw=0,gesture=1,gestureDuration=.5,inspectT=1,loadDuration=1.45;
   const ease=(x,y,dt,rate)=>T.MathUtils.lerp(x,y,1-Math.exp(-rate*dt));
+  const butterflyCueGain={butterflySheen:.44,butterflyAir:.66,butterflySpin:.74,butterflyTick:.84,butterflyRicochet:.82,butterflySlash:.88,butterflyThrust:.94};
   const butterflyMotion=createButterflyMotion((cue,spinSpeed=0)=>{
-    const boost=cue==='butterflySpin'?Math.min(.22,spinSpeed*.008):0;
-    playMotionSound({kind:cue,weapon:'butterfly',volume:Math.min(.92,.72+boost),pan:.13});
+    const base=butterflyCueGain[cue]??.72;
+    const boost=cue==='butterflySpin'?Math.min(.18,spinSpeed*.007):0;
+    playMotionSound({kind:cue,weapon:'butterfly',volume:Math.min(.95,base+boost),pan:.13});
   });
   const karambitMotion=createKarambitMotion((cue,volume)=>playMotionSound({kind:cue,weapon:'karambit',volume,pan:.13}));
   const sleeveDirection=new T.Vector3(),wristUp=new T.Vector3(0,1,0);

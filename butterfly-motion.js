@@ -50,7 +50,7 @@ const clips = {
     kf(0.172, [-.032,  .032, -.022,  .22, -.38, -.76], [1.18, 2.38], [-2.58, -.24,  .52], {piv: 1, thumb: 1.00, idx:  .18, low:  .06, left:  .24}, 'butterflyTick'),
     kf(0.285, [-.056,  .054, -.036,  .30, -.12,  .18], [0.24, 1.32], [-4.52,  .14,  .22], {piv: 1, thumb:  .78, idx:  .32, low:  .10, left:  .18}, 'butterflySpin'),
     kf(0.395, [-.024,  .018, -.014,  .10,  .12,  .28], [0.02, 0.22], [-6.08,  .06, -.06], {piv: 0, thumb:  .20, idx:  .78, low:  .42, left:  .08}, 'butterflyTick'),
-    kf(drawCatchTimes.draw, [ .010, -.020,  .010, -.11,  .05, -.12], [0.00, 0.00], [-TAU,   .00,  .03], {piv: 0, thumb: -.08, idx: 1.08, low: 1.08, left:  .02, kick:  .85}, 'butterflyCatch'),
+    kf(drawCatchTimes.draw, [ .010, -.020,  .010, -.11,  .05, -.12], [0.00, 0.00], [-TAU,   .00,  .03], {piv: 0, thumb: -.08, idx: 1.08, low: 1.08, left:  .02, kick:  .85}),
     kf(0.575, [-.002,  .004, -.002,  .03, -.01,  .03], [0.00, 0.00], [-TAU,   .00, -.01], {piv: 0, thumb:  .00, idx: 1.00, low: 1.00, left:  .00, kick: -.18}),
     kf(0.680, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, 0], {piv: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
   ],
@@ -61,7 +61,7 @@ const clips = {
     kf(0.095, [-.008, -.018,  .004,  .16, -.18, -.38], [1.92, 2.65], [-1.35, -.20,  .38], {piv: 3, lift: .028, thumb:  .88, idx:  .22, low:  .10, left: .22}, 'butterflyAir'),
     kf(0.225, [-.044,  .036, -.028,  .28, -.22, -.28], [0.78, 1.82], [-3.35,  .16,  .64], {piv: 3, lift: .078, thumb:  .95, idx:  .14, low:  .06, left: .36}, 'butterflySpin'),
     kf(0.355, [-.050,  .028, -.030,  .22,  .08,  .14], [0.16, 0.72], [-5.18,  .22,  .28], {piv: 3, lift: .052, thumb:  .82, idx:  .20, low:  .08, left: .28}, 'butterflyTick'),
-    kf(drawCatchTimes.rareDraw, [ .006, -.028,  .014, -.16,  .08, -.16], [0.00, 0.00], [-TAU,   .00,  .04], {piv: 0, lift: .000, thumb: -.12, idx: 1.10, low: 1.12, left: .10, kick: 1.15}, 'butterflyCatch'),
+    kf(drawCatchTimes.rareDraw, [ .006, -.028,  .014, -.16,  .08, -.16], [0.00, 0.00], [-TAU,   .00,  .04], {piv: 0, lift: .000, thumb: -.12, idx: 1.10, low: 1.12, left: .10, kick: 1.15}),
     kf(0.585, [-.006,  .007, -.004,  .05, -.02,  .05], [0.00, 0.00], [-TAU,   .00, -.02], {piv: 0, lift: .000, thumb:  .02, idx: 1.01, low: 1.02, left: .03, kick: -.25}),
     kf(0.725, [ .001, -.002,  .001, -.01,  .00, -.01], [0.00, 0.00], [-TAU,   .00,  .00], {piv: 0, lift: .000, thumb:  .00, idx: 1.00, low: 1.00, left: .00, kick:  .00}),
     kf(0.860, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, 0], {piv: 0, lift: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
@@ -74,7 +74,7 @@ const clips = {
     kf(0.195, [-.048,  .042, -.038,  .18, -.22, -.44], [1.45, 2.18], [ 1.68, -.22,  .34], {piv: 1, thumb: 1.00, idx:  .18, low:  .06, left: .24}, 'butterflyAir'),
     kf(0.340, [-.086,  .074, -.062,  .34, -.12, -.22], [1.96, 1.42], [ 3.82, -.14,  .52], {piv: 1, thumb: 1.00, idx:  .16, low:  .06, left: .36}, 'butterflySpin'),
     kf(0.475, [-.078,  .066, -.058,  .22,  .24,  .28], [0.42, 0.88], [ 5.62,  .18, -.14], {piv: 1, thumb:  .58, idx:  .45, low:  .22, left: .42}, 'butterflyTick'),
-    kf(0.585, [-.068,  .054, -.052,  .26,  .32,  .22], [0.00, 0.00], [ TAU,  -.16, -.06], {piv: 0, thumb: -.05, idx: 1.05, low: 1.06, left: .46, kick: .65}, 'butterflyCatch'),
+    kf(0.585, [-.068,  .054, -.052,  .26,  .32,  .22], [0.00, 0.00], [ TAU,  -.16, -.06], {piv: 0, thumb: -.05, idx: 1.05, low: 1.06, left: .46, kick: .65}),
     // Slow cold-steel bevel light sweep: glides overhead key-light down the hollow-ground ridge to needle tip
     // Push-in beat: blade glides 36mm toward the lens while the bevelled ridge rolls over, then eases back.
     kf(0.960, [-.074,  .076, -.020,  .32,  .42,  .30], [0.00, 0.00], [ TAU,  -.34, -.10], {piv: 0, thumb:  .04, idx:  .98, low:  .98, left: .52}, 'butterflySheen'),
@@ -82,7 +82,7 @@ const clips = {
     // Crisp index-pinch fan snap back to guard
     kf(1.640, [-.048,  .044, -.036,  .24, -.22, -.34], [0.92, 1.48], [ TAU,   .08,  2.45], {piv: 0, thumb: -.32, idx:  .42, low:  .10, left: .24}, 'butterflySpin'),
     kf(1.860, [-.016,  .012, -.010,  .06,  .08,  .14], [0.04, 0.14], [ TAU,   .02,  TAU],  {piv: 0, thumb:  .12, idx:  .88, low:  .72, left: .10}, 'butterflyTick'),
-    kf(1.980, [ .006, -.010,  .006, -.06,  .03, -.06], [0.00, 0.00], [ TAU,   .00,  TAU],  {piv: 0, thumb: -.04, idx: 1.04, low: 1.05, left: .02, kick: .48}, 'butterflyCatch'),
+    kf(1.980, [ .006, -.010,  .006, -.06,  .03, -.06], [0.00, 0.00], [ TAU,   .00,  TAU],  {piv: 0, thumb: -.04, idx: 1.04, low: 1.05, left: .02, kick: .48}),
     kf(2.220, [0, 0, 0, 0, 0, 0], [0, 0], [TAU, 0, TAU], {piv: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
   ],
 
@@ -100,7 +100,7 @@ const clips = {
     kf(1.610, [-.062,  .052, -.044,  .28,  .18,  .26], [1.95, 1.55], [-TAU*2, .16,  TAU],  {piv: 1, thumb:  .88, idx: -.20, low:  .10, left: .38}, 'butterflyRicochet'),
     // Ricochet reversal off back of index knuckle straight into snap catch!
     kf(1.835, [-.044,  .036, -.030,  .16,  .28,  .34], [0.48, 0.92], [-10.2,  .10,  TAU],  {piv: 1, thumb:  .52, idx:  .44, low:  .22, left: .26}, 'butterflySpin'),
-    kf(2.020, [ .008, -.018,  .010, -.12,  .08, -.14], [0.00, 0.00], [-TAU,   .00,  TAU],  {piv: 0, thumb: -.10, idx: 1.08, low: 1.10, left: .14, kick: .95}, 'butterflyCatch'),
+    kf(2.020, [ .008, -.018,  .010, -.12,  .08, -.14], [0.00, 0.00], [-TAU,   .00,  TAU],  {piv: 0, thumb: -.10, idx: 1.08, low: 1.10, left: .14, kick: .95}),
     // Brief poised admiration gleam & smooth settle
     kf(2.360, [-.032,  .026, -.024,  .16,  .20,  .12], [0.00, 0.00], [-TAU,  -.12,  TAU],  {piv: 0, thumb:  .00, idx: 1.00, low: 1.00, left: .08, kick: -.16}, 'butterflySheen'),
     kf(2.720, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, TAU], {piv: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
@@ -112,7 +112,7 @@ const clips = {
     kf(0.072, [-.032,  .052, -.024,  .20, -.18, -.42], [0.95, 1.78], [-1.52, -.14,  .30], {piv: 1, thumb:  .95, idx:  .20, low:  .06, left: .08}, 'butterflyAir'),
     kf(0.165, [-.064,  .076, -.040,  .34, -.32, -.66], [1.78, 2.42], [-3.68, -.12,  .48], {piv: 1, thumb: 1.00, idx:  .16, low:  .05, left: .14}, 'butterflySpin'),
     kf(0.262, [-.052,  .058, -.032,  .18, -.28, -.12], [0.68, 1.18], [-5.48,  .14,  .14], {piv: 1, thumb:  .55, idx:  .42, low:  .18, left: .10}, 'butterflyTick'),
-    kf(0.342, [ .008, -.012,  .008, -.08,  .05, -.10], [0.00, 0.00], [-TAU,   .00,  .02], {piv: 0, thumb: -.08, idx: 1.06, low: 1.08, left: .02, kick: .62}, 'butterflyCatch'),
+    kf(0.342, [ .008, -.012,  .008, -.08,  .05, -.10], [0.00, 0.00], [-TAU,   .00,  .02], {piv: 0, thumb: -.08, idx: 1.06, low: 1.08, left: .02, kick: .62}),
     kf(0.460, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, 0], {piv: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
   ],
 
@@ -122,7 +122,7 @@ const clips = {
     kf(0.074, [-.036,  .054, -.026,  .18,  .22,  .38], [0.92, 1.68], [ 1.58,  .16, -.28], {piv: 1, thumb:  .92, idx:  .22, low:  .06, left: .10}, 'butterflyAir'),
     kf(0.168, [-.068,  .078, -.044,  .36,  .38,  .64], [1.82, 2.36], [ 3.74,  .10, -.46], {piv: 1, thumb: 1.00, idx:  .18, low:  .05, left: .16}, 'butterflyTick'),
     kf(0.268, [-.048,  .056, -.030,  .20, -.08,  .14], [0.62, 1.12], [ 5.52, -.14, -.12], {piv: 1, thumb:  .52, idx:  .45, low:  .20, left: .10}, 'butterflySpin'),
-    kf(0.352, [ .006, -.010,  .007, -.07, -.04,  .09], [0.00, 0.00], [ TAU,   .00, -.02], {piv: 0, thumb: -.06, idx: 1.06, low: 1.07, left: .02, kick: .60}, 'butterflyCatch'),
+    kf(0.352, [ .006, -.010,  .007, -.07, -.04,  .09], [0.00, 0.00], [ TAU,   .00, -.02], {piv: 0, thumb: -.06, idx: 1.06, low: 1.07, left: .02, kick: .60}),
     kf(0.470, [0, 0, 0, 0, 0, 0], [0, 0], [TAU, 0, 0], {piv: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
   ],
 
@@ -132,7 +132,7 @@ const clips = {
     kf(0.075, [-.042,  .058, -.030,  .22,  .14,  .24], [1.55, 0.25], [-1.35,  .10,  .42], {piv: 2, thumb:  .90, idx: -.42, low:  .06, left: .16}, 'butterflyAir'),
     kf(0.195, [-.074,  .084, -.048,  .34, -.12, -.22], [1.62, 0.18], [-4.15, -.08,  2.10], {piv: 2, thumb:  .94, idx: -.44, low:  .05, left: .24}, 'butterflySpin'),
     kf(0.315, [-.056,  .060, -.036,  .22, -.22, -.30], [0.75, 1.05], [-5.68,  .08,  5.35], {piv: 0, thumb: -.28, idx:  .42, low:  .14, left: .16}, 'butterflyTick'),
-    kf(0.405, [ .009, -.014,  .009, -.09,  .05, -.11], [0.00, 0.00], [-TAU,   .00,  TAU],  {piv: 0, thumb: -.08, idx: 1.08, low: 1.09, left: .04, kick: .75}, 'butterflyCatch'),
+    kf(0.405, [ .009, -.014,  .009, -.09,  .05, -.11], [0.00, 0.00], [-TAU,   .00,  TAU],  {piv: 0, thumb: -.08, idx: 1.08, low: 1.09, left: .04, kick: .75}),
     kf(0.540, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, TAU], {piv: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
   ],
 
@@ -142,7 +142,7 @@ const clips = {
     kf(0.078, [-.024,  .032, -.018,  .14, -.12, -.24], [0.96, 1.54], [-1.20, -.12,  .26], {piv: 3, lift: .018, thumb:  .86, idx:  .24, low:  .08, left: .14}, 'butterflyAir'),
     kf(0.195, [-.052,  .064, -.036,  .26, -.16, -.18], [0.58, 1.28], [-3.45,  .14,  .48], {piv: 3, lift: .058, thumb:  .92, idx:  .16, low:  .06, left: .26}, 'butterflySpin'),
     kf(0.315, [-.044,  .046, -.028,  .18,  .10,  .16], [0.14, 0.48], [-5.35,  .12,  .18], {piv: 3, lift: .034, thumb:  .72, idx:  .28, low:  .12, left: .18}, 'butterflyTick'),
-    kf(0.415, [ .010, -.020,  .012, -.12,  .06, -.13], [0.00, 0.00], [-TAU,   .00,  .02], {piv: 0, lift: .000, thumb: -.10, idx: 1.09, low: 1.10, left: .06, kick: .92}, 'butterflyCatch'),
+    kf(0.415, [ .010, -.020,  .012, -.12,  .06, -.13], [0.00, 0.00], [-TAU,   .00,  .02], {piv: 0, lift: .000, thumb: -.10, idx: 1.09, low: 1.10, left: .06, kick: .92}),
     kf(0.560, [0, 0, 0, 0, 0, 0], [0, 0], [-TAU, 0, 0], {piv: 0, lift: 0, thumb: 0, idx: 1, low: 1, left: 0, kick: 0})
   ],
 
@@ -286,7 +286,6 @@ export function createButterflyMotion(emit) {
       if (quickGrip && time >= quickGripTime) {
         quickGrip = false;
         secondary.latchVel -= 8.5;
-        emit('bladeGrip', secondary.spinSpeed);
       }
       while (section + 1 < clip.length && time >= clip[section + 1][0]) {
         section++;

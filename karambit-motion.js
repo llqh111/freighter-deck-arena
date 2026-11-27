@@ -55,7 +55,7 @@ export const KARAMBIT_KEYFRAMES = [
     armPos: [.016, .048, -.022], armRot: [.08, .12, -.16], wristRot: [.06, .08, -.12],
     fingers: [0, .14, .12, .10, .18], pivotPos: [0, 0, 0], leftPose: 0.50, kick: 0.52,
     unwrappedSpinAngle: -470, spinAxis: [.03, -.02, 1],
-    inTangent: 0, outTangent: 0, cue: 'karambitCatch', volume: 0.76
+    inTangent: 0, outTangent: 0
   },
   {
     time: 0.54, refTime: 2.34, phase: '缓过接刀',
@@ -161,7 +161,7 @@ const clips = {
     key(.165,          [-.010,  .032, -.012,  .04, -.02,  .16,  2.96, .96, .88,  .00]),
     key(.260,          [ .012,  .042, -.020,  .12,  .12, -.10,  1.05, .74, .58,  .00], 'karambitFlick', .70),
     key(.335,          [ .006,  .018, -.010,  .08,  .08, -.12,  0.16, .24, .16,  .00]),
-    key(drawCatchTime, [-.005, -.016,  .010, -.10, -.06,  .11, -.145, .00, .00,  .96], 'karambitCatch', .94),
+    key(drawCatchTime, [-.005, -.016,  .010, -.10, -.06,  .11, -.145, .00, .00,  .96]),
     key(.475,          [ .002,  .005, -.003,  .03,  .02, -.04,  0.032, .00, .02, -.24]),
     key(.595,          [-.001, -.002,  .001, -.01, -.01,  .01, -.008, .00, .00,  .04]),
     key(.720,          idle)
@@ -176,7 +176,7 @@ const clips = {
     key(.062, [-.014,  .044, -.022, -.12,  .14, -.16, -.96,      .94, .88,  0], 'karambitFlick', .74),
     key(.178, [-.028,  .078, -.038, -.18,  .22, -.24, -3.78,     .98, .90,  0], 'karambitSpin', .72),
     key(.290, [-.012,  .036, -.018, -.04,  .08, -.04, -6.04,     .38, .22,  0]),
-    key(.342, [ .008, -.015,  .010,  .08, -.04,  .09, -tau+.13,  .00, .00, .82], 'karambitCatch', .88),
+    key(.342, [ .008, -.015,  .010,  .08, -.04,  .09, -tau+.13,  .00, .00, .82]),
     key(.405, [-.002,  .004, -.002, -.02,  .01, -.03, -tau-.02,  .00, .02, -.16]),
     key(.460, [0, 0, 0, 0, 0, 0, -tau, 0, 0, 0])
   ],
@@ -185,7 +185,7 @@ const clips = {
     key(.066, [ .016,  .042, -.020, -.10, -.12,  .18,  .98,      .92, .86,  0], 'karambitFlick', .72),
     key(.188, [-.020,  .080, -.038, -.16,  .20, -.18,  3.86,     .98, .90,  0], 'karambitSpin', .74),
     key(.305, [-.010,  .034, -.016, -.04,  .06,  .04,  6.06,     .36, .20,  0]),
-    key(.358, [ .006, -.015,  .010,  .08, -.03, -.08,  tau-.13,  .00, .00, .82], 'karambitCatch', .88),
+    key(.358, [ .006, -.015,  .010,  .08, -.03, -.08,  tau-.13,  .00, .00, .82]),
     key(.422, [-.002,  .004, -.002, -.02,  .01,  .02,  tau+.02,  .00, .02, -.16]),
     key(.480, [0, 0, 0, 0, 0, 0, tau, 0, 0, 0])
   ],
@@ -331,7 +331,6 @@ export function createKarambitMotion(emit = () => {}) {
   let outroStartSpinRad = 0, outroSpinSlope = 0;
   let outroTargetSpinRad = 0;
   let outroTime = 0;
-  let outroCatchCued = false;
 
   const loopDuration = () => KARAMBIT_KEYFRAMES[KARAMBIT_KEYFRAMES.length - 1].time;
 
@@ -477,10 +476,6 @@ export function createKarambitMotion(emit = () => {}) {
     const spinSlope = 6 * u * (1 - u) + outroSpinSlope * (3 * u2 - 4 * u + 1);
     curSpinVelDegS = (outroTargetSpinRad - outroStartSpinRad) * rad2deg * spinSlope / dur;
     phaseLabel = 'OUTRO 收刀回Idle';
-    if (!outroCatchCued && u >= 0.64) {
-      outroCatchCued = true;
-      emit('karambitCatch', .86);
-    }
     return u >= 1;
   }
 
@@ -617,7 +612,7 @@ export function createKarambitMotion(emit = () => {}) {
     clip = null;
     contactAt = 0; contactFrame = false; queued = null;
     KARAMBIT_INSPECT_CONFIG.paused = false;
-    outroTime = 0; outroCatchCued = false;
+    outroTime = 0;
     outroStartPos[0] = pose[0]; outroStartPos[1] = pose[1]; outroStartPos[2] = pose[2];
     outroStartHandQ.copy(handQuat);
     outroStartWristQ.copy(wristQuat);
@@ -814,7 +809,6 @@ export function createKarambitMotion(emit = () => {}) {
       if (quickGrip && time >= quickGripTime) {
         quickGrip = false;
         rebound = Math.max(rebound, .009);
-        emit('bladeGrip', .68);
       }
       while (clip[section + 1] && time >= clip[section + 1].time) {
         const frame = clip[++section];
