@@ -1,7 +1,7 @@
 import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=34';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=25';
-import {createMatch} from './match.js?v=48';
+import {createMatch} from './match.js?v=49';
 import {createViewModel} from './viewmodel.js?v=55';
 import {isMelee,melees} from './arsenal.js?v=30';
 import {createDeckAudio} from './deck-audio.js?v=33';
@@ -18,26 +18,37 @@ function renderDeathReport(target,report){
   target.replaceChildren();
   if(!report)return;
   const number=value=>Number(value.toFixed(1));
-  const add=(label,detail)=>{
-    const row=document.createElement('div');
-    const title=document.createElement('strong');
-    title.textContent=label;
-    row.append(title,document.createTextNode(detail));
-    target.append(row);
+  const add=(parent,tag,value,style)=>{
+    const element=document.createElement(tag);
+    element.textContent=value;
+    if(style)element.className=style;
+    parent.append(element);
+    return element;
   };
-  const describe=entry=>{
-    if(!entry)return '无命中';
-    const parts=Object.entries(hitParts).filter(([part])=>entry.parts[part])
-      .map(([part,label])=>label+' '+entry.parts[part]).join(' · ');
-    return entry.hits+' 次 · 扣血 '+number(entry.health)+' · 扣甲 '+number(entry.armor)+'（'+parts+'）';
-  };
-  add('致命一击',(names[report.weapon]||report.weapon)+' · '+hitParts[report.part]);
-  if(report.killerIsSelf){
-    add('自身受到',describe(report.taken));
-  }else{
-    add('来自 '+report.killer,describe(report.taken));
-    add('对其造成',describe(report.given));
-    add('对手剩余','生命 '+number(report.healthLeft)+' · 护甲 '+number(report.armorLeft));
+  add(target,'strong','交火报告','combatHeading');
+  const cards=add(target,'div','','combatCards');
+  if(!report.targets?.length)add(cards,'p','本次生命没有命中敌人','combatNote');
+  for(const {name,killer,damage} of report.targets||[]){
+    const card=add(cards,'section','',killer?'combatCard combatKiller':'combatCard');
+    const title=add(card,'div','','combatTarget');
+    add(title,'strong',name);
+    add(title,'b',number(damage?.health??0)+' 扣血');
+    if(killer){
+      add(card,'p','击杀者 · '+(names[report.weapon]||report.weapon)+' · '+hitParts[report.part]+' · 剩余 '+number(report.healthLeft)+' 生命','combatNote');
+    }
+    if(!damage){
+      add(card,'p','未命中','combatNote');
+      continue;
+    }
+    const zones=add(card,'ul','','combatZones');
+    for(const [part,label] of Object.entries(hitParts)){
+      const zone=damage.parts[part];
+      if(!zone)continue;
+      const row=add(zones,'li','');
+      add(row,'span',label);
+      add(row,'span',zone.hits+' 次','combatNote');
+      add(row,'b',number(zone.health));
+    }
   }
 }
 let shownDeathReport=null;
@@ -608,6 +619,10 @@ let lastWheelAt=0;
 canvas.addEventListener('wheel',e=>{
   if(mode!=='playing')return;
   e.preventDefault();
+  if(!match.state.alive){
+    $('respawn').scrollTop+=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?$('respawn').clientHeight:1);
+    return;
+  }
   const now=performance.now();
   if(now-lastWheelAt<65)return;
   lastWheelAt=now;

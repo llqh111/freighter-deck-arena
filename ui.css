@@ -102,9 +102,21 @@ button[data-pref=butterflyFinish][data-value=violet-tide]::before{background:lin
   #modePick+.stats{margin-top:11px}
 }
 
-#respawn{top:54%;width:max-content;max-width:calc(100vw - 32px);padding:10px 14px;white-space:normal;letter-spacing:0;border-left:2px solid var(--red)}
-#respawnLabel{font-weight:700;font-size:14px}
-:is(#deathReport,#finalDeathReport):not(:empty){display:grid;gap:5px;margin-top:8px;padding-top:7px;border-top:1px solid var(--border);font-size:12px;line-height:1.35;color:#e0e7e7}
-:is(#deathReport,#finalDeathReport)>div{display:flex;gap:5px 12px;flex-wrap:wrap;overflow-wrap:anywhere}
-:is(#deathReport,#finalDeathReport) strong{color:var(--ice)}
-@media(max-height:500px){#respawn{top:44%}}
+#respawn{top:clamp(68px,25vh,200px);left:auto;right:18px;transform:none;width:min(292px,calc(100vw - 30px));max-height:65svh;overflow:auto;pointer-events:auto;touch-action:pan-y;padding:10px 12px;white-space:normal;letter-spacing:0;border-left:2px solid var(--red)}
+#respawnLabel{font-weight:700;font-size:12px;color:#e0e7e7}
+:is(#deathReport,#finalDeathReport):not(:empty){display:grid;gap:7px;margin-top:8px;padding-top:7px;border-top:1px solid var(--border);font-size:12px;line-height:1.35;color:#e0e7e7}
+.combatHeading{font-size:15px;color:var(--ink)}
+.combatCards{display:grid;gap:6px}
+.combatCard{padding:7px 8px;background:#ffffff0b}
+.combatKiller{border-left:2px solid var(--red)}
+.combatTarget,.combatZones li{display:flex;gap:8px;align-items:baseline}
+.combatTarget strong{flex:1;min-width:0;overflow-wrap:anywhere}
+.combatTarget b{color:var(--gold);white-space:nowrap}
+.combatNote{margin:3px 0 0;color:#bac8ce}
+.combatZones{list-style:none;margin:5px 0 0;padding:0}
+.combatZones li{padding:3px 0;border-top:1px solid #ffffff18}
+.combatZones li span:first-child{flex:1}
+.combatZones li b{width:4ch;text-align:right;color:var(--ice);font-variant-numeric:tabular-nums}
+@media(max-width:600px),(max-height:500px){#respawn{top:64px;right:9px;width:min(254px,calc(100vw - 26px));max-height:66svh}}
+
+#hud:has(#respawn:not([hidden])) #feed{visibility:hidden}
