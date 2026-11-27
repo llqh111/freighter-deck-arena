@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {buildKarambit} from './karambit-model.js?v=18';
+import {buildKarambit} from './karambit-model.js?v=20';
 
 // Compact exterior models built in camera space, with an independent magazine and action.
 function violetTideTexture(){
@@ -46,6 +46,45 @@ function violetTideTexture(){
   texture.offset.set(-.086,-.89);
   texture.anisotropy=4;
   return texture;
+}
+
+// Mineral bands use each blade face's lengthwise UVs.
+function emeraldBladeTexture(){
+  const width=512,height=192;
+  const canvas=document.createElement('canvas');
+  canvas.width=width;canvas.height=height;
+  const ctx=canvas.getContext('2d'),pixels=ctx.createImageData(width,height);
+  const mix=T.MathUtils.lerp;
+  function hash(x,y){
+    const key=Math.imul(x,374761393)^Math.imul(y,668265263);
+    return (Math.imul(key^(key>>>13),1274126177)>>>0)/4294967296;
+  }
+  function noise(x,y){
+    const ix=Math.floor(x),iy=Math.floor(y),dx=x-ix,dy=y-iy;
+    const a=dx*dx*(3-2*dx),b=dy*dy*(3-2*dy);
+    return mix(mix(hash(ix,iy),hash(ix+1,iy),a),mix(hash(ix,iy+1),hash(ix+1,iy+1),a),b);
+  }
+  const dark=[4,41,31],green=[9,162,91],light=[81,241,158];
+  for(let py=0;py<height;py++)for(let px=0;px<width;px++){
+    const x=px/width*7.5,y=py/height*4.3;
+    const u=x+noise(x*.73+6,y*.82)*1.35;
+    const v=y+noise(x*.68,y*.76+13)*1.55;
+    const cloud=noise(u,v)*.67+noise(u*2.48+9,v*2.48)*.25+noise(u*5.1,v*5.1)*.08;
+    const bands=(Math.sin(v*2.8+noise(u*.8,v*.8)*4.2)+1)*.5;
+    const tone=T.MathUtils.clamp((cloud*.77+bands*.23-.22)*1.7,0,1);
+    const from=tone<.64?dark:green,to=tone<.64?green:light;
+    const weight=tone<.64?tone/.64:(tone-.64)/.36;
+    const i=(py*width+px)*4;
+    for(let c=0;c<3;c++)pixels.data[i+c]=mix(from[c],to[c],weight);
+    pixels.data[i+3]=255;
+  }
+  ctx.putImageData(pixels,0,0);
+  const map=new T.CanvasTexture(canvas);
+  map.colorSpace=T.SRGBColorSpace;
+  map.repeat.set(1.33,2.05);
+  map.offset.set(.03,-.54);
+  map.anisotropy=4;
+  return map;
 }
 
 export function buildArmory(parts) {
@@ -177,24 +216,31 @@ export function buildArmory(parts) {
     mirrorEdge.envMapIntensity=1.62;
     const handleRail=tiChamfer.clone(),bladeSpine=tiChamfer.clone();
     const finishColors=[
-      [tiScale,0x3d4a54,0x23212a],[tiDark,0x1f262c,0x19151e],
-      [tiChamfer,0xcbd6de,0xb1a5c5],[handleRail,0xcbd6de,0xa370ed],
-      [cryoAccent,0x66bfd6,0xb38bef],[bronzeWasher,0xc98f49,0x8964af],
-      [satinFlat,0x9aa8b2,0xe4d9ef],[bladeSpine,0xcbd6de,0xd4bfe9],
-      [hollowBevel,0xd2dde4,0xac94c5],[mirrorEdge,0xf4f9fb,0xf0e9fa]
+      [tiScale,0x3d4a54,0x23212a,0x242d30],[tiDark,0x1f262c,0x19151e,0x151c20],
+      [tiChamfer,0xcbd6de,0xb1a5c5,0x667e75],[handleRail,0xcbd6de,0xa370ed,0x4d979c],
+      [cryoAccent,0x66bfd6,0xb38bef,0x419aab],[bronzeWasher,0xc98f49,0x8964af,0x818e8a],
+      [satinFlat,0x9aa8b2,0xe4d9ef,0xf3fff7],[bladeSpine,0xcbd6de,0xd4bfe9,0xadffd1],
+      [hollowBevel,0xd2dde4,0xac94c5,0xc2ffda],[mirrorEdge,0xf4f9fb,0xf0e9fa,0xcfffe3]
     ];
-    let tide=false,tideTexture;
+    let currentFinish='steel',tideTexture,emeraldTexture;
     w.setFinish=value=>{
-      const next=value==='violet-tide';
-      if(next===tide)return;
-      tide=next;
-      if(tide&&!tideTexture)tideTexture=violetTideTexture();
-      for(const [material,steel,coated] of finishColors)material.color.setHex(tide?coated:steel);
-      satinFlat.map=tide?tideTexture:steelGrain;
-      bladeSpine.map=tide?tideTexture:null;
-      satinFlat.metalness=tide?.67:.84;
-      bladeSpine.metalness=tide?.68:.89;
+      if(value===currentFinish)return;
+      currentFinish=value;
+      const tide=value==='violet-tide',emerald=value==='emerald';
+      if(tide)tideTexture??=violetTideTexture();
+      if(emerald)emeraldTexture??=emeraldBladeTexture();
+      for(const [material,steel,violet,green] of finishColors){
+        material.color.setHex(emerald?green:tide?violet:steel);
+      }
+      const coating=emerald?emeraldTexture:tide?tideTexture:null;
+      satinFlat.map=coating||steelGrain;
+      bladeSpine.map=coating;
+      hollowBevel.map=emerald?emeraldTexture:null;
+      satinFlat.metalness=emerald?.73:tide?.67:.84;
+      bladeSpine.metalness=emerald?.81:tide?.68:.89;
+      satinFlat.roughness=emerald?.16:.21;
       bladeSpine.needsUpdate=true;
+      hollowBevel.needsUpdate=true;
     };
 
     // Extrude helper with real 3D through-holes (Shape.holes)
@@ -651,7 +697,7 @@ export function buildArmory(parts) {
         }
       }
       lastBase.copy(pBase);lastTip.copy(pTip);lastTrailStr=intensity;
-      const palette=tide?tideRails:steelRails;
+      const palette=currentFinish==='violet-tide'?tideRails:steelRails;
       let any=false;
       for(let i=0;i<trailUsed;i++){
         const fade=Math.pow(1-i/Math.max(1,trailUsed-1),1.7)*trailStr[i];

@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {caseHardenedMaterial} from './karambit-finish.js?v=1';
+import {caseHardenedMaterial,sapphireMaterial} from './karambit-finish.js?v=4';
 
 const assetUrl=new URL('./assets/karambit/low_poly_karambit_bicagi.glb',import.meta.url).href;
 // Source GLB lies in XY with ring hole along Z.
@@ -45,7 +45,15 @@ async function loadKnife(){
     material.envMapIntensity=1.38;
     const mesh=new T.Mesh(geometry,material);
     mesh.name='OldTÜRK34 Karambit';
-    return {mesh,hardening:caseHardenedMaterial(material)};
+    const sapphireBase=()=>new T.MeshPhysicalMaterial({
+      map,roughness:.30,metalness:.35,clearcoat:.55,clearcoatRoughness:.22,
+      iridescence:.10,iridescenceIOR:1.3,side:T.DoubleSide,envMapIntensity:1.24
+    });
+    const finishes={default:material,hardened:caseHardenedMaterial(material)};
+    return {mesh,setFinish(id){
+      if(id==='sapphire')finishes.sapphire??=sapphireMaterial(sapphireBase());
+      mesh.material=Object.hasOwn(finishes,id)?finishes[id]:material;
+    }};
   }finally{
     URL.revokeObjectURL(textureUrl);
   }
@@ -311,14 +319,14 @@ export function buildKarambit(weapon,parts){
   };
 
   addBladeTrail(weapon,spinPivot);
-  let finish='hardened',loaded;
+  let finish='hardened',applyFinish;
   function setFinish(id){
     finish=id;
-    if(loaded)loaded.mesh.material=finish==='hardened'?loaded.hardening:loaded.original;
+    applyFinish?.(id);
   }
-  const ready=loadKnife().then(({mesh,hardening})=>{
-    loaded={mesh,hardening,original:mesh.material};
-    setFinish(finish);
+  const ready=loadKnife().then(({mesh,setFinish:apply})=>{
+    applyFinish=apply;
+    applyFinish(finish);
     spinPivot.add(mesh);
   });
   weapon.karambit={mount,spinPivot,ringPivot:spinPivot,fingers,fingerTips,thumb,forearm,leftRig,wristJoint,debugGizmo,updateDebugGizmo,ready,setFinish};

@@ -49,29 +49,56 @@ export function installM9Finish(material){
   const uniforms={
     m9Flow:{value:flowTexture()},
     m9Active:{value:0},
+    m9Factory:{value:1},
     m9Shift:{value:0},
     m9Palette:{value:finishes.blue.colors.map(hex=>new T.Color(hex))}
   };
-  material.customProgramCacheKey=()=> 'deckfire-m9-flow-v1';
+  material.customProgramCacheKey=()=> 'deckfire-m9-flow-v2';
   material.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader
-      .replace('#include <common>','#include <common>\nvarying vec3 m9Local;')
-      .replace('#include <begin_vertex>','#include <begin_vertex>\nm9Local = position;');
+      .replace('#include <common>','#include <common>\nvarying vec3 m9Local; varying float m9Face;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nm9Local = position; m9Face = abs(normal.y);');
     shader.fragmentShader=shader.fragmentShader
       .replace('#include <common>',`
         #include <common>
-        varying vec3 m9Local;
+        varying vec3 m9Local; varying float m9Face;
         uniform sampler2D m9Flow;
         uniform float m9Active;
+        uniform float m9Factory;
         uniform float m9Shift;
         uniform vec3 m9Palette[4];
       `)
       .replace('#include <map_fragment>',`
         #include <map_fragment>
         // Local coordinates keep the pattern on the metal as the knife rolls.
-        float m9Blade = m9Active * smoothstep(0.035, 0.041, -m9Local.z);
+        float lengthwise = -m9Local.z;
+        float bladeMask = smoothstep(.035,.041,lengthwise);
+        float m9Blade = m9Active * bladeMask;
         vec3 m9Layers = vec3(0.0);
+        float factorySteel = m9Factory * bladeMask;
+        if (m9Factory > 0.0) {
+          float along = clamp((lengthwise-.037)/.312,0.0,1.0);
+          vec3 grain = texture2D(m9Flow,vec2(m9Local.x*15.5+.38,along*.86+.07)).rgb;
+          float tint = along+(grain.r-.5)*.09+m9Local.x*.78;
+          vec3 navy = vec3(.016,.042,.245);
+          vec3 copper = vec3(.49,.061,.018);
+          vec3 amber = vec3(.48,.26,.030);
+          vec3 oxide = mix(amber,navy,smoothstep(.085,.23,tint));
+          oxide = mix(oxide,vec3(.17,.035,.24),smoothstep(.29,.47,tint));
+          oxide = mix(oxide,copper,smoothstep(.43,.59,tint));
+          oxide = mix(oxide,amber,smoothstep(.57,.72,tint));
+          oxide = mix(oxide,navy,smoothstep(.78,.955,tint));
+          float polish = smoothstep(.10,.72,1.0-m9Face)*smoothstep(.001,.024,m9Local.x);
+          oxide *= .70+.43*grain.r+.23*grain.g;
+          oxide = mix(oxide,vec3(.67,.73,.74),polish*.38);
+          float guard = (1.0-smoothstep(.011,.021,abs(lengthwise-.028)))*
+                        smoothstep(.014,.025,abs(m9Local.x));
+          float pommel = 1.0-smoothstep(-.169,-.156,lengthwise);
+          vec3 grip = diffuseColor.rgb*vec3(.53,.58,.62);
+          diffuseColor.rgb = mix(grip,navy*.72,max(guard,pommel));
+          diffuseColor.rgb = mix(diffuseColor.rgb,oxide,factorySteel);
+        }
         if (m9Blade > 0.0) {
           vec2 coords = vec2(m9Local.x * 5.7 + 0.52 + m9Local.y * 2.1, (-m9Local.z - 0.036) * 3.10);
           m9Layers = texture2D(m9Flow, coords + vec2(m9Shift, m9Shift * 0.47)).rgb;
@@ -85,18 +112,21 @@ export function installM9Finish(material){
         #include <metalnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, mix(0.14, 0.28, m9Layers.r * 0.55 + m9Layers.b * 0.45), m9Blade);
         metalnessFactor = mix(metalnessFactor, 0.88, m9Blade);
+        roughnessFactor = mix(roughnessFactor,mix(.73,.20,factorySteel),m9Factory);
+        metalnessFactor = mix(metalnessFactor,mix(.13,.85,factorySteel),m9Factory);
       `)
       .replace('#include <lights_physical_fragment>',`
         #include <lights_physical_fragment>
-        material.clearcoat *= m9Blade;
+        material.clearcoat *= m9Blade+factorySteel*.62;
         material.clearcoatRoughness = mix(material.clearcoatRoughness, 0.20, m9Layers.g * 0.65);
-        material.iridescence *= m9Blade;
+        material.iridescence *= m9Blade+factorySteel*.18;
         material.iridescenceThickness = mix(154.0, 340.0, m9Layers.r);
       `);
   };
   return (id)=>{
     const preset=Object.hasOwn(finishes,id)?finishes[id]:null;
     uniforms.m9Active.value=Number(!!preset);
+    uniforms.m9Factory.value=Number(id==='fade');
     if(!preset)return null;
     uniforms.m9Shift.value=preset.shift;
     uniforms.m9Palette.value.forEach((color,i)=>color.setHex(preset.colors[i]));

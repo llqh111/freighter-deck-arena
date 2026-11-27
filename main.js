@@ -1,8 +1,8 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=36';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=38';
 import * as T from './three.module.js';
 import {maps} from './maps.js?v=2';
 import {createMatch} from './match.js?v=49';
-import {createViewModel} from './viewmodel.js?v=55';
+import {createViewModel} from './viewmodel.js?v=59';
 import {isMelee,melees} from './arsenal.js?v=30';
 import {createDeckAudio} from './deck-audio.js?v=33';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
@@ -185,7 +185,7 @@ function armory(inGame=false){
   showDialog(inGame?'loadout':'armory','LOADOUT',knife?'选择近战武器（3v3 刀战）':'选择主武器与近战',
     (knife?'':'<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary))+
     '<div class="sectionTitle">近战武器 MELEE（F / Y 检视 · R 把玩）</div>'+meleeChoices(prefs.melee)+
-    selectors(prefs,['butterflyFinish','m9Finish','karambitFinish'])+
+    selectors(prefs,['butterflyFinish','karambitFinish','m9Finish'])+
     '<p class="panelNote">'+(knife?'当前为 3v3 刀战模式，全场仅使用近战武器。出生区内更换近战立即生效，离开出生区后在下次复活时领取。':'副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。')+'</p>');
   bindPrefs();
   for(const b of panel.querySelectorAll('[data-weapon]'))b.onclick=()=>{

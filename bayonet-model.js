@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {installM9Finish} from './m9-finish.js?v=2';
+import {installM9Finish} from './m9-finish.js?v=3';
 
 export function bladeFinish(){
   const canvas=document.createElement('canvas');
