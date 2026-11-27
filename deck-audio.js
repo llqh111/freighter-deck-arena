@@ -1,5 +1,6 @@
-import {isMelee} from './arsenal.js?v=28';
-import {bayonetSounds,bayonetLayers,bayonetSample} from './bayonet-audio.js?v=2';
+import {isMelee} from './arsenal.js?v=29';
+import {bayonetSounds,bayonetLayers,bayonetSample} from './bayonet-audio.js?v=3';
+import {classicCueNames,classicLayers,classicSound} from './classic-blade-audio.js?v=1';
 
 const butterflyAssets = {
   latch: new URL('./assets/butterfly/mechanical-latch-light.wav', import.meta.url).href,
@@ -164,6 +165,8 @@ export function createDeckAudio() {
     if(Object.hasOwn(bayonetSounds,kind)){
       return samples[key]=makeSample(bayonetSounds[kind][0],bayonetSample(kind,head,context.sampleRate));
     }
+    const classic=classicSound(kind,weapon);
+    if(classic)return samples[key]=makeSample(classic[0],bayonetSample(kind,head,context.sampleRate,classic));
     const freq = {ak47: 94, m4a1: 118, mp5: 155, awm: 61, deagle: 83}[weapon] || 110;
     const isBlade = isMelee(weapon);
     const motion = bladeMotionSounds[kind];
@@ -303,6 +306,10 @@ export function createDeckAudio() {
   const prewarmQueue = [
     ...Object.keys(bayonetSounds).map(kind=>()=>sampleFor(kind,'m9')),
     () => sampleFor('m9Flesh','m9',true),
+    ...['knife','nepal','malay'].flatMap(id=>[
+      ...classicCueNames.map(kind=>()=>sampleFor(kind,id)),
+      ()=>sampleFor('classicFlesh',id,true)
+    ]),
     () => getFoot(false, 0), () => getFoot(false, 1),
     () => getFoot(true, 0), () => getFoot(true, 1),
     () => { if (!samples.kill_b_1__) samples.kill_b_1__ = cfKillSound(false, 1, '', false); },
@@ -451,8 +458,9 @@ export function createDeckAudio() {
     if (!enabled || !samples) return;
     if (level < .025) return;
     const spread = Math.max(-1, Math.min(1, pan));
-    const motion = bladeMotionSounds[kind] || bayonetLayers[kind];
-    const rate = motion || bladeFeedbackDurations[kind] || Object.hasOwn(bayonetSounds,kind) ? .965 + Math.random() * .075 : 1;
+    const motion = bladeMotionSounds[kind] || bayonetLayers[kind] || classicLayers[kind];
+    const varied = motion || bladeFeedbackDurations[kind] || Object.hasOwn(bayonetSounds,kind) || classicCueNames.includes(kind);
+    const rate = varied ? .965 + Math.random() * .075 : 1;
     if (motion) play(samples[motion.asset], level * motion.mix, spread, motion.offset, rate);
     play(sampleFor(kind, weapon, head), level, spread, 0, rate);
   }

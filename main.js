@@ -1,12 +1,12 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=29';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=30';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=24';
-import {createMatch} from './match.js?v=45';
-import {createViewModel} from './viewmodel.js?v=48';
+import {createMatch} from './match.js?v=46';
+import {createViewModel} from './viewmodel.js?v=51';
 import {isMelee,melees} from './arsenal.js?v=29';
-import {createDeckAudio} from './deck-audio.js?v=32';
+import {createDeckAudio} from './deck-audio.js?v=33';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
-import {createDuelClient} from './duel-client.js?v=40';
+import {createDuelClient} from './duel-client.js?v=41';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
 
@@ -56,7 +56,7 @@ function watchCrosshairScale(){
   },{once:true});
 }
 watchCrosshairScale();
-const prefs={mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
+const prefs={mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',m9Finish:'fade',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
   if(['ak47','m4a1','awm','mp5'].includes(saved.primary))prefs.primary=saved.primary;
@@ -93,6 +93,7 @@ function applyPref(key){
   if(key==='fov'){match?.input('fov',prefs.fov);view?.setBayonetFov(prefs.fov);}
   if(key==='vol')deckAudio.setVolume(prefs.vol);
   if(key==='butterflyFinish')view?.setButterflyFinish(prefs.butterflyFinish);
+  if(key==='m9Finish')view?.setM9Finish(prefs.m9Finish);
   if(key==='botPrimary'){
     const swap=match?.input('botPrimary',prefs.botPrimary);
     const line=$('botWeaponState');
@@ -118,8 +119,8 @@ function armory(inGame=false){
   const knife=(inGame?match?.state?.mode:prefs.mode)==='knife';
   showDialog(inGame?'loadout':'armory','LOADOUT',knife?'选择近战武器（3v3 刀战）':'选择主武器与近战',
     (knife?'':'<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary))+
-    '<div class="sectionTitle">近战武器 MELEE（Y 检视 · 蝴蝶刀 / 爪刀 R 连转）</div>'+meleeChoices(prefs.melee)+
-    selectors(prefs,['butterflyFinish'])+
+    '<div class="sectionTitle">近战武器 MELEE（F / Y 检视 · R 把玩）</div>'+meleeChoices(prefs.melee)+
+    selectors(prefs,['butterflyFinish','m9Finish'])+
     '<p class="panelNote">'+(knife?'当前为 3v3 刀战模式，全场仅使用近战武器。出生区内更换近战立即生效，离开出生区后在下次复活时领取。':'副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。')+'</p>');
   bindPrefs();
   for(const b of panel.querySelectorAll('[data-weapon]'))b.onclick=()=>{
@@ -840,7 +841,7 @@ async function init(){
       toggleSlowMo:()=>{view.karambitConfig.slowMo=!view.karambitConfig.slowMo;return view.karambitConfig.slowMo;},
       toggleTrail:()=>{view.karambitConfig.showTrail=!view.karambitConfig.showTrail;return view.karambitConfig.showTrail;}
     };
-    match=localMatch=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov','butterflyFinish'])applyPref(key);setSound();resize();
+    match=localMatch=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov','butterflyFinish','m9Finish'])applyPref(key);setSound();resize();
     await view.ready;
     await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);

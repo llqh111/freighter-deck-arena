@@ -16,6 +16,7 @@ for(const file of await readdir(new URL('./assets/butterfly/',import.meta.url)))
   if(file.endsWith('.wav'))publicFiles.add('assets/butterfly/'+file);
 }
 publicFiles.add('assets/karambit/low_poly_karambit_bicagi.glb');
+publicFiles.add('assets/bayonet/m9_bayonet_fade.glb');
 
 const server=createServer(async(req,res)=>{
   if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405).end();return;}

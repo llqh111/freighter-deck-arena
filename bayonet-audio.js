@@ -24,8 +24,8 @@ export const bayonetSounds={
   m9Stone:[.121,.32,.21,292,68,1347,.06,119,0],
   m9Metal:[.179,.25,.14,360,62,2170,.28,34,0]
 };
-export function bayonetSample(kind,head,sampleRate){
-  const [duration,high,body,bass,damping,ring,ringLevel,ringDamping,swellAt]=bayonetSounds[kind];
+export function bayonetSample(kind,head,sampleRate,sound=bayonetSounds[kind]){
+  const [duration,high,body,bass,damping,ring,ringLevel,ringDamping,swellAt]=sound;
   const tau=2*Math.PI,lowAlpha=1-Math.exp(-tau*960/sampleRate),centerAlpha=1-Math.exp(-tau*5300/sampleRate);
   let seed=6619+kind.charCodeAt(2)*17+(kind.charCodeAt(3)||0)*31,low=0,center=0;
   return (t)=>{

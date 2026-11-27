@@ -4,14 +4,16 @@ import {arsenal,primaries,melees,isMelee,loadout,skills,falloff} from './arsenal
 import {karambitContactTime} from './karambit-motion.js?v=19';
 import {butterflyContactTime} from './butterfly-motion.js?v=24';
 import {bayonetContactTime} from './bayonet-timing.js?v=2';
+import {classicBladeContact} from './classic-blade-timing.js?v=1';
 import {matchRules,matchDuration} from './match-rules.js?v=23';
 
 const clamp = T.MathUtils.clamp;
 const EYE=1.60,RADIUS=.32,ROUND=600,GOAL=50;
-const timedMeleeContacts={butterfly:butterflyContactTime,karambit:karambitContactTime,m9:bayonetContactTime};
+const timedMeleeContacts={butterfly:butterflyContactTime,karambit:karambitContactTime,m9:bayonetContactTime,...classicBladeContact};
 const bayonetSurfaceCue={wood:'m9Wood',concrete:'m9Stone',metal:'m9Metal'};
+const classicSurfaceCue={wood:'classicWood',concrete:'classicStone',metal:'classicMetal'};
 const lightSweepAngles=[-12,-8,-4,4,8,12].map(degrees=>T.MathUtils.degToRad(degrees));
-const spatialSounds=new Set(['shot','step','land','jump','light','heavy','reload','clang','bladeWall','timber','throw','bounce','explode','death',...Object.values(bayonetSurfaceCue)]);
+const spatialSounds=new Set(['shot','step','land','jump','light','heavy','reload','clang','bladeWall','timber','throw','bounce','explode','death',...Object.values(bayonetSurfaceCue),...Object.values(classicSurfaceCue)]);
 const sq = n => n*n;
 const rangeScale = (id,dist)=>{
   const f=falloff[id];if(!f||dist<=f.from)return 1;
@@ -483,7 +485,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(kill)emit('feed',{killer:a.name,victim:b.name,weapon:id,team:a.team,head,wall,first});
     if(a===p&&a!==b){
       if(knifeMode&&isMelee(id))hits++;
-      sfx(id==='m9'?'m9Flesh':timedMeleeContacts[id]?'bladeFlesh':'hit',id,p,{head});
+      sfx(classicBladeContact[id]?'classicFlesh':id==='m9'?'m9Flesh':timedMeleeContacts[id]?'bladeFlesh':'hit',id,p,{head});
       emit('hit',{kill,head,wall,first,weapon:id,victim:b.name,multi:kill?a.multi:0});
     }
     if(!network&&state.score[a.team]>=state.target)finish();
@@ -557,7 +559,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(!p.alive||!p.inventory[slot]||(!reequip&&p.slot===slot)||(!p.inventory[slot].ammo&&slot===3))return;
     // Buffered attack taps belong to the blade being drawn.
     const oldId=active(p).id,newId=p.inventory[slot].id;
-    if(oldId==='karambit'||newId==='karambit'||oldId==='m9'||newId==='m9')fireTap=altTap=false;
+    if(oldId==='karambit'||newId==='karambit'||oldId==='m9'||newId==='m9'||
+      classicBladeContact[oldId]||classicBladeContact[newId])fireTap=altTap=false;
     pendingStrike=null;
     if(p.slot!==slot)lastSlot=p.slot;
     p.slot=slot;restoreZoom=0;state.zoom=0;state.aiming=false;p.burst=newBurst();loadTimer=0;semiLatch=!!keys.fire;
@@ -573,11 +576,13 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
   }
   function playerMelee(id,heavy){
     const def=arsenal[id],reach=heavy?def.heavyReach:def.reach;
+    const classic=!!classicBladeContact[id];
+    const surfaceCues=classic?classicSurfaceCue:id==='m9'?bayonetSurfaceCue:null;
     camera.getWorldDirection(dir);
-    const wallDist=wallDistance(camera.position,dir,reach,id==='m9'?bayonetSurface:null);
+    const wallDist=wallDistance(camera.position,dir,reach,surfaceCues?bayonetSurface:null);
     let hit=actorHit(p,camera.position,dir,wallDist);
     const aimedHit=!!hit;
-    if(!hit&&!heavy&&timedMeleeContacts[id]){
+    if(!hit&&!heavy&&timedMeleeContacts[id]&&!classic){
       // Preserve the aimed hit first. An off-center slash can only reach the nearest exposed target.
       for(const angle of lightSweepAngles){
         sweepDir.copy(dir).applyAxisAngle(axis,angle);
@@ -593,7 +598,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       if(timedMeleeContacts[id]&&hit.unit.shield>0)return 'air';
       const rear=Math.cos(hit.unit.yaw-p.yaw)>.5;
       const baseDmg=heavy?def.heavyDmg:def.lightDmg;
-      if(id==='m9'){
+      if(surfaceCues){
         if(aimedHit)hitPos.copy(camera.position).addScaledVector(dir,hit.distance);
         world.fx.wound?.(hitPos);
       }
@@ -602,10 +607,10 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     }
     if(wallDist<reach){
       const point=camera.position.clone().addScaledVector(dir,wallDist);
-      if(id==='m9'){
+      if(surfaceCues){
         const {normal,material}=bayonetSurface;
         world.fx.impact(point,normal,material);
-        sfx(bayonetSurfaceCue[material]||bayonetSurfaceCue.metal,id,point,{volume:.76});
+        sfx(surfaceCues[material]||surfaceCues.metal,id,point,{volume:.76});
       }else{
         world.fx.impact(point,dir.clone().negate());
         if(timedMeleeContacts[id])sfx('bladeWall',id,point);
@@ -674,7 +679,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       const contactTime=timedMeleeContacts[w.id]?.[action];
       if(contactTime){
         pendingStrike={id:w.id,heavy,at:clock+contactTime};
-        if(w.id==='m9')view.shoot(action,network?0:dt);
+        if(w.id==='m9'||classicBladeContact[w.id])view.shoot(action,network?0:dt);
         else view.shoot(action);
       }else{
         playerMelee(w.id,heavy);

@@ -1,6 +1,7 @@
 import * as T from './three.module.js';
+import {installM9Finish} from './m9-finish.js?v=1';
 
-function bladeFinish(){
+export function bladeFinish(){
   const canvas=document.createElement('canvas');
   canvas.width=128;canvas.height=384;
   const ctx=canvas.getContext('2d'),grain=ctx.createImageData(canvas.width,canvas.height);
@@ -28,14 +29,93 @@ function bladeFinish(){
   return texture;
 }
 
-function addBayonetTrail(root,spinPivot,carrierOffset){
-  // 56-segment zero-GC cold-steel specular motion ribbon with angular sub-stepping for smooth 360° flips & slashes.
-  const count=56,lifetime=.132;
-  const positions=new Float32Array(count*6),colors=new Float32Array(count*8);
+const assetUrl=new URL('./assets/bayonet/m9_bayonet_fade.glb',import.meta.url).href;
+// Exact right-handed basis rotation (det = +1, winding-preserving) for CS2 dorsal-fist hold:
+// GLB +X (blade thickness) -> Local +Y
+// GLB +Y (pommel->tip)     -> Local -Z
+// GLB +Z (sawback & ring)  -> Local -X (bottom-left/fingertips; cutting edge on +X/up-right!)
+// Scale 1.66 + Z-offset +0.040 seats crossguard at Z=-0.026 and Bowie tip at Z=-0.348 matching the hand rig.
+const mountTransform=new T.Matrix4()
+  .makeTranslation(0,0,.040)
+  .multiply(new T.Matrix4().makeScale(1.66,1.66,1.66))
+  .multiply(new T.Matrix4().makeBasis(
+    new T.Vector3(0,1,0),
+    new T.Vector3(0,0,-1),
+    new T.Vector3(-1,0,0)
+  ));
+
+async function loadBayonetMesh(){
+  const response=await fetch(assetUrl);
+  if(!response.ok)throw new Error('M9 Bayonet Fade GLB could not be loaded');
+  const buffer=await response.arrayBuffer(),header=new DataView(buffer);
+  if(header.getUint32(0,true)!==0x46546c67||header.getUint32(4,true)!==2)throw new Error('Invalid M9 Bayonet GLB');
+  const jsonLength=header.getUint32(12,true),bin=28+jsonLength;
+  const gltf=JSON.parse(new TextDecoder().decode(new Uint8Array(buffer,20,jsonLength)));
+  const primitive=gltf.meshes[0].primitives[0];
+  const geometry=new T.BufferGeometry();
+  function accessor(index,Type,components){
+    const a=gltf.accessors[index],view=gltf.bufferViews[a.bufferView];
+    return new T.BufferAttribute(new Type(buffer,bin+(view.byteOffset??0)+(a.byteOffset??0),a.count*components),components);
+  }
+  const uv=accessor(primitive.attributes.TEXCOORD_0,Float32Array,2);
+  geometry.setAttribute('position',accessor(primitive.attributes.POSITION,Float32Array,3));
+  geometry.setAttribute('normal',accessor(primitive.attributes.NORMAL,Float32Array,3));
+  geometry.setAttribute('uv',uv);
+  const idxComp=gltf.accessors[primitive.indices].componentType;
+  geometry.setIndex(accessor(primitive.indices,idxComp===5123?Uint16Array:Uint32Array,1));
+  geometry.applyMatrix4(mountTransform);
+
+  const loader=new T.TextureLoader();
+  async function decodeImage(idx,colorSpace){
+    const source=gltf.images[idx],view=gltf.bufferViews[source.bufferView];
+    const bytes=new Uint8Array(buffer,bin+(view.byteOffset??0),view.byteLength);
+    const url=URL.createObjectURL(new Blob([bytes],{type:source.mimeType}));
+    try{
+      const tex=await loader.loadAsync(url);
+      tex.flipY=false;
+      tex.colorSpace=colorSpace;
+      tex.anisotropy=4;
+      return tex;
+    }finally{
+      URL.revokeObjectURL(url);
+    }
+  }
+  const [map,ormMap,normalMap]=await Promise.all([
+    decodeImage(0,T.SRGBColorSpace),
+    decodeImage(1,T.NoColorSpace),
+    decodeImage(2,T.NoColorSpace)
+  ]);
+  const material=new T.MeshPhysicalMaterial({
+    map,
+    roughnessMap:ormMap,
+    metalnessMap:ormMap,
+    aoMap:ormMap,
+    aoMapIntensity:.65,
+    normalMap,
+    normalScale:new T.Vector2(.85,.85),
+    roughness:1.0,
+    metalness:1.0,
+    clearcoat:.89,
+    clearcoatRoughness:.115,
+    iridescence:.18,
+    iridescenceIOR:1.31
+  });
+  material.envMapIntensity=1.50;
+  const mesh=new T.Mesh(geometry,material);
+  mesh.name='M9 Bayonet Fade';
+  return {mesh,setFinish:installM9Finish(material)};
+}
+
+function addBladeTrail(root,spinPivot,carrierOffset,tip,style){
+  // Angles are subdivided before writing the preallocated ribbon so quick swipes stay smooth.
+  const count=56,lifetime=style?.108:.136,rails=style?5:2;
+  const positions=new Float32Array(count*rails*3),colors=new Float32Array(count*rails*4);
   const ages=new Float32Array(count),strengths=new Float32Array(count),indices=[];
   for(let i=0;i<count-1;i++){
-    const a=i*2;
-    indices.push(a,a+1,a+2,a+1,a+3,a+2);
+    for(let j=0;j<rails-1;j++){
+      const a=i*rails+j,b=a+rails;
+      indices.push(a,a+1,b,a+1,b+1,b);
+    }
   }
   const geometry=new T.BufferGeometry();
   const position=new T.BufferAttribute(positions,3).setUsage(T.DynamicDrawUsage);
@@ -53,8 +133,11 @@ function addBayonetTrail(root,spinPivot,carrierOffset){
   root.add(ribbon);
 
   const baseLocal=new T.Vector3(0,0,-.08).add(carrierOffset);
-  const tipLocal=new T.Vector3(.009,0,-.350).add(carrierOffset);
-  const pBase=new T.Vector3(),pTip=new T.Vector3();
+  const tipLocal=tip.clone().add(carrierOffset);
+  const pBase=new T.Vector3(),pTip=new T.Vector3(),railPos=new T.Vector3();
+  const railStrength=[.02,.16,.27,.58,.12];
+  const finishTint=new T.Color();
+  let tint=style?new T.Color(style.color):null;
   const lastParentPos=new T.Vector3(),parentPos=new T.Vector3();
   const lastParentQuat=new T.Quaternion(),parentQuat=new T.Quaternion();
   const parentScale=new T.Vector3(1,1,1),unitScale=new T.Vector3(1,1,1);
@@ -65,11 +148,12 @@ function addBayonetTrail(root,spinPivot,carrierOffset){
 
   function pushSample(mat,age,strength){
     used=Math.min(used+1,count);
-    positions.copyWithin(6,0,(used-1)*6);
+    positions.copyWithin(rails*3,0,(used-1)*rails*3);
     ages.copyWithin(1,0,used-1);
     strengths.copyWithin(1,0,used-1);
-    pBase.copy(baseLocal).applyMatrix4(mat).toArray(positions,0);
-    pTip.copy(tipLocal).applyMatrix4(mat).toArray(positions,3);
+    pBase.copy(baseLocal).applyMatrix4(mat);
+    pTip.copy(tipLocal).applyMatrix4(mat);
+    for(let j=0;j<rails;j++)railPos.copy(pBase).lerp(pTip,j/(rails-1)).toArray(positions,j*3);
     ages[0]=age;
     strengths[0]=strength;
   }
@@ -94,7 +178,7 @@ function addBayonetTrail(root,spinPivot,carrierOffset){
 
     if(used>0){
       const twist=lastSpin.angleTo(spinPivot.quaternion)+lastParentQuat.angleTo(parentQuat);
-      const steps=Math.min(12,Math.max(1,Math.ceil(twist/.08)));
+      const steps=Math.min(12,Math.max(1,Math.ceil(twist/(style?.075:.08))));
       for(let s=1;s<=steps;s++){
         const f=s/steps;
         stepParent.compose(stepPos.copy(lastParentPos).lerp(parentPos,f),
@@ -117,9 +201,18 @@ function addBayonetTrail(root,spinPivot,carrierOffset){
     let visible=false;
     for(let i=0;i<used;i++){
       const fade=Math.pow(Math.max(0,1-ages[i]/lifetime),1.6)*strengths[i];
-      const c=i*8;
-      colors[c]=.76;colors[c+1]=.88;colors[c+2]=.98;colors[c+3]=fade*.20;
-      colors[c+4]=.95;colors[c+5]=.98;colors[c+6]=1.0;colors[c+7]=fade*.70;
+      const c=i*rails*4;
+      if(tint){
+        for(let j=0;j<rails;j++){
+          const k=c+j*4,light=.67+j*.07;
+          const railAlpha=rails===2?(j?.72:.20):railStrength[j];
+          colors[k]=tint.r*light;colors[k+1]=tint.g*light;colors[k+2]=tint.b*light;
+          colors[k+3]=fade*railAlpha;
+        }
+      }else{
+        colors[c]=.90;colors[c+1]=.42;colors[c+2]=.88;colors[c+3]=fade*.20;
+        colors[c+4]=1.0;colors[c+5]=.86;colors[c+6]=.76;colors[c+7]=fade*.72;
+      }
       visible||=fade>.02;
     }
     ribbon.visible=visible&&used>1;
@@ -129,118 +222,47 @@ function addBayonetTrail(root,spinPivot,carrierOffset){
     }
     ribbon.matrix.copy(root.matrixWorld).invert();
     ribbon.matrixWorldNeedsUpdate=true;
-    geometry.setDrawRange(0,(used-1)*6);
+    geometry.setDrawRange(0,(used-1)*(rails-1)*6);
     position.needsUpdate=true;color.needsUpdate=true;
   }
 
-  return {resetTrail,updateTrail};
+  function setTrailTint(hex){
+    tint=hex===null?null:finishTint.setHex(hex);
+    resetTrail();
+  }
+  return {resetTrail,updateTrail,setTrailTint};
 }
 
-export function buildBayonet(parts) {
-  const {box,tube,pad,bake,paint,cloth,clothFold,glove,knuckle,sleeveBand,steelGrain,twill}=parts;
+export function buildBayonet(parts){
+  let selected='fade',applyFinish;
+  const model=buildFixedBladeRig(parts,'m9',carrier=>loadBayonetMesh().then(({mesh,setFinish})=>{
+    applyFinish=setFinish;
+    carrier.add(mesh);
+    model.setTrailTint(applyFinish(selected));
+  }),
+    new T.Vector3(.006,0,-.348));
+  model.setFinish=(id)=>{
+    selected=id;
+    if(applyFinish)model.setTrailTint(applyFinish(selected));
+  };
+  return model;
+}
+
+export function buildFixedBladeRig(parts,id,buildKnife,tip,style){
+  const {box,tube,pad,bake,paint,cloth,clothFold,glove,knuckle,sleeveBand,twill}=parts;
   const root=new T.Group(), right=new T.Group(), left=new T.Group(), sleeve=new T.Group();
   const spinPivot=new T.Group(), knifeCarrier=new T.Group();
   const carrierOffset=new T.Vector3(0,0,-.045);
   spinPivot.position.set(0,0,.045);
   knifeCarrier.position.copy(carrierOffset);
   spinPivot.add(knifeCarrier);
-  root.name='m9';right.name='m9-grip';left.name='m9-support';
-  spinPivot.name='m9-spinPivot';knifeCarrier.name='m9-knifeCarrier';
+  root.name=id;right.name=id+'-grip';left.name=id+'-support';
+  spinPivot.name=id+'-spinPivot';knifeCarrier.name=id+'-knifeCarrier';
   root.add(right,left,sleeve);
-  const finish=bladeFinish();
-  const steel=paint(0x84929a,.34,.82,finish);
-  const bevel=paint(0xc6d2d8,.26,.89,finish);
-  const hardware=paint(0x353f40,.52,.69,steelGrain);
-  const polymer=paint(0x43493c,.81,.05,twill);
+
   const groove=paint(0x292e28,.88,.04,twill);
-  const accent=paint(0x896747,.47,.64);
-  steel.envMapIntensity=1.28;bevel.envMapIntensity=1.55;hardware.envMapIntensity=.92;
 
-  const pointPath=(path,points)=>{
-    points.forEach(([x,y],i)=>i?path.lineTo(x,y):path.moveTo(x,y));
-    path.closePath();
-    return path;
-  };
-  const addSolid=(shape,start,depth,chamfer,mat)=>{
-    const geo=new T.ExtrudeGeometry(shape,{depth,bevelEnabled:true,bevelThickness:chamfer,
-      bevelSize:chamfer,bevelSegments:2,curveSegments:10});
-    const uv=geo.getAttribute('uv'),positions=geo.getAttribute('position');
-    for(let i=0;i<uv.count;i++)uv.setXY(i,.5+positions.getX(i)*7,positions.getY(i)/.33);
-    geo.translate(0,start,-depth/2);
-    geo.rotateX(-Math.PI/2);
-    knifeCarrier.add(new T.Mesh(geo,mat));
-  };
-  // Coordinates are in the blade plane, measured from the crossguard toward the tip.
-  // The cutting land is separate from the hollow ground bevel so it catches a tighter highlight.
-  const cuttingLand=[[-.034,.024],[-.040,.044],[-.038,.168],[-.031,.244],[-.018,.285],[.009,.324]];
-  const cuttingEdge=[[-.034,.024],[-.059,.044],[-.056,.167],[-.047,.245],[-.031,.287],[.009,.324]];
-  const outline=[...cuttingLand,[.043,.276],[.058,.237],[.058,.197]];
-  for(let i=0;i<6;i++){
-    const station=.197-i*.023;
-    outline.push([.052,station-.004],[.044,station-.010],[.044,station-.014],[.058,station-.019],[.058,station-.023]);
-  }
-  outline.push([.049,.035],[.040,.025],[.040,0],[-.034,0]);
-  const blade=pointPath(new T.Shape(),outline);
-  const relief=new T.Path();
-  relief.moveTo(.018,.062);relief.quadraticCurveTo(.032,.062,.032,.076);
-  relief.lineTo(.023,.117);relief.quadraticCurveTo(.020,.132,.008,.128);
-  relief.quadraticCurveTo(-.003,.126,-.002,.112);relief.lineTo(.003,.077);
-  relief.quadraticCurveTo(.005,.062,.018,.062);relief.closePath();
-  blade.holes.push(relief);
-  const guardZ=.026;
-  addSolid(blade,guardZ,.017,.0014,steel);
-
-  const vertices=[];
-  const triangles=(a,b,c,d)=>vertices.push(...a,...b,...c,...a,...c,...d);
-  const bladeVertex=([x,y],height)=>[x,height,-y-guardZ];
-  for(let i=1;i<cuttingLand.length;i++){
-    const a=bladeVertex(cuttingLand[i-1],.0085),b=bladeVertex(cuttingLand[i],.0085);
-    const c=bladeVertex(cuttingEdge[i],.0007),d=bladeVertex(cuttingEdge[i-1],.0007);
-    const back=([x,y,z])=>[x,-y,z];
-    triangles(a,b,c,d);triangles(back(a),back(d),back(c),back(b));
-    triangles(d,c,back(c),back(d));
-  }
-  // False-edge clip-point swedge bevel along the upper spine toward the needle tip
-  const swedgeLand=[[.009,.324],[.031,.273],[.044,.237]];
-  const swedgeEdge=[[.009,.324],[.043,.276],[.058,.237]];
-  for(let i=1;i<swedgeLand.length;i++){
-    const a=bladeVertex(swedgeLand[i-1],.0085),b=bladeVertex(swedgeLand[i],.0085);
-    const c=bladeVertex(swedgeEdge[i],.0020),d=bladeVertex(swedgeEdge[i-1],.0020);
-    const back=([x,y,z])=>[x,-y,z];
-    triangles(a,d,c,b);triangles(back(a),back(b),back(c),back(d));
-    triangles(c,d,back(d),back(c));
-  }
-  const edgeGeo=new T.BufferGeometry();
-  edgeGeo.setAttribute('position',new T.Float32BufferAttribute(vertices,3));
-  edgeGeo.setAttribute('uv',new T.Float32BufferAttribute(
-    vertices.flatMap((v,i)=>i%3===0?[.5+v*7,(-vertices[i+2]-guardZ)/.33]:[]),2));
-  edgeGeo.computeVertexNormals();
-  knifeCarrier.add(new T.Mesh(edgeGeo,bevel));
-
-  const guard=pointPath(new T.Shape(),[[-.083,-.014],[-.093,-.003],[-.080,.010],[-.047,.015],
-    [.045,.016],[.076,.032],[.097,.018],[.097,-.022],[.078,-.037],[.044,-.024]]);
-  const aperture=new T.Path();
-  aperture.absellipse(.070,-.005,.016,.018,0,2*Math.PI,true);
-  // The guard lies across the grip, so its extrusion becomes the thickness along the knife.
-  guard.holes.push(aperture);
-  const crossguard=new T.ExtrudeGeometry(guard,
-    {depth:.015,bevelEnabled:true,bevelSize:.003,bevelThickness:.002,bevelSegments:2,curveSegments:14});
-  crossguard.translate(0,0,-guardZ-.007);
-  knifeCarrier.add(new T.Mesh(crossguard,hardware));
-  tube(knifeCarrier,hardware,[0,0,-.020],[0,0,.117],.026,.030,12);
-  for(let i=0;i<8;i++){
-    const z=-.016+i*.017;
-    const radius=.033+Math.sin(i*Math.PI/7)*.005;
-    tube(knifeCarrier,polymer,[0,0,z],[0,0,z+.012],radius,radius-.001,12).scale.x=1.14;
-    tube(knifeCarrier,groove,[0,0,z+.012],[0,0,z+.017],radius-.004,radius-.004,12).scale.x=1.10;
-  }
-  tube(knifeCarrier,hardware,[0,0,.116],[0,0,.142],.037,.033,10).scale.x=1.23;
-  tube(knifeCarrier,bevel,[0,0,.141],[0,0,.145],.016,.014,8);
-  box(knifeCarrier,accent,.040,.007,.128,.004,.009,.008);
-  bake(knifeCarrier);
-
-  // The fingers and blade share the wrist. Finger pivots let the glove tighten without
-  // sliding its palm or the blade away from the grip.
+  // The fingers and blade share the wrist. Finger pivots let the glove open clear during 360° flips.
   pad(right,glove,.037,-.030,.054,.036,.035,.072);
   // Spherical wrist bridge at wristSocket seals the cuff seam during steep CS inspect/draw turns
   pad(right,groove,.049,-.046,.102,.044,.044,.044);
@@ -265,7 +287,9 @@ export function buildBayonet(parts) {
   pad(thumb,glove,-.025,-.007,-.031,.016,.013,.022);
   bake(thumb);right.add(thumb);bake(right);
   right.add(spinPivot);
-  const {resetTrail,updateTrail}=addBayonetTrail(root,spinPivot,carrierOffset);
+
+  const ready=buildKnife(knifeCarrier);
+  const trail=addBladeTrail(root,spinPivot,carrierOffset,tip,style);
 
   // A sleeve anchored off camera follows the wrist instead of rotating through the palm.
   const arm=subdivide=>{
@@ -291,5 +315,5 @@ export function buildBayonet(parts) {
   }
   pad(left,knuckle,.035,-.001,-.034,.023,.020,.031);
   bake(left);
-  return {root,right,left,sleeve,thumb,fingers,spinPivot,knifeCarrier,resetTrail,updateTrail};
+  return {root,right,left,sleeve,thumb,fingers,spinPivot,knifeCarrier,...trail,ready};
 }

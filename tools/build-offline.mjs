@@ -22,7 +22,8 @@ const inlineTypes = {
   './freighter-sky.webp': 'image/webp',
   './assets/butterfly/mechanical-latch-light.wav': 'audio/wav',
   './assets/butterfly/swish-hard.wav': 'audio/wav',
-  './assets/karambit/low_poly_karambit_bicagi.glb': 'model/gltf-binary'
+  './assets/karambit/low_poly_karambit_bicagi.glb': 'model/gltf-binary',
+  './assets/bayonet/m9_bayonet_fade.glb': 'model/gltf-binary'
 };
 
 const offlineAssets = {
@@ -31,7 +32,7 @@ const offlineAssets = {
     build.onResolve({filter: /\?v=\d+$/}, args => ({
       path: path.resolve(args.resolveDir, args.path.replace(/\?v=\d+$/, ''))
     }));
-    build.onLoad({filter: /(?:world|deck-audio|karambit-model)\.js$/}, async args => {
+    build.onLoad({filter: /(?:world|deck-audio|karambit-model|bayonet-model)\.js$/}, async args => {
       let contents = await fs.promises.readFile(args.path, 'utf8');
       contents = contents.replace(
         /new URL\(['"](\.\/[^'"]+)['"]\s*,\s*import\.meta\.url\)\.href/g,

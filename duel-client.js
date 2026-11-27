@@ -1,5 +1,6 @@
 import * as T from './three.module.js';
-import {createSquad} from './match.js?v=44';
+import {createSquad} from './match.js?v=46';
+import {classicBladeContact} from './classic-blade-timing.js?v=1';
 
 export function createDuelClient({scene,camera,view,world,send,emit}){
   let actors=[],animate,target,sequence=0,pending=[];
@@ -88,10 +89,10 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
     viewTime+=dt;
     animate?.(viewTime,true);
     const player=state.player;
-    const bayonet=state.weapon==='m9';
+    const fixedBlade=state.weapon==='m9'||classicBladeContact[state.weapon];
     view.update(dt,{alive:state.alive,moving:player.walking,sprinting:state.sprinting,
       crouching:state.crouching,grounded:state.grounded,aiming:state.aiming,reloading:state.reloading,
-      swayX:bayonet?swayX:0,swayY:bayonet?swayY:0,vy:bayonet?state.verticalSpeed:0,
+      swayX:fixedBlade?swayX:0,swayY:fixedBlade?swayY:0,vy:fixedBlade?state.verticalSpeed:0,
       strafe:Number(!!buttons.get('right'))-Number(!!buttons.get('left'))});
     const decay=Math.exp(-dt*12);
     swayX*=decay;swayY*=decay;
