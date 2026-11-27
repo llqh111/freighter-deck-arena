@@ -1,4 +1,4 @@
-import {buildArmory} from './armory-models.js?v=38';
+import {buildArmory} from './armory-models.js?v=41';
 import {isMelee} from './arsenal.js?v=30';
 import {createKarambitMotion,KARAMBIT_INSPECT_CONFIG,KARAMBIT_KEYFRAMES} from './karambit-motion.js?v=20';
 import {createButterflyMotion} from './butterfly-motion.js?v=24';
@@ -674,6 +674,7 @@ export function createViewModel(playMotionSound = () => {}) {
   return {scene,camera,ready:Promise.all([arsenal.karambit.karambit.ready,arsenal.m9.model.ready]),update,equip,flourish,fidget,reload,shoot,
     setButterflyFinish(finish){arsenal.butterfly.setFinish(finish);},
     setM9Finish(finish){arsenal.m9.model.setFinish(finish);},
+    setKarambitFinish(finish){arsenal.karambit.karambit.setFinish(finish);},
     meleeContact(hitKind){
       if(current.motion)current.motion.contact(hitKind);
       else if(id==='karambit')karambitMotion.contact(hitKind);

@@ -1,8 +1,8 @@
-import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=30';
+import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=34';
 import * as T from './three.module.js';
 import {buildWorld} from './world.js?v=25';
-import {createMatch} from './match.js?v=47';
-import {createViewModel} from './viewmodel.js?v=52';
+import {createMatch} from './match.js?v=48';
+import {createViewModel} from './viewmodel.js?v=55';
 import {isMelee,melees} from './arsenal.js?v=30';
 import {createDeckAudio} from './deck-audio.js?v=33';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
@@ -13,6 +13,34 @@ import {matchRules,matchDuration} from './match-rules.js?v=23';
 const deckAudio=createDeckAudio();
 const $=id=>document.getElementById(id);
 const hpBarFill=document.querySelector('.hpbar i'), ammoBox=document.querySelector('.ammoBox');
+const hitParts={head:'头部',body:'躯干',limb:'下肢',blast:'爆炸'};
+function renderDeathReport(target,report){
+  target.replaceChildren();
+  if(!report)return;
+  const number=value=>Number(value.toFixed(1));
+  const add=(label,detail)=>{
+    const row=document.createElement('div');
+    const title=document.createElement('strong');
+    title.textContent=label;
+    row.append(title,document.createTextNode(detail));
+    target.append(row);
+  };
+  const describe=entry=>{
+    if(!entry)return '无命中';
+    const parts=Object.entries(hitParts).filter(([part])=>entry.parts[part])
+      .map(([part,label])=>label+' '+entry.parts[part]).join(' · ');
+    return entry.hits+' 次 · 扣血 '+number(entry.health)+' · 扣甲 '+number(entry.armor)+'（'+parts+'）';
+  };
+  add('致命一击',(names[report.weapon]||report.weapon)+' · '+hitParts[report.part]);
+  if(report.killerIsSelf){
+    add('自身受到',describe(report.taken));
+  }else{
+    add('来自 '+report.killer,describe(report.taken));
+    add('对其造成',describe(report.given));
+    add('对手剩余','生命 '+number(report.healthLeft)+' · 护甲 '+number(report.armorLeft));
+  }
+}
+let shownDeathReport=null;
 function put(id,val){const e=$(id),s=String(val);if(e.textContent!==s)e.textContent=s;}
 addEventListener('pointerdown',()=>deckAudio.prime(),{once:true});
 addEventListener('keydown',()=>deckAudio.prime(),{once:true});
@@ -56,7 +84,7 @@ function watchCrosshairScale(){
   },{once:true});
 }
 watchCrosshairScale();
-const prefs={mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',m9Finish:'fade',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
+const prefs={mode:'tdm',team:0,size:matchRules.tdm.size,goal:matchRules.tdm.goal,knifeGoal:matchRules.knife.goal,diff:'normal',botPrimary:'random',primary:'ak47',melee:'nepal',butterflyFinish:'steel',m9Finish:'fade',karambitFinish:'hardened',wheel:'val',tod:'day',quality:coarse?'low':'high',vol:.8,fov:78};
 try{const saved=JSON.parse(localStorage.getItem('df-lobby')||'{}');
   for(const [key,[,opts]] of Object.entries(groups))if(opts.some(([v])=>v===saved[key]))prefs[key]=saved[key];
   if(['ak47','m4a1','awm','mp5'].includes(saved.primary))prefs.primary=saved.primary;
@@ -94,6 +122,7 @@ function applyPref(key){
   if(key==='vol')deckAudio.setVolume(prefs.vol);
   if(key==='butterflyFinish')view?.setButterflyFinish(prefs.butterflyFinish);
   if(key==='m9Finish')view?.setM9Finish(prefs.m9Finish);
+  if(key==='karambitFinish')view?.setKarambitFinish(prefs.karambitFinish);
   if(key==='botPrimary'){
     const swap=match?.input('botPrimary',prefs.botPrimary);
     const line=$('botWeaponState');
@@ -120,7 +149,7 @@ function armory(inGame=false){
   showDialog(inGame?'loadout':'armory','LOADOUT',knife?'选择近战武器（3v3 刀战）':'选择主武器与近战',
     (knife?'':'<div class="sectionTitle">主武器 PRIMARY</div>'+choices(prefs.primary))+
     '<div class="sectionTitle">近战武器 MELEE（F / Y 检视 · R 把玩）</div>'+meleeChoices(prefs.melee)+
-    selectors(prefs,['butterflyFinish','m9Finish'])+
+    selectors(prefs,['butterflyFinish','m9Finish','karambitFinish'])+
     '<p class="panelNote">'+(knife?'当前为 3v3 刀战模式，全场仅使用近战武器。出生区内更换近战立即生效，离开出生区后在下次复活时领取。':'副武器和手雷随身配备。出生区内更换主武器或近战武器立即生效，离开出生区后在下次复活时领取。')+'</p>');
   bindPrefs();
   for(const b of panel.querySelectorAll('[data-weapon]'))b.onclick=()=>{
@@ -499,7 +528,15 @@ function hudEvent(type,data){
     put('gunstatus',data.reloading?'正在换弹 '+Math.round((data.reloadProgress||0)*100)+'%':data.aiming?'瞄准':isMelee(data.weapon)?'右键重击':data.weapon==='he'?'投掷':!data.ammo?'弹匣已空':lowAmmo?'弹药不足':'就绪');
     $('cross').hidden=data.aiming||!data.alive;$('respawn').hidden=data.alive||data.phase==='ended';
     $('slotRack').hidden=!data.alive;
-    if(!data.alive)put('respawn','被 '+data.killedBy+' 击倒 · '+Math.ceil(data.respawnIn)+' 秒后复活');drawMap($('radar'),data);
+    if(!data.alive)put('respawnLabel','被 '+data.killedBy+' 击倒 · '+Math.ceil(data.respawnIn)+' 秒后复活');
+    const report=data.alive?null:data.deathReport;
+    // Online snapshots re-create the object each tick; avoid re-announcing the same report.
+    const reportKey=report?JSON.stringify(report):null;
+    if(reportKey!==shownDeathReport){
+      shownDeathReport=reportKey;
+      renderDeathReport($('deathReport'),report);
+    }
+    drawMap($('radar'),data);
   }else if(type==='hit'||type==='hurt'){
     if(type==='hit'){
       announceHit(data);
@@ -525,7 +562,9 @@ function hudEvent(type,data){
     const mvp=[...data.scoreboard].sort((a,b)=>(b.kills*2-b.deaths+b.headshots)-(a.kills*2-a.deaths+a.headshots))[0];
     const knife=data.mode==='knife';
     const accuracy=knife?'挥刀命中 '+data.hits+' / '+data.attempts+'（'+data.accuracy+'%）':data.headshots+' 爆头 · 命中率 '+data.accuracy+'%';
-    showDialog('end',knife?'3v3 刀战 · 对局结算':data.mode==='duel'?'单挑 1v1 · 对局结算':'MATCH RESULT',b===r?'双方平局':win?'我方胜利':'对方胜利','<div class="result"><span>'+b+'</span> · <b>'+r+'</b></div><div class="row">MVP <b>'+mvp.name+' · '+mvp.kills+' 击杀</b></div><p class="panelNote">你的战绩　'+data.kills+' 击杀 · '+data.deaths+' 阵亡 · '+accuracy+'</p>'+board(data)+'<div class="actions"><button id="again" class="primary">再来一局</button><button id="home" class="secondary">返回首页</button></div>');if(onlineMatch){$('again').textContent='返回好友房';$('again').onclick=duelRoom.lobby;}else $('again').onclick=start;$('home').onclick=toMenu;
+    showDialog('end',knife?'3v3 刀战 · 对局结算':data.mode==='duel'?'单挑 1v1 · 对局结算':'MATCH RESULT',b===r?'双方平局':win?'我方胜利':'对方胜利','<div class="result"><span>'+b+'</span> · <b>'+r+'</b></div><div class="row">MVP <b>'+mvp.name+' · '+mvp.kills+' 击杀</b></div><p class="panelNote">你的战绩　'+data.kills+' 击杀 · '+data.deaths+' 阵亡 · '+accuracy+'</p>'+board(data)+'<div id="finalDeathReport"></div><div class="actions"><button id="again" class="primary">再来一局</button><button id="home" class="secondary">返回首页</button></div>');const finalReport=$('finalDeathReport');
+    if(finalReport&&!data.alive)renderDeathReport(finalReport,data.deathReport);
+    if(onlineMatch){$('again').textContent='返回好友房';$('again').onclick=duelRoom.lobby;}else $('again').onclick=start;$('home').onclick=toMenu;
   }
 }
 const keys={KeyW:'forward',KeyS:'back',KeyA:'left',KeyD:'right',Space:'jump',ShiftLeft:'walk',ShiftRight:'walk',KeyX:'sprint',KeyC:'crouch',ArrowLeft:'left',ArrowRight:'right',KeyR:'reload',ArrowUp:'forward',ArrowDown:'back'};
@@ -842,7 +881,7 @@ async function init(){
       toggleSlowMo:()=>{view.karambitConfig.slowMo=!view.karambitConfig.slowMo;return view.karambitConfig.slowMo;},
       toggleTrail:()=>{view.karambitConfig.showTrail=!view.karambitConfig.showTrail;return view.karambitConfig.showTrail;}
     };
-    match=localMatch=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov','butterflyFinish','m9Finish'])applyPref(key);setSound();resize();
+    match=localMatch=createMatch({scene,camera,world,view,emit:hudEvent});for(const key of ['quality','tod','vol','fov','butterflyFinish','m9Finish','karambitFinish'])applyPref(key);setSound();resize();
     await view.ready;
     await prewarm();
     render(performance.now());drawMap($('chart'),null,true);renderer.setAnimationLoop(render);

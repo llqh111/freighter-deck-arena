@@ -341,7 +341,11 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     const lane=a.id%3-1;
     Object.assign(a,{x:spot.x,y:0,z:spot.z,yaw:a.team?Math.PI:0,hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary,a===p?melee:(a.melee||'knife'),knifeMode),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0,swingT:0});
     a.strike=null;a.scopeTarget=null;
+    a.life=(a.life||0)+1;
     if(a===p){
+      p.damageTaken=new Map();
+      p.damageGiven=new Map();
+      state.deathReport=null;
       pendingStrike=null;
       pitch=jumpVel=bob=loadTimer=0;grounded=true;
       shotTimer=active(p).id==='m9'?arsenal.m9.drawCd:.12;
@@ -454,14 +458,40 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     }
     return best;
   }
-  function takeHit(a,amount,id,kill){
+  function tally(log,opponent,health,armor,part,life){
+    let entry=log.get(opponent);
+    if(!entry||entry.life!==life){
+      entry={life,health:0,armor:0,hits:0,parts:{head:0,body:0,limb:0,blast:0}};
+      log.set(opponent,entry);
+    }
+    entry.health+=health;
+    entry.armor+=armor;
+    entry.hits++;
+    entry.parts[part]++;
+  }
+  function takeHit(a,amount,id,kill,part){
     sfx('hurt',id);shake=Math.min(.022,shake+amount*.00035);
     emit('hurt',{bearing:angleTo(p,a),damage:amount});
-    if(kill){pendingStrike=null;state.killedBy=a===p?'自己的手雷':a.name;state.zoom=0;state.aiming=false;loadTimer=0;clearKeys();}
+    if(kill){
+      const given=p.damageGiven.get(a);
+      state.deathReport={
+        killer:a.name, killerIsSelf:a===p, weapon:id, part,
+        healthLeft:a.hp, armorLeft:a.armor,
+        taken:p.damageTaken.get(a),
+        given:a!==p&&given?.life===a.life?given:null
+      };
+      pendingStrike=null;state.killedBy=a===p?'自己的手雷':a.name;state.zoom=0;state.aiming=false;loadTimer=0;clearKeys();
+    }
   }
-  function damage(a,b,amount,id,head=false,wall=false){
+  function damage(a,b,amount,id,head=false,wall=false,limb=false){
     if(!b.alive||b.shield>0||state.phase!=='playing'||(a!==b&&a.team===b.team))return;
+    const healthBefore=b.hp;
     const absorb=Math.min(b.armor,amount*(1-arsenal[id].armor));b.armor-=absorb;b.hp=Math.max(0,b.hp-amount+absorb);
+    const healthLost=healthBefore-b.hp;
+    const part=id==='he'?'blast':head?'head':limb?'limb':'body';
+    if(b.damageTaken)tally(b.damageTaken,a,healthLost,absorb,part);
+    // A grenade may still land after its owner dies, or after a report is shown.
+    if(a!==b&&a.alive&&a.damageGiven)tally(a.damageGiven,b,healthLost,absorb,part,b.life);
     if(arsenal[id].interval)b.tag=.24;
     if(b!==a){
       b.lastAttacker=a;b.hurtAt=clock;
@@ -481,8 +511,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         if(network)network.round.firstBlood=false;
         firstBlood=false;state.score[a.team]++;a.kills++;a.headshots+=+head;a.streak++;a.multi=clock-a.lastKill<5?a.multi+1:1;a.lastKill=clock;}
     }
-    if(b===p)takeHit(a,amount-absorb,id,kill);
-    else if(network)b.takeHit(a,amount-absorb,id,kill);
+    if(b===p)takeHit(a,amount-absorb,id,kill,part);
+    else if(network)b.takeHit(a,amount-absorb,id,kill,part);
     if(kill)emit('feed',{killer:a.name,victim:b.name,weapon:id,team:a.team,head,wall,first});
     if(a===p&&a!==b){
       if(knifeMode&&isMelee(id))hits++;
@@ -516,7 +546,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(hit&&factor){
       hitPos.copy(srcVec).addScaledVector(direction,hit.distance);
       if(hit.head)world.fx.headshot?.(hitPos);else world.fx.wound?.(hitPos);
-      damage(a,hit.unit,def.damage*(hit.head?def.head:hit.limb?.78:1)*factor*rangeScale(id,hit.distance),id,hit.head,wood);if(a===p)hits++;
+      damage(a,hit.unit,def.damage*(hit.head?def.head:hit.limb?.78:1)*factor*rangeScale(id,hit.distance),id,hit.head,wood,hit.limb);if(a===p)hits++;
     }
     startVec.copy(srcVec).addScaledVector(direction,.56);startVec.y-=.14;
     destVec.copy(srcVec).addScaledVector(direction,end);

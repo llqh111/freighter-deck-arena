@@ -1,4 +1,5 @@
 import * as T from './three.module.js';
+import {caseHardenedMaterial} from './karambit-finish.js?v=1';
 
 const assetUrl=new URL('./assets/karambit/low_poly_karambit_bicagi.glb',import.meta.url).href;
 // Source GLB lies in XY with ring hole along Z.
@@ -44,7 +45,7 @@ async function loadKnife(){
     material.envMapIntensity=1.38;
     const mesh=new T.Mesh(geometry,material);
     mesh.name='OldTÜRK34 Karambit';
-    return mesh;
+    return {mesh,hardening:caseHardenedMaterial(material)};
   }finally{
     URL.revokeObjectURL(textureUrl);
   }
@@ -310,6 +311,15 @@ export function buildKarambit(weapon,parts){
   };
 
   addBladeTrail(weapon,spinPivot);
-  const ready=loadKnife().then(mesh=>{spinPivot.add(mesh);});
-  weapon.karambit={mount,spinPivot,ringPivot:spinPivot,fingers,fingerTips,thumb,forearm,leftRig,wristJoint,debugGizmo,updateDebugGizmo,ready};
+  let finish='hardened',loaded;
+  function setFinish(id){
+    finish=id;
+    if(loaded)loaded.mesh.material=finish==='hardened'?loaded.hardening:loaded.original;
+  }
+  const ready=loadKnife().then(({mesh,hardening})=>{
+    loaded={mesh,hardening,original:mesh.material};
+    setFinish(finish);
+    spinPivot.add(mesh);
+  });
+  weapon.karambit={mount,spinPivot,ringPivot:spinPivot,fingers,fingerTips,thumb,forearm,leftRig,wristJoint,debugGizmo,updateDebugGizmo,ready,setFinish};
 }
