@@ -6,7 +6,7 @@ import {createViewModel} from './viewmodel.js?v=64';
 import {isMelee,melees} from './arsenal.js?v=31';
 import {createDeckAudio} from './deck-audio.js?v=35';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
-import {createDuelClient} from './duel-client.js?v=43';
+import {createDuelClient} from './duel-client.js?v=44';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=24';
 import {loadBinds,resetBinds,assignBind,buildCodeMap,mouseCode,bindLabel,keybindRowsMarkup} from './keybinds.js?v=1';
@@ -737,6 +737,10 @@ window.addEventListener('mousedown',e=>{
   if(e.button>=1)e.preventDefault();
   if(!coarse&&canvas.requestPointerLock&&document.pointerLockElement!==canvas){
     if((e.button===0||e.button===2)&&!lockPending)lock();
+    e.preventDefault();
+    return;
+  }
+  if(document.pointerLockElement===canvas&&performance.now()<lockGraceUntil){
     e.preventDefault();
     return;
   }
