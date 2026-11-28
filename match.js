@@ -335,8 +335,23 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     }
     emit('hud',state);
   }
+  function pickSpawn(a,initial){
+    const list=world.spawns[a.team];
+    if(initial)return list[a.id%list.length];
+    const scored=list.map(sp=>{
+      let score=Math.random()*1.5;
+      for(const u of units){
+        if(u===a||!u.alive)continue;
+        const d=Math.hypot(u.x-sp.x,u.z-sp.z);
+        if(u.team!==a.team&&d<12)score-=(12-d)*8;
+        else if(u.team===a.team&&d<1.4)score-=(1.4-d)*20;
+      }
+      return {sp,score};
+    }).sort((u,v)=>v.score-u.score);
+    return scored[0].sp;
+  }
   function respawn(a,initial=false){
-    const list=world.spawns[a.team], spot=list[initial?a.id%list.length:Math.floor(Math.random()*list.length)];
+    const spot=pickSpawn(a,initial);
     const role=a===p?'player':knifeMode?'duelist':a.primary==='awm'?'sniper':a.primary==='mp5'?'flanker':(a.team===p.team&&a.id===1)?'wingman':'rifle';
     const lane=a.id%3-1;
     Object.assign(a,{x:spot.x,y:spot.y??0,z:spot.z,yaw:spot.yaw??(a.team?Math.PI:0),hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary,a===p?melee:(a.melee||'knife'),state.mode),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0,swingT:0,ventUsed:false,ventDone:false});
@@ -431,8 +446,18 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     }
     return dist;
   }
-  function visible(a,b){
-    eye.set(a.x,a.y+1.52,a.z);aim.set(b.x,b.y+1.33,b.z).sub(eye);
+  function canUncrouch(x,z,y){
+    return !solidGrid.at(x,z).some(s=>s.bottom>=y+1.22-.001&&s.bottom<y+HEIGHT&&s.top>y+.001&&footprint(x,z,s));
+  }
+  function visible(a,b,standA=false){
+    const yA=a.y+(standA?EYE:eyeHeight(a));
+    const yB=b.y+(b.crouch?1.02:1.33);
+    eye.set(a.x,yA,a.z);aim.set(b.x,yB,b.z).sub(eye);
+    const len=aim.length();
+    return len>0 && wallDistance(eye,aim.multiplyScalar(1/len),len)>=len-.02;
+  }
+  function visibleCrouched(a,b){
+    eye.set(a.x,a.y+1.07,a.z);aim.set(b.x,b.y+(b.crouch?1.02:1.33),b.z).sub(eye);
     const len=aim.length();
     return len>0 && wallDistance(eye,aim.multiplyScalar(1/len),len)>=len-.02;
   }
@@ -444,15 +469,15 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     ray.set(origin,direction);let best=null;
     for(const unit of units){
       if(unit===shooter||!unit.alive||(!friends&&unit.team===shooter.team))continue;
-      const h=unit.crouch?.72:1;
-      headSphere.center.set(unit.x,unit.y+1.63*h,unit.z);
+      const headY=unit.crouch?1.06:1.63,bodyTop=unit.crouch?.96:1.49,limbTop=unit.crouch?.56:.78;
+      headSphere.center.set(unit.x,unit.y+headY,unit.z);
       bodyBox.min.set(unit.x-.22,unit.y+.10,unit.z-.2);
-      bodyBox.max.set(unit.x+.22,unit.y+1.49*h,unit.z+.2);
+      bodyBox.max.set(unit.x+.22,unit.y+bodyTop,unit.z+.2);
       for(const head of [true,false]){
         const point=head?ray.intersectSphere(headSphere,tmp):ray.intersectBox(bodyBox,tmp);
         if(!point)continue;
         const distance=point.distanceTo(origin);if(distance>=limit)continue;
-        limit=distance;best={unit,distance,head,limb:!head&&point.y<unit.y+.78*h};
+        limit=distance;best={unit,distance,head,limb:!head&&point.y<unit.y+limbTop};
       }
     }
     return best;
@@ -548,7 +573,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       if(ob.s.material==='wood'&&def.power>=1&&!wood){wood=true;factor*=Math.min(.72,.30+.15*def.power);continue;}
       end=ob.distance;factor=0;break;
     }
-    if(hit&&factor){
+    if(hit&&factor&&hit.unit.shield<=0){
       hitPos.copy(srcVec).addScaledVector(direction,hit.distance);
       if(hit.head)world.fx.headshot?.(hitPos);else world.fx.wound?.(hitPos);
       damage(a,hit.unit,def.damage*(hit.head?def.head:hit.limb?.78:1)*factor*rangeScale(id,hit.distance),id,hit.head,wood,hit.limb);if(a===p)hits++;
@@ -567,19 +592,26 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     const m=new T.Mesh(nadeGeo,nadeMat);m.position.set(a.x,a.y+eyeHeight(a)-.13,a.z);scene.add(m);
     grenades.push({a,m,velocity:direction.clone().multiplyScalar(12).add(new T.Vector3(0,3.5,0)),time:2.55});sfx('throw','he',a);a.shield=0;
   }
+  const nadeSurface={material:'metal',normal:new T.Vector3()};
   function updateGrenades(dt){
     for(let i=grenades.length-1;i>=0;i--){
       const g=grenades[i],pos=g.m.position;g.time-=dt;g.velocity.y-=12*dt;
-      const delta=g.velocity.clone().multiplyScalar(dt),length=delta.length(),toward=delta.clone().normalize();
-      if(length&&wallDistance(pos,toward,length+.12)<length+.11){
-        if(Math.abs(g.velocity.y)>1)sfx('bounce','he',pos);
-        for(const k of ['x','y','z']){
-          const c=g.velocity[k],v=new T.Vector3();v[k]=Math.sign(c);
-          if(c&&wallDistance(pos,v,Math.abs(c)*dt+.13)<Math.abs(c)*dt+.12)g.velocity[k]*=-.42;
-        }
-        g.velocity.multiplyScalar(.84);
+      const delta=g.velocity.clone().multiplyScalar(dt),length=delta.length();
+      if(length>1e-5){
+        const toward=delta.clone().multiplyScalar(1/length);
+        const hitDist=wallDistance(pos,toward,length+.12,nadeSurface);
+        if(hitDist<length+.12){
+          const advance=Math.max(0,hitDist-.12);
+          pos.addScaledVector(toward,advance);
+          const n=nadeSurface.normal,vn=g.velocity.dot(n);
+          if(Math.abs(vn)>1)sfx('bounce','he',pos);
+          if(vn<0)g.velocity.addScaledVector(n,-1.42*vn);
+          else g.velocity.multiplyScalar(-.42);
+          g.velocity.multiplyScalar(.84);
+          pos.addScaledVector(n,.005);
+        }else pos.addScaledVector(g.velocity,dt);
       }
-      pos.addScaledVector(g.velocity,dt);pos.y=Math.max(.13,pos.y);g.m.rotation.x+=dt*g.velocity.length();
+      pos.y=Math.max(.13,pos.y);g.m.rotation.x+=dt*g.velocity.length();
       if(g.time>0)continue;
       world.fx.explode(pos);sfx('explode','he',pos);
       const distP=Math.hypot(p.x-pos.x,p.z-pos.z);
@@ -659,7 +691,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
   }
   function advancePlayer(dt){
     const w=active(p),d=arsenal[w.id];
-    recoverBurst(p.burst,d,clock,dt);p.crouch=!!keys.crouch;
+    recoverBurst(p.burst,d,clock,dt);p.crouch=!!keys.crouch||(p.crouch&&!canUncrouch(p.x,p.z,p.y));
     state.aiming=!loadTimer&&!d.melee&&(w.id==='awm'?!!state.zoom:p.slot<2&&!!keys.aim);
     const sideways=Number(!!keys.right)-Number(!!keys.left),forward=Number(!!keys.forward)-Number(!!keys.back),mag=Math.hypot(sideways,forward);
     const speed=(p.crouch?2.15:keys.walk?2.65:state.zoom?2.25:state.aiming?3:keys.sprint?6.8:5.0)*d.speed;
@@ -691,7 +723,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(dt>0){p.vx=(p.x-oldX)/dt;p.vz=(p.z-oldZ)/dt;}
     p.quiet=!!keys.walk||p.crouch;const walked=Math.hypot(p.x-oldX,p.z-oldZ);p.walking=walked>dt*.1;
     if(p.walking&&!p.quiet&&grounded&&Math.floor(bob)!==Math.floor(bob+walked*2))for(const b of bots){
-      if(b.team!==p.team&&Math.hypot(b.x-p.x,b.z-p.z)<8)b.lastHeard={x:p.x,z:p.z};
+      if(b.team!==p.team&&Math.hypot(b.x-p.x,b.z-p.z)<8)b.lastHeard={x:p.x,z:p.z,t:clock};
     }bob+=walked*2;vertical(dt);state.grounded=grounded;state.verticalSpeed=jumpVel;
     state.sprinting=!!keys.sprint&&p.walking&&!state.aiming;cameraAt(dt);
     if(pendingStrike&&clock+1e-8>=pendingStrike.at){
@@ -813,19 +845,26 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     }
     if(b.role==='sniper'){
       const spots=world.ai?.snipers?.[b.team]??(b.team===0?[{x:0,z:18.7},{x:-7.8,z:13.5},{x:7.8,z:12.5}]:[{x:0,z:-18.7},{x:7.8,z:-13.5},{x:-7.8,z:-12.5}]);
-      if(spots?.length&&(!b.holdPos||clock>b.holdUntil)){
+      if(spots?.length){
+        const holdingSpot=b.holdPos&&b.holdPos.isSniper&&clock<=b.holdUntil;
+        if(holdingSpot)return b.holdPos;
         const open=spots.filter(sp=>!bots.some(m=>m!==b&&m.alive&&m.team===b.team&&m.holdPos&&Math.hypot(m.holdPos.x-sp.x,m.holdPos.z-sp.z)<2.5));
-        const pool=open.length?open:spots;
-        b.holdPos=pool[Math.floor(Math.random()*pool.length)];
-        b.holdUntil=clock+8+Math.random()*7;
+        if(open.length){
+          b.holdPos={...open[Math.floor(Math.random()*open.length)],isSniper:true};
+          b.holdUntil=clock+8+Math.random()*7;
+          return b.holdPos;
+        }
       }
-      if(b.holdPos)return b.holdPos;
     }
     const laneX=world.ai?.lanes?.[b.lane+1]??b.lane*7.0;
-    const laneEnemy=enemies.find(e=>Math.abs(e.x-laneX)<7.5);
-    if(laneEnemy&&Math.random()<.65)return {x:laneEnemy.x,z:laneEnemy.z};
+    const radarEnemy=enemies.find(e=>e.radarT>0&&Math.abs(e.x-laneX)<7.5);
+    if(radarEnemy&&Math.random()<.72)return {x:radarEnemy.x,z:radarEnemy.z};
     if(!b.holdPos||clock>b.holdUntil||Math.hypot(b.x-b.holdPos.x,b.z-b.holdPos.z)<2.2){
-      const advanceZ=clamp(b.z+dirZ*(9+Math.random()*8),loZ+3.5,hiZ-3.5);
+      const deepEnemy=(b.z-midZ)*dirZ>halfZ*.55;
+      const advanceZ=deepEnemy
+        ? clamp(midZ+(Math.random()-.5)*halfZ*.5,loZ+3.5,hiZ-3.5)
+        : clamp(b.z+dirZ*(b.role==='sniper'?(6+Math.random()*5):(9+Math.random()*8)),loZ+3.5,hiZ-3.5);
+      if(deepEnemy)b.lane=((b.lane+2)%3)-1;
       b.holdPos={x:clamp(laneX+(Math.random()-.5)*4.5,loX,hiX),z:advanceZ};
       b.holdUntil=clock+5+Math.random()*4;
     }
@@ -873,9 +912,14 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       if(u===b||!u.alive)continue;
       const dx=b.x-u.x,dz=b.z-u.z,d=Math.hypot(dx,dz);
       const minD=knifeMode&&u.team!==b.team?.86:(u===p?1.35:1.05);
-      if(d>1e-4&&d<minD){const push=(minD-d)/minD;sepX+=dx/d*push;sepZ+=dz/d*push;}
+      if(d<minD){
+        const push=(minD-d)/minD;
+        if(d>1e-4){sepX+=dx/d*push;sepZ+=dz/d*push;}
+        else{const ang=b.id*2.1;sepX+=Math.cos(ang)*push;sepZ+=Math.sin(ang)*push;}
+      }
     }
     if(sepX||sepZ){const mag=Math.hypot(sepX,sepZ);move(b,sepX/mag*Math.min(1,mag)*1.4*dt,sepZ/mag*Math.min(1,mag)*1.4*dt);}
+    const reloadingNow=b.reloadUntil>clock;
     if(b.think<=0){
       b.think=skill.response*.75+Math.random()*.18;
       let bestFoe=null,bestScore=-Infinity;
@@ -884,7 +928,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         if(r>skill.sight)continue;
         const front=(-Math.sin(b.yaw)*dx-Math.cos(b.yaw)*dz)/Math.max(.01,r);
         const aware=front>Math.cos(skill.fov)||r<8||e.radarT>0||(e===b.lastAttacker&&clock-b.hurtAt<3.5);
-        if(!aware||!visible(b,e))continue;
+        if(!aware||(!visible(b,e)&&!(!reloadingNow&&b.crouch&&visible(b,e,true))))continue;
         let sc=52-r;
         if(e.shield>0)sc-=65;
         if(e.hp<42)sc+=14;
@@ -924,7 +968,10 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       }
     }
     const reloading=b.reloadUntil>clock;
-    const hasSight=b.enemy?.alive&&visible(b,b.enemy);
+    let hasSight=b.enemy?.alive&&visible(b,b.enemy);
+    if(!hasSight&&!reloading&&b.crouch&&b.enemy?.alive&&visible(b,b.enemy,true)){
+      b.crouch=false;hasSight=true;
+    }
     if(hasSight){
       const foe=b.enemy;
       b.lastSeen={x:foe.x,y:foe.y,z:foe.z,t:clock};
@@ -974,7 +1021,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       const scopeWait=def.scopeSettle?(def.scopeSettle+skill.response*.65+(foeAirborne?.08:0)):0;
       const scopeReady=!settling||clock-b.scopeSince+1e-8>=scopeWait;
       const pref=botWeaponRange(w.id);
-      b.crouch=reloading||(sniper&&range>13)||(range>16&&b.burst.count>=2&&skill.strafe<.65);
+      const wantCrouch=(sniper&&range>13)||(range>16&&b.burst.count>=2&&skill.strafe<.65);
+      b.crouch=reloading||(wantCrouch&&visibleCrouched(b,foe));
       let moveSpd=0;
       // If retreating to cover while low HP or reloading, follow cover path while still facing threat.
       if((b.hp<38||reloading)&&b.path.length&&clock<b.coverUntil){
@@ -1005,12 +1053,14 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
           const airPenalty=foeAirborne?(sniper?.32:.20):0;
           const movePenalty=foeSpeed*(sniper?.022:.018);
           const airLagY=foeAirborne&&foe===p?-jumpVel*.06:0;
-          const miss=skill.miss*(b.crouch?.78:1)+range*.0055+airPenalty+movePenalty;
-          dir.set(foe.x-b.x+(Math.random()-.5)*miss*2,foe.y+airLagY+(Math.random()<skill.head?1.63:1.18)-b.y-eyeHeight(b)+(Math.random()-.5)*miss*1.75,foe.z-b.z+(Math.random()-.5)*miss*2).normalize();
+          const targetY=foe.y+airLagY+(foe.crouch?(Math.random()<skill.head?1.06:.72):(Math.random()<skill.head?1.63:1.18));
+          dir.set(foe.x-b.x,targetY-b.y-eyeHeight(b),foe.z-b.z).normalize();
+          const errRad=(skill.miss*(b.crouch?.78:1)*.052+airPenalty*.05+movePenalty*.035)*(.72+Math.min(range,36)/42);
+          const aimErrX=(Math.random()-.5)*2*errRad,aimErrY=(Math.random()-.5)*1.7*errRad;
           const botMoveSpeed=b.walking?Math.min(moveSpd,skill.strafe*1.6):0;
           const spread=firingCone(def,b.burst,{speed:botMoveSpeed,grounded:!b.fall,crouch:b.crouch,scoped:!!def.scopeSettle,ads:w.id!=='mp5'});
           const offset=spreadOffset(spread);
-          rot.set(Math.asin(clamp(dir.y,-1,1))+b.burst.pitch+offset.y,Math.atan2(-dir.x,-dir.z)+b.burst.yaw+offset.x,0,'YXZ');
+          rot.set(Math.asin(clamp(dir.y,-1,1))+b.burst.pitch+offset.y+aimErrY,Math.atan2(-dir.x,-dir.z)+b.burst.yaw+offset.x+aimErrX,0,'YXZ');
           dir.set(0,0,-1).applyEuler(rot);w.ammo--;shot(b,dir,w.id);recordShot(b.burst,def,clock,w.id!=='mp5',b.crouch);
           b.burstLeft=(b.burstLeft||3)-1;
           const autoGun=['ak47','m4a1','mp5'].includes(w.id);
@@ -1041,7 +1091,10 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         toss(b,new T.Vector3(b.lastSeen.x-b.x,2.9,b.lastSeen.z-b.z).normalize());
       }
     }
-    b.crouch=reloading||(b.role==='sniper'&&b.holdPos&&Math.hypot(b.x-b.holdPos.x,b.z-b.holdPos.z)<1.6);
+    const holdCrouch=b.role==='sniper'&&b.holdPos?.isSniper&&Math.hypot(b.x-b.holdPos.x,b.z-b.holdPos.z)<1.6&&(
+      eye.set(b.x,b.y+1.07,b.z),aim.set(-Math.sin(b.yaw),0,-Math.cos(b.yaw)),wallDistance(eye,aim,6)>=5.8
+    );
+    b.crouch=reloading||holdCrouch;
     if(!b.path.length){
       // Hold angle / scan toward last seen or alert direction instead of staring at a wall.
       if(b.lastSeen&&clock-b.lastSeen.t<3.8)b.yaw=turnToward(b.yaw,angleTo(b,b.lastSeen),turnSpeed*.75*dt);
@@ -1128,8 +1181,9 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       if(sniperMode&&value!==sniperPrimary)return null;
       primary=value;
       if(!knifeMode&&p.alive&&inSpawnZone(p)){
+        if(p.inventory[0]?.id===primary){if(p.slot!==0)useSlot(0);return 'now';}
         pendingStrike=null;
-        p.inventory[0]=loadout(primary,melee,state.mode)[0];p.burst=newBurst();p.slot=0;state.zoom=0;loadTimer=0;shotTimer=.25;view.equip(primary);hud();return 'now';
+        p.inventory[0]=loadout(primary,melee,state.mode)[0];p.burst=newBurst();p.slot=0;restoreZoom=0;state.zoom=0;state.aiming=false;loadTimer=0;shotTimer=.25;view.equip(primary);hud();return 'now';
       }return 'respawn';
     }
     if(action==='melee'&&melees.includes(value)){

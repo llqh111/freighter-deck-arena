@@ -72,7 +72,7 @@ export function runDuel(members,send,broadcast,onEnd){
     const grenades=views.flatMap(view=>view.grenades);
     controllers.forEach(({ws,lookAck},index)=>{
       const {state,position,rotation}=views[index];
-      send(ws,{type,state,position,rotation,actors,grenades,lookAck});
+      send(ws,{type,map:world.id,state,position,rotation,actors,grenades,lookAck});
     });
   }
   for(const {match} of controllers)match.hud();

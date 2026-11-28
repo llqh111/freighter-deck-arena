@@ -1,12 +1,12 @@
 import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=39';
 import * as T from './three.module.js';
 import {maps} from './maps.js?v=2';
-import {createMatch} from './match.js?v=55';
+import {createMatch} from './match.js?v=56';
 import {createViewModel} from './viewmodel.js?v=64';
 import {isMelee,melees} from './arsenal.js?v=31';
 import {createDeckAudio} from './deck-audio.js?v=35';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
-import {createDuelClient} from './duel-client.js?v=42';
+import {createDuelClient} from './duel-client.js?v=43';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=24';
 import {loadBinds,resetBinds,assignBind,buildCodeMap,mouseCode,bindLabel,keybindRowsMarkup} from './keybinds.js?v=1';
@@ -374,6 +374,8 @@ const duelRoom=createDuelRoom({
   show:showDialog,panel,notify,prefs,onDisconnect:stopOnlineMatch,
   onPacket(packet){
     if(packet.type==='started'){
+      const serverMap=packet.map||'ship';
+      if(world?.id!==serverMap)switchMap(serverMap);
       localMatch.clearScene();resetFeedback();
       onlineMatch=createDuelClient({scene,camera,view,world,send:duelRoom.send,emit:hudEvent});
       match=onlineMatch;
@@ -393,7 +395,7 @@ const duelRoom=createDuelRoom({
   }
 });
 function resume(){closePanel();setMode('playing');match.resume();canvas.focus();lock();}
-function toMenu(){duelRoom.leave();stopOnlineMatch();closePanel();release();setMode('menu');drawMap($('chart'),null,true);}
+function toMenu(){duelRoom.leave();stopOnlineMatch();localMatch?.clearScene();closePanel();release();setMode('menu');drawMap($('chart'),null,true);}
 function pauseUI(){
   if(mode!=='playing'&&mode!=='paused')return;
   match.pause();setMode('paused');release();

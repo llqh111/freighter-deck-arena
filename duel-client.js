@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {createSquad} from './match.js?v=55';
+import {createSquad} from './match.js?v=56';
 import {isMelee} from './arsenal.js?v=31';
 
 export function createDuelClient({scene,camera,view,world,send,emit}){
@@ -128,8 +128,8 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
     }
     send({type:'input',action,value});
     if(action==='primary'||action==='melee'){
-      const p=state.player;
-      return state.alive&&Math.abs(p.z)>20&&(p.team===0?p.z>0:p.z<0)?'now':'respawn';
+      const p=state.player,[z0=20,z1=-20]=world.ai?.spawnZoneZ||[];
+      return state.alive&&(p.team===0?p.z>z0:p.z<z1)?'now':'respawn';
     }
   }
   return {
