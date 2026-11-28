@@ -1,5 +1,5 @@
 import * as T from './three.module.js';
-import {createSquad} from './match.js?v=57';
+import {createSquad} from './match.js?v=58';
 import {isMelee} from './arsenal.js?v=31';
 
 export function createDuelClient({scene,camera,view,world,send,emit}){

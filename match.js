@@ -855,11 +855,16 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       if(spots?.length){
         const holdingSpot=b.holdPos&&b.holdPos.isSniper&&clock<=b.holdUntil;
         if(holdingSpot)return b.holdPos;
-        const open=spots.filter(sp=>!bots.some(m=>m!==b&&m.alive&&m.team===b.team&&m.holdPos&&Math.hypot(m.holdPos.x-sp.x,m.holdPos.z-sp.z)<2.5));
-        if(open.length){
-          b.holdPos={...open[Math.floor(Math.random()*open.length)],isSniper:true};
-          b.holdUntil=clock+8+Math.random()*7;
-          return b.holdPos;
+        const teamBots=bots.filter(m=>m.alive&&m.team===b.team);
+        const maxAnchors=sniperMode?Math.min(spots.length,Math.max(1,Math.floor(teamBots.length/2))):spots.length;
+        const currentAnchors=teamBots.filter(m=>m!==b&&m.holdPos?.isSniper).length;
+        if(currentAnchors<maxAnchors){
+          const open=spots.filter(sp=>!teamBots.some(m=>m!==b&&m.holdPos&&Math.hypot(m.holdPos.x-sp.x,m.holdPos.z-sp.z)<2.5));
+          if(open.length){
+            b.holdPos={...open[Math.floor(Math.random()*open.length)],isSniper:true};
+            b.holdUntil=clock+(sniperMode?5+Math.random()*4:8+Math.random()*7);
+            return b.holdPos;
+          }
         }
       }
     }
@@ -870,7 +875,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       const deepEnemy=(b.z-midZ)*dirZ>halfZ*.55;
       const advanceZ=deepEnemy
         ? clamp(midZ+(Math.random()-.5)*halfZ*.5,loZ+3.5,hiZ-3.5)
-        : clamp(b.z+dirZ*(b.role==='sniper'?(6+Math.random()*5):(9+Math.random()*8)),loZ+3.5,hiZ-3.5);
+        : clamp(b.z+dirZ*(b.role==='sniper'?(7.5+Math.random()*6):(9+Math.random()*8)),loZ+3.5,hiZ-3.5);
       if(deepEnemy)b.lane=((b.lane+2)%3)-1;
       b.holdPos=clampOutOfEnemySpawn(b,{x:clamp(laneX+(Math.random()-.5)*4.5,loX,hiX),z:advanceZ});
       b.holdUntil=clock+5+Math.random()*4;
@@ -1025,7 +1030,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
       if(settling){
         if(b.scopeTarget!==foe){b.scopeTarget=foe;b.scopeSince=clock;}
       }else b.scopeTarget=null;
-      const scopeWait=def.scopeSettle?(def.scopeSettle+skill.response*.65+(foeAirborne?.08:0)):0;
+      const scopeWait=def.scopeSettle?(def.scopeSettle+skill.response*(sniperMode?.42:.55)+(foeAirborne?.08:0)):0;
       const scopeReady=!settling||clock-b.scopeSince+1e-8>=scopeWait;
       const pref=botWeaponRange(w.id);
       const wantCrouch=(sniper&&range>13)||(range>16&&b.burst.count>=2&&skill.strafe<.65);
@@ -1038,7 +1043,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         else{const spd=dt*(b.tag>0?.55:1)*3.1;move(b,dx/dist*Math.min(spd,dist),dz/dist*Math.min(spd,dist));b.walking=true;moveSpd=spd/Math.max(1e-4,dt);}
       }else{
         // Counter-strafe to steady aim right before an AWM shot, otherwise strafe naturally.
-        const steadySniper=sniper&&!reloading&&aligned&&b.shot<=.18&&w.ammo>0&&skill.strafe>=.5;
+        const steadySniper=sniper&&!reloading&&aligned&&(settling||b.shot<=.22)&&w.ammo>0;
         if(clock>=b.strafeAt){b.strafeDir*=-1;b.strafeAt=clock+.55+Math.random()*.95;}
         const strafeSpd=steadySniper?0:skill.strafe*1.75*(b.crouch?.45:1)*(b.tag>0?.55:1);
         let mx=Math.cos(b.yaw)*b.strafeDir*strafeSpd,mz=-Math.sin(b.yaw)*b.strafeDir*strafeSpd;
@@ -1055,6 +1060,10 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         b.walking=moved>dt*.25;
         if(moved<dt*.15&&strafeSpd>.2){b.strafeDir*=-1;b.strafeAt=clock+.5;}
       }
+      if(!reloading&&b.slot===0&&sniper&&range<9.5&&b.shot>.65&&foe.shield<=0&&b.inventory[1]?.ammo>0){
+        b.slot=1;b.burst=newBurst();b.shot=.28;sfx('equip','deagle',b);
+        return;
+      }
       if(!reloading&&aligned&&scopeReady&&b.shot<=0&&foe.shield<=0&&!friendlyInLine(b,foe.x,foe.z,range)){
         if(w.ammo>0){
           const airPenalty=foeAirborne?(sniper?.32:.20):0;
@@ -1062,7 +1071,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
           const airLagY=foeAirborne&&foe===p?-jumpVel*.06:0;
           const targetY=foe.y+airLagY+(foe.crouch?(Math.random()<skill.head?1.06:.72):(Math.random()<skill.head?1.63:1.18));
           dir.set(foe.x-b.x,targetY-b.y-eyeHeight(b),foe.z-b.z).normalize();
-          const errRad=(skill.miss*(b.crouch?.78:1)*.052+airPenalty*.05+movePenalty*.035)*(.72+Math.min(range,36)/42);
+          const sniperScale=sniper?.56:1;
+          const errRad=(skill.miss*(b.crouch?.78:1)*.052*sniperScale+airPenalty*.045+movePenalty*.032)*(.72+Math.min(range,36)/42);
           const aimErrX=(Math.random()-.5)*2*errRad,aimErrY=(Math.random()-.5)*1.7*errRad;
           const botMoveSpeed=b.walking?Math.min(moveSpd,skill.strafe*1.6):0;
           const spread=firingCone(def,b.burst,{speed:botMoveSpeed,grounded:!b.fall,crouch:b.crouch,scoped:!!def.scopeSettle,ads:w.id!=='mp5'});
