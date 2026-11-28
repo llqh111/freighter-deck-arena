@@ -1,7 +1,7 @@
 import {names,teams,groups,choices,meleeChoices,selectors,board,weaponIcon} from './lobby.js?v=39';
 import * as T from './three.module.js';
 import {maps} from './maps.js?v=2';
-import {createMatch} from './match.js?v=56';
+import {createMatch} from './match.js?v=57';
 import {createViewModel} from './viewmodel.js?v=64';
 import {isMelee,melees} from './arsenal.js?v=31';
 import {createDeckAudio} from './deck-audio.js?v=35';

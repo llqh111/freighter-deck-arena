@@ -354,13 +354,14 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     const spot=pickSpawn(a,initial);
     const role=a===p?'player':knifeMode?'duelist':a.primary==='awm'?'sniper':a.primary==='mp5'?'flanker':(a.team===p.team&&a.id===1)?'wingman':'rifle';
     const lane=a.id%3-1;
-    Object.assign(a,{x:spot.x,y:spot.y??0,z:spot.z,yaw:spot.yaw??(a.team?Math.PI:0),hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.55:1.5,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary,a===p?melee:(a.melee||'knife'),state.mode),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0,swingT:0,ventUsed:false,ventDone:false});
+    Object.assign(a,{x:spot.x,y:spot.y??0,z:spot.z,yaw:spot.yaw??(a.team?Math.PI:0),hp:100,armor:100,alive:true,deathT:9,respawn:0,shield:initial?.75:2.4,path:[],think:Math.random()*.25,shot:.28+Math.random()*.45,walking:false,enemy:null,crouch:false,burst:newBurst(),vx:0,vz:0,tag:0,slot:0,inventory:loadout(a===p?primary:a.primary,a===p?melee:(a.melee||'knife'),state.mode),radarT:0,fall:0,streak:0,multi:0,lastKill:-99,lastHeard:null,lastSeen:null,nadeReady:clock+12+Math.random()*16,role,lane,strafeDir:Math.random()<.5?-1:1,strafeAt:clock+.7+Math.random()*.9,reloadUntil:0,coverUntil:0,alertYaw:null,alertUntil:0,hurtAt:-99,burstLeft:3+Math.floor(Math.random()*3),stuckPos:{x:spot.x,z:spot.z},stuckAt:clock+.7,holdPos:null,holdUntil:0,swingT:0,ventUsed:false,ventDone:false});
     a.strike=null;a.scopeTarget=null;
     if(a===p){
       p.damageTaken=new Map();
       p.damageGiven=new Map();
       state.deathReport=null;
       pendingStrike=null;
+      fireTap=altTap=false;keys.fire=keys.aim=false;
       pitch=jumpVel=bob=loadTimer=0;grounded=true;
       shotTimer=active(p).id==='m9'?arsenal.m9.drawCd:.12;
       lastSlot=0;semiLatch=false;
@@ -796,6 +797,12 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     b.reloadUntil=clock+def.reload;b.shot=Math.max(b.shot,def.reload);
     b.reloadingSlot=b.slot;sfx('reload',w.id,b);return true;
   }
+  function clampOutOfEnemySpawn(b,dest){
+    if(knifeMode||!dest)return dest;
+    const [z0=20,z1=-20]=world.ai?.spawnZoneZ||[];
+    const z=b.team===0?Math.max(z1+1.5,dest.z):Math.min(z0-1.5,dest.z);
+    return z===dest.z?dest:{x:dest.x,z};
+  }
   function pickBotDest(b,enemies){
     const dirZ=b.team===0?-1:1;
     const {minX,maxX,minZ,maxZ}=world.bounds;
@@ -816,9 +823,9 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(b.lastSeen&&clock-b.lastSeen.t<3.8){
       if(b.role==='sniper'){
         const cov=navigator.findCover(b.x,b.z,b.lastSeen.x,b.lastSeen.y||0,b.lastSeen.z,wallDistance,7);
-        if(cov&&!inSpawnZone({team:b.team,z:cov.z}))return cov;
+        if(cov&&!inSpawnZone({team:b.team,z:cov.z}))return clampOutOfEnemySpawn(b,cov);
       }
-      return {x:b.lastSeen.x,z:b.lastSeen.z};
+      return clampOutOfEnemySpawn(b,{x:b.lastSeen.x,z:b.lastSeen.z});
     }
     if(b.role==='flanker'&&world.vents?.length&&!b.ventDone){
       const vent=world.vents[b.team===0?1:0];
@@ -837,7 +844,7 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
         }
       }
     }
-    if(b.lastHeard&&clock-(b.lastHeard.t||0)<4.8)return b.lastHeard;
+    if(b.lastHeard&&clock-(b.lastHeard.t||0)<4.8)return clampOutOfEnemySpawn(b,b.lastHeard);
     if(b.role==='wingman'&&p.alive&&p.z>minZ+5&&p.z<maxZ-5){
       const side=p.x>midX?-4.2:4.2;
       const tx=clamp(p.x+side,loX,hiX),tz=clamp(p.z+dirZ*3.5,loZ,hiZ);
@@ -858,14 +865,14 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     }
     const laneX=world.ai?.lanes?.[b.lane+1]??b.lane*7.0;
     const radarEnemy=enemies.find(e=>e.radarT>0&&Math.abs(e.x-laneX)<7.5);
-    if(radarEnemy&&Math.random()<.72)return {x:radarEnemy.x,z:radarEnemy.z};
+    if(radarEnemy&&Math.random()<.72)return clampOutOfEnemySpawn(b,{x:radarEnemy.x,z:radarEnemy.z});
     if(!b.holdPos||clock>b.holdUntil||Math.hypot(b.x-b.holdPos.x,b.z-b.holdPos.z)<2.2){
       const deepEnemy=(b.z-midZ)*dirZ>halfZ*.55;
       const advanceZ=deepEnemy
         ? clamp(midZ+(Math.random()-.5)*halfZ*.5,loZ+3.5,hiZ-3.5)
         : clamp(b.z+dirZ*(b.role==='sniper'?(6+Math.random()*5):(9+Math.random()*8)),loZ+3.5,hiZ-3.5);
       if(deepEnemy)b.lane=((b.lane+2)%3)-1;
-      b.holdPos={x:clamp(laneX+(Math.random()-.5)*4.5,loX,hiX),z:advanceZ};
+      b.holdPos=clampOutOfEnemySpawn(b,{x:clamp(laneX+(Math.random()-.5)*4.5,loX,hiX),z:advanceZ});
       b.holdUntil=clock+5+Math.random()*4;
     }
     return b.holdPos;
@@ -1232,8 +1239,8 @@ export function createMatch({scene,camera,world,view,emit=()=>{},network}){
     if(action==='cycle'){if(p.inventory.length<=1)return;for(let i=1;i<=p.inventory.length;i++){const n=(p.slot+Math.sign(value)*i+p.inventory.length*2)%p.inventory.length;if(n!==3||p.inventory[3]?.ammo){useSlot(n);break;}}return;}
     const down=!!value;
     if(action==='jump'&&down&&!keys.jump&&grounded&&p.alive){sfx('jump',active(p).id);jumpVel=keys.crouch?8.4:7.1;grounded=false;}
-    if(action==='fire'&&down&&!keys.fire){fireTap=true;semiLatch=false;}
-    if(action==='aim'&&down&&!keys.aim)altTap=true;
+    if(action==='fire'&&down&&!keys.fire){if(p.alive)fireTap=true;semiLatch=false;}
+    if(action==='aim'&&down&&!keys.aim){if(p.alive)altTap=true;}
     if(action==='fire'&&!down)semiLatch=false;
     if(action==='aim'&&down&&!keys.aim&&p.alive&&active(p).id==='awm'&&!loadTimer){if(restoreZoom){restoreZoom=0;}else{state.zoom=(state.zoom+1)%3;scopeTime=clock;sfx('scope','awm');}}
     if(action==='reload'&&down){if(p.alive&&timedMeleeContacts[active(p).id])view.fidget?.();else reload();}keys[action]=down;
