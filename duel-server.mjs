@@ -78,13 +78,15 @@ export function runDuel(members,send,broadcast,onEnd){
   for(const {match} of controllers)match.hud();
   active=true;
   sendState('started');
-  let previous=performance.now(),accumulator=0,ticks=0;
+  let previous=performance.now(),accumulator=0;
   const timer=setInterval(()=>{
     const now=performance.now();
     accumulator+=Math.min(.1,(now-previous)/1000);
     previous=now;
+    let stepped=false;
     while(accumulator>=step){
       accumulator-=step;
+      stepped=true;
       for(const {match} of controllers){
         match.update(step);
         if(round.score.some(score=>score>=match.state.target))break;
@@ -97,8 +99,8 @@ export function runDuel(members,send,broadcast,onEnd){
         onEnd();
         return;
       }
-      if(++ticks%2===0)sendState('state');
     }
+    if(stepped)sendState('state');
   },8);
   function stop(){
     active=false;

@@ -35,6 +35,7 @@ const server=createServer(async(req,res)=>{
 const wss=new WebSocketServer({noServer:true,maxPayload:2048});
 server.on('upgrade',(req,socket,head)=>{
   if(req.url!=='/duel'||req.headers.origin!=='http://'+req.headers.host){socket.destroy();return;}
+  socket.setNoDelay(true);
   wss.handleUpgrade(req,socket,head,ws=>wss.emit('connection',ws));
 });
 
@@ -71,16 +72,17 @@ function leave(ws){
   publish(room,interrupted?'对手已离开，本局结束。':'有玩家离开了房间。');
 }
 wss.on('connection',ws=>{
-  ws.live=true;
+  ws.missedPings=0;
   ws.limitSince=Date.now();
   ws.messages=0;
-  ws.on('pong',()=>{ws.live=true;});
+  ws.on('pong',()=>{ws.missedPings=0;});
   ws.on('error',()=>leave(ws));
   ws.on('close',()=>leave(ws));
   ws.on('message',(raw,binary)=>{
+    ws.missedPings=0;
     const now=Date.now();
     if(now-ws.limitSince>=1000){ws.limitSince=now;ws.messages=0;}
-    if(++ws.messages>240){ws.close(1008);return;}
+    if(++ws.messages>600){console.log('[duel] disconnect: rate limit exceeded');ws.close(1008);return;}
     if(binary)return;
     let data;
     try{data=JSON.parse(raw.toString());}catch{return;}
@@ -143,11 +145,10 @@ wss.on('connection',ws=>{
 
 setInterval(()=>{
   for(const ws of wss.clients){
-    if(!ws.live){ws.terminate();continue;}
-    ws.live=false;
+    if(++ws.missedPings>2){console.log('[duel] disconnect: heartbeat timeout');ws.terminate();continue;}
     ws.ping();
   }
-},10000).unref();
+},15000).unref();
 
 server.listen(port,'0.0.0.0',()=>{
   const actualPort=server.address().port;

@@ -4,8 +4,9 @@ import {isMelee} from './arsenal.js?v=31';
 
 export function createDuelClient({scene,camera,view,world,send,emit}){
   let actors=[],animate,target,sequence=0,pending=[];
-  let lookX=0,lookY=0,viewTime=0,baseFov=78;
+  let lookX=0,lookY=0,lookTimer=0,hudTimer=0,lastHudKey='',viewTime=0,baseFov=78;
   let swayX=0,swayY=0;
+  const hudKey=s=>`${s.phase}|${s.alive}|${s.hp}|${s.armor}|${s.ammo}|${s.reserve}|${s.weapon}|${s.slot}|${s.zoom}|${s.aiming}|${s.reloading}|${s.score?.[0]}:${s.score?.[1]}`;
   const buttons=new Map(),state={};
   const rotation=new T.Quaternion(),angles=new T.Euler(0,0,0,'YXZ');
   const position=new T.Vector3(),tracers=[];
@@ -27,7 +28,11 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
     target=packet;
     pending=pending.filter(input=>input.seq>packet.lookAck);
     Object.assign(state,packet.state,{actors});
-    emit('hud',state);
+    const key=hudKey(state);
+    if(packet.type==='started'||packet.type==='ended'||key!==lastHudKey||hudTimer<=0){
+      lastHudKey=key;hudTimer=.1;
+      emit('hud',state);
+    }
   }
   function sensitivity(){
     if(state.zoom){
@@ -39,34 +44,40 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
   }
   function update(dt){
     if(!target)return;
-    if(lookX||lookY){
+    hudTimer=Math.max(0,hudTimer-dt);
+    lookTimer=Math.max(0,lookTimer-dt);
+    if((lookX||lookY)&&lookTimer<=0){
       const x=T.MathUtils.clamp(lookX,-360,360),y=T.MathUtils.clamp(lookY,-360,360);
       lookX=lookY=0;
-      swayX=T.MathUtils.clamp(swayX+x*.00028,-.035,.035);
-      swayY=T.MathUtils.clamp(swayY+y*.00022,-.028,.028);
+      lookTimer=1/60;
       const seq=++sequence;
       if(send({type:'look',seq,x,y}))pending.push({seq,x,y});
       if(pending.length>32)pending.shift();
     }
-    const response=1-Math.exp(-60*dt);
+    const camBlend=1-Math.exp(-28*dt);
+    const actorBlend=1-Math.exp(-20*dt);
     const targetPosition=position.fromArray(target.position);
     if(camera.position.distanceToSquared(targetPosition)>16)camera.position.copy(targetPosition);
-    else camera.position.lerp(targetPosition,response);
+    else camera.position.lerp(targetPosition,camBlend);
     angles.setFromQuaternion(rotation.fromArray(target.rotation),'YXZ');
     if(state.alive){
       const sens=sensitivity();
       for(const input of pending){angles.y-=input.x*sens;angles.x-=input.y*sens;}
+      if(lookX||lookY){angles.y-=lookX*sens;angles.x-=lookY*sens;}
       angles.x=T.MathUtils.clamp(angles.x,-1.42,1.42);
     }
     camera.rotation.copy(angles);
-    const fov=state.zoom===2?11:state.zoom===1?30:baseFov*(state.aiming?.75:1);
-    if(camera.fov!==fov){camera.fov=fov;camera.updateProjectionMatrix();}
+    const desiredFov=state.zoom===2?11:state.zoom===1?30:baseFov*(state.aiming?.75:1);
+    if(Math.abs(camera.fov-desiredFov)>.05){
+      camera.fov=state.weapon==='awm'?desiredFov:T.MathUtils.damp(camera.fov,desiredFov,18,dt);
+      camera.updateProjectionMatrix();
+    }
     camera.updateMatrixWorld();
     for(const actor of actors){
       const networkActor=target.actors.find(other=>other.id===actor.id);
       const {x,y,z,yaw,...flags}=networkActor;
       const snap=actor.alive!==flags.alive||Math.hypot(actor.x-x,actor.z-z)>4;
-      const blend=snap?1:response;
+      const blend=snap?1:actorBlend;
       actor.x+=(x-actor.x)*blend;actor.y+=(y-actor.y)*blend;actor.z+=(z-actor.z)*blend;
       actor.yaw+=Math.atan2(Math.sin(yaw-actor.yaw),Math.cos(yaw-actor.yaw))*blend;
       Object.assign(actor,flags);
@@ -134,7 +145,7 @@ export function createDuelClient({scene,camera,view,world,send,emit}){
   }
   return {
     state,apply,visual,input,update,
-    look(x,y){if(state.alive){lookX+=x;lookY+=y;}},
+    look(x,y){if(state.alive){lookX+=x;lookY+=y;swayX=T.MathUtils.clamp(swayX+x*.00028,-.035,.035);swayY=T.MathUtils.clamp(swayY+y*.00022,-.028,.028);}},
     pause(){buttons.clear();lookX=lookY=0;send({type:'clear'});},
     resume(){},
     dispose(){

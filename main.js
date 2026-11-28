@@ -6,7 +6,7 @@ import {createViewModel} from './viewmodel.js?v=64';
 import {isMelee,melees} from './arsenal.js?v=31';
 import {createDeckAudio} from './deck-audio.js?v=35';
 import {loadCrosshair,saveCrosshair,applyCrosshair,drawViewportCrosshair,parseValorantCode,exportValorantCode,studioMarkup,CROSSHAIR_PRESETS} from './crosshair.js?v=15';
-import {createDuelClient} from './duel-client.js?v=45';
+import {createDuelClient} from './duel-client.js?v=46';
 import {createDuelRoom,invited} from './duel-room.js?v=23';
 import {matchRules,matchDuration} from './match-rules.js?v=24';
 import {loadBinds,resetBinds,assignBind,buildCodeMap,mouseCode,bindLabel,keybindRowsMarkup} from './keybinds.js?v=1';
@@ -404,7 +404,7 @@ function pauseUI(){
   showDialog('pause','MATCH MENU',onlineMatch?'好友对局进行中':'对局已暂停','<div class="actions"><button id="resume" class="primary">继续对局</button><button id="inLoadout" class="secondary">'+swapLabel+'</button>'+(botSwap?'<button id="inBotWeapon" class="secondary">电脑武器</button>':'')+'<button id="inCrosshair" class="secondary">自定义准星</button><button id="inBoard" class="secondary">查看战绩</button><button id="inSettings" class="secondary">设置与操作</button><button id="leave" class="secondary">返回甲板首页</button></div>');
   $('inLoadout').onclick=()=>armory(true);if(botSwap)$('inBotWeapon').onclick=botWeapon;$('inCrosshair').onclick=crosshairStudio;$('inBoard').onclick=()=>showDialog('board','SCOREBOARD','团队战绩',board(match.state));$('resume').onclick=resume;$('inSettings').onclick=settings;$('leave').onclick=toMenu;
 }
-function dismiss(){if(dialogKind==='duelRoom'){duelRoom.leave();closePanel();return;}if(dialogKind==='duelEnter'){resume();return;}if(dialogKind==='loadout'){resume();return;}if(dialogKind==='end'){toMenu();return;}if(dialogKind==='pause'){resume();return;}closePanel();if(mode==='paused')pauseUI();}
+function dismiss(){if(dialogKind==='duelRoom'){duelRoom.leave();closePanel();return;}if(dialogKind==='duelEnter'){resume();return;}if(dialogKind==='loadout'){resume();return;}if(dialogKind==='end'){if(onlineMatch)duelRoom.lobby();else toMenu();return;}if(dialogKind==='pause'){resume();return;}closePanel();if(mode==='paused')pauseUI();}
 $('closePanel').onclick=dismiss;panel.oncancel=e=>{e.preventDefault();dismiss();};
 $('deploy').onclick=chooseOpponent;$('pauseHud').onclick=pauseUI;
 let calloutAnimation,hitAnimation;
